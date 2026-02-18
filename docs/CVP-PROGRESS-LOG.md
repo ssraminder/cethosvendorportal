@@ -14,6 +14,29 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — February 18, 2026 (Phase 1A — Admin Application Detail Page)
+
+### Completed
+- Built admin application detail page (`apps/recruitment/src/pages/admin/ApplicationDetail.tsx`)
+  - Three-column layout: applicant info (left), stage-specific content (centre), staff actions (right)
+  - **Left panel:** Contact info, professional background (translator + cognitive debriefing paths), certifications, CAT tools, services, rate expectations, work samples, applicant notes
+  - **Centre panel:** AI pre-screening results with score breakdown (translator: demand match, certification quality, experience consistency, sample quality, rate assessment; cognitive debriefing: COA/PRO experience, guideline familiarity, interviewing skills, language fluency, report writing); red flags display; AI fallback indicator; test combinations with per-combination status cards, test scores, token expiry countdowns; negotiation history timeline; reapplication cooldown notice
+  - **Right panel:** Editable staff notes with save; tier override dropdown (translator only); decision buttons (Approve, Reject, Waitlist, Request Info); rejection email editor with 48hr interception window; rejection intercept action; waitlist details; application timeline
+- Added `/admin/recruitment/:id` route to App.tsx
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `apps/recruitment/src/pages/admin/ApplicationDetail.tsx`
+
+### Files Modified
+- `apps/recruitment/src/App.tsx` — added detail page route
+
+### Next Steps
+- Begin Phase 1B — testing pipeline (test library admin UI, send-tests edge function, test page)
+
+---
+
 ## Session — February 18, 2026 (Phase 1A — Edge Functions + Admin Queue)
 
 ### Completed
