@@ -14,6 +14,35 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — February 18, 2026 (Admin Pages → Portal Integration Prompt)
+
+### Completed
+- Removed admin pages (`RecruitmentQueue.tsx`, `ApplicationDetail.tsx`) from recruitment app — they belong in the CETHOS portal at `portal.cethos.com`, not in `join.cethos.com`
+- Removed admin routes from `App.tsx`
+- Created `docs/CVP-ADMIN-INTEGRATION-PROMPT.md` — self-contained prompt for integrating admin recruitment pages into the existing CETHOS portal codebase, including:
+  - Full database schema reference for all CVP tables (cvp_applications, cvp_test_combinations, cvp_test_submissions)
+  - AI pre-screening result JSON structures (translator, cognitive debriefing, fallback)
+  - Complete page specs for queue + detail pages
+  - All Supabase query patterns
+  - Display constants and form option labels
+  - Business rules (rejection window, cooldown, tier override, thresholds)
+
+### Files Created
+- `docs/CVP-ADMIN-INTEGRATION-PROMPT.md`
+
+### Files Removed
+- `apps/recruitment/src/pages/admin/RecruitmentQueue.tsx`
+- `apps/recruitment/src/pages/admin/ApplicationDetail.tsx`
+
+### Files Modified
+- `apps/recruitment/src/App.tsx` — removed admin routes
+
+### Next Steps
+- Use `CVP-ADMIN-INTEGRATION-PROMPT.md` in a Claude Code session on the CETHOS portal repo to build the admin pages there
+- Begin Phase 1B — testing pipeline in this repo
+
+---
+
 ## Session — February 18, 2026 (Phase 1A — Admin Application Detail Page)
 
 ### Completed

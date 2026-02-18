@@ -1,8 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Apply } from './pages/Apply'
 import { Confirmation } from './pages/Confirmation'
-import { RecruitmentQueue } from './pages/admin/RecruitmentQueue'
-import { ApplicationDetail } from './pages/admin/ApplicationDetail'
 
 function App() {
   return (
@@ -10,8 +8,6 @@ function App() {
       <Routes>
         <Route path="/apply" element={<Apply />} />
         <Route path="/apply/confirmation" element={<Confirmation />} />
-        <Route path="/admin/recruitment" element={<RecruitmentQueue />} />
-        <Route path="/admin/recruitment/:id" element={<ApplicationDetail />} />
         <Route path="/" element={<Navigate to="/apply" replace />} />
         <Route path="*" element={<Navigate to="/apply" replace />} />
       </Routes>
