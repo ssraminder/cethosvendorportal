@@ -14,6 +14,84 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — February 18, 2026 (Phase 1B — Testing Pipeline)
+
+### Completed
+- Built `cvp-send-tests` edge function (`supabase/functions/cvp-send-tests/index.ts`)
+  - Matches tests from `cvp_test_library` to each pending `cvp_test_combinations` row
+  - Prefers matching difficulty (from AI prescreen suggestion), falls back to any available
+  - Selects least-recently-used test to distribute load
+  - Creates `cvp_test_submissions` records with 48hr token expiry
+  - Updates combination statuses, test library usage stats
+  - Sends V3 batch test invitation email via Brevo with test links
+  - Handles `no_test_available` case gracefully (flags for staff)
+- Built `cvp-get-test` edge function (`supabase/functions/cvp-get-test/index.ts`)
+  - Validates token, checks expiry and submission status
+  - Returns test content (source text, instructions, LQA flawed translation if applicable)
+  - Tracks views (first_viewed_at, view_count)
+  - Returns saved draft content for resume capability
+  - Never exposes reference translations or answer keys to applicant
+  - Returns MQM dimensions for LQA review tests
+- Built `cvp-save-test-draft` edge function (`supabase/functions/cvp-save-test-draft/index.ts`)
+  - Auto-saves draft content every 60 seconds from frontend
+  - Validates token, checks expiry and submission status
+  - Updates status to `draft_saved` on first save
+- Built `cvp-submit-test` edge function (`supabase/functions/cvp-submit-test/index.ts`)
+  - Enforces one submission per token (strict)
+  - Stores submitted content and optional notes
+  - Updates combination and application statuses
+  - Checks if all combinations submitted to update app status accordingly
+  - Sends V7 Test Received confirmation email
+  - Fire-and-forget trigger to `cvp-assess-test`
+- Built `cvp-assess-test` edge function (`supabase/functions/cvp-assess-test/index.ts`)
+  - Claude AI (claude-sonnet-4-6) assessment with MQM Core dimensions
+  - Translation tests: Accuracy (35%), Fluency (25%), Terminology (20%), Formatting (10%), Certification-readiness (10%)
+  - LQA tests: errors identified/missed/false positives, category accuracy, severity accuracy, comment quality
+  - Scoring thresholds: >=80 auto-approve, 65-79 staff review, <65 auto-reject
+  - Retry on first failure, fall back to staff_review on second failure (AI fallback rule)
+  - Updates submission, combination, and application statuses
+  - Updates test library pass/fail stats
+  - Queues rejection email with 48hr window + 6-month cooldown for auto-reject
+- Built `cvp-check-test-followups` cron function (`supabase/functions/cvp-check-test-followups/index.ts`)
+  - Day 2: 24hr reminder email (V4) — 24 hours before token expiry
+  - Day 3: Token expired notification (V5) — marks submission as expired
+  - Day 7: Final chance email (V6) — applicant can request new link
+  - Day 10: Auto-archive — archives application if no tests submitted
+  - Processes in batches of 50, idempotent (safe to run multiple times)
+  - Each email tracked independently per submission (reminder_day2/3/7_sent_at)
+- Built `TestSubmission` page (`apps/recruitment/src/pages/TestSubmission.tsx`)
+  - Token-based access at `/test/:token` — no login required
+  - Loading, error (expired/already submitted/invalid), and submitted states
+  - Displays test instructions, source text, and countdown timer
+  - LQA mode: shows flawed translation + MQM category guide
+  - Auto-saves draft every 60 seconds
+  - Save draft button + submit button with confirmation dialog
+  - Expiry warning when < 2 hours remaining
+  - Source file download link when applicable
+  - Mobile responsive, clean professional design
+- Added `/test/:token` route to App.tsx
+
+### Files Created
+- `supabase/functions/cvp-send-tests/index.ts`
+- `supabase/functions/cvp-get-test/index.ts`
+- `supabase/functions/cvp-save-test-draft/index.ts`
+- `supabase/functions/cvp-submit-test/index.ts`
+- `supabase/functions/cvp-assess-test/index.ts`
+- `supabase/functions/cvp-check-test-followups/index.ts`
+- `apps/recruitment/src/pages/TestSubmission.tsx`
+
+### Files Modified
+- `apps/recruitment/src/App.tsx` — added `/test/:token` route
+
+### Next Steps
+- Deploy new edge functions to Supabase
+- Create Brevo email templates V3, V4, V5, V6, V7
+- Register `cvp-check-test-followups` as pg_cron job (every hour)
+- Build test library admin UI in CETHOS portal (separate repo)
+- Begin Phase 1C — review, negotiation, and approval pipeline
+
+---
+
 ## Session — February 18, 2026 (Admin Pages → Portal Integration Prompt)
 
 ### Completed
@@ -237,8 +315,8 @@ All tasks in Phase 1A are pending.
 
 | Phase | Name | Status |
 |---|---|---|
-| 1A | Foundation — form + pre-screen | 🟡 In progress (form UI + migrations done, edge functions pending) |
-| 1B | Testing pipeline | ⬜ Not started |
+| 1A | Foundation — form + pre-screen | ✅ Complete |
+| 1B | Testing pipeline | ✅ Complete (edge functions + frontend + cron) |
 | 1C | Review, negotiation, approval | ⬜ Not started |
 | 1D | Profile health system | ⬜ Not started |
 | 2 | Vendor working portal | ⬜ Not started (Phase 2) |
