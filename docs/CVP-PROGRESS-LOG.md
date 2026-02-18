@@ -14,6 +14,62 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — February 18, 2026 (Phase 1A — Project Scaffold + Application Form)
+
+### Completed
+- Set up monorepo structure: `/apps/recruitment`, `/apps/vendor` (placeholder), `/supabase/`
+- Scaffolded recruitment app with Vite + React + TypeScript
+- Installed and configured Tailwind CSS v4 (via `@tailwindcss/vite`)
+- Installed dependencies: Supabase JS client, React Hook Form, Zod v4, React Router, Lucide icons
+- Configured Supabase client (`src/lib/supabase.ts`) using `anon` key via env vars
+- Created `.env.example` with required environment variables
+- Built complete application form UI for **Translator / Reviewer** path (all 8 sections per spec)
+- Built complete application form UI for **Cognitive Debriefing Consultant** path (all sections per spec)
+- Built role type selector that dynamically switches between both form paths
+- Built reusable components: Layout, FormSection, FormField, LanguagePairRow
+- Built Zod validation schemas for both translator and cognitive debriefing forms
+- Built confirmation page (`/apply/confirmation`) with application number display
+- Set up React Router with routes: `/apply`, `/apply/confirmation`, `/` redirect
+- Created Netlify config with SPA redirect rule
+- Created all 8 database migration files (001–008) matching `CVP-DATABASE-SCHEMA.md` exactly
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `apps/recruitment/` — full Vite + React + TS app
+- `apps/recruitment/src/pages/Apply.tsx` — main application form (translator + cognitive debriefing)
+- `apps/recruitment/src/pages/Confirmation.tsx` — post-submission confirmation page
+- `apps/recruitment/src/components/Layout.tsx` — page layout with header + footer
+- `apps/recruitment/src/components/FormSection.tsx` — reusable form section wrapper
+- `apps/recruitment/src/components/FormField.tsx` — reusable labeled form field
+- `apps/recruitment/src/components/LanguagePairRow.tsx` — dynamic language pair + domain row
+- `apps/recruitment/src/lib/supabase.ts` — Supabase client config
+- `apps/recruitment/src/lib/schemas.ts` — Zod validation schemas
+- `apps/recruitment/src/lib/constants.ts` — form option constants (countries, domains, etc.)
+- `apps/recruitment/src/hooks/useLanguages.ts` — hook to fetch languages from Supabase
+- `apps/recruitment/src/types/application.ts` — TypeScript type definitions
+- `apps/recruitment/netlify.toml` — Netlify build + redirect config
+- `apps/recruitment/.env.example` — environment variables template
+- `apps/vendor/src/placeholder.ts` — Phase 2 placeholder
+- `supabase/migrations/001_cvp_test_library.sql`
+- `supabase/migrations/002_cvp_applications.sql`
+- `supabase/migrations/003_cvp_test_combinations.sql`
+- `supabase/migrations/004_cvp_test_submissions.sql`
+- `supabase/migrations/005_cvp_translators.sql`
+- `supabase/migrations/006_cvp_profile_nudges.sql`
+- `supabase/migrations/007_cvp_rls_policies.sql`
+- `supabase/migrations/008_cvp_add_translator_fk.sql`
+
+### Next Steps
+- Run DB migrations against Supabase (`supabase db push` or apply manually)
+- Set up environment variables (Supabase anon key)
+- Build `cvp-submit-application` edge function
+- Build `cvp-prescreen-application` edge function (Claude AI integration)
+- Create Brevo email templates V1, V2, V8
+- Build admin recruitment queue (basic list view)
+
+---
+
 ## Session — February 18, 2026 (Repo Setup)
 
 ### Completed
@@ -81,7 +137,7 @@ All tasks in Phase 1A are pending.
 
 | Phase | Name | Status |
 |---|---|---|
-| 1A | Foundation — form + pre-screen | ⬜ Not started |
+| 1A | Foundation — form + pre-screen | 🟡 In progress (form UI + migrations done, edge functions pending) |
 | 1B | Testing pipeline | ⬜ Not started |
 | 1C | Review, negotiation, approval | ⬜ Not started |
 | 1D | Profile health system | ⬜ Not started |
