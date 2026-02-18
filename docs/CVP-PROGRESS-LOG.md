@@ -14,6 +14,54 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — February 18, 2026 (Phase 1A — Edge Functions + Admin Queue)
+
+### Completed
+- Built `cvp-submit-application` edge function (`supabase/functions/cvp-submit-application/index.ts`)
+  - Validates input, checks reapplication cooldown
+  - Creates `cvp_applications` row with all fields per schema
+  - Creates `cvp_test_combinations` rows (one per language pair + domain + service type)
+  - Generates application number (APP-YY-NNNN format)
+  - Sends V1 confirmation email via Brevo
+  - Fire-and-forget trigger to `cvp-prescreen-application`
+- Built `cvp-prescreen-application` edge function (`supabase/functions/cvp-prescreen-application/index.ts`)
+  - Calls Claude API (claude-sonnet-4-6) with structured prompts for translator and cognitive debriefing paths
+  - Translator: scores 0-100, routes by threshold (>=70 proceed, 50-69 staff review, <50 reject)
+  - Cognitive debriefing: always routes to staff_review (AI advisory only per spec)
+  - AI fallback: on any failure, falls back to staff_review status (never blocks pipeline)
+  - Assigns tier (standard/senior/expert) based on AI suggestion
+  - For auto-rejects: queues rejection email with 48hr window, sets 6-month reapply cooldown
+  - Sends V2 (passed) or V8 (under review) emails via Brevo
+- Created shared Brevo email helper (`supabase/functions/_shared/brevo.ts`)
+  - Template ID constants for all 17 Brevo templates (V1–V17)
+  - `sendBrevoEmail()` utility function with error handling
+- Built admin recruitment queue page (`apps/recruitment/src/pages/admin/RecruitmentQueue.tsx`)
+  - Four tabs: Needs Attention, In Progress, Decided, Waitlist
+  - Per-tab application counts
+  - Sortable columns: name, AI score, applied date
+  - Search by name, email, or application number
+  - Color-coded status badges and AI score indicators
+  - Tier display, days-since-activity counter
+  - Link to detail page (placeholder route)
+- Added `/admin/recruitment` route to the app
+
+### Files Created
+- `supabase/functions/cvp-submit-application/index.ts`
+- `supabase/functions/cvp-prescreen-application/index.ts`
+- `supabase/functions/_shared/brevo.ts`
+- `apps/recruitment/src/pages/admin/RecruitmentQueue.tsx`
+
+### Files Modified
+- `apps/recruitment/src/App.tsx` — added admin route
+
+### Next Steps
+- Deploy edge functions to Supabase (`supabase functions deploy`)
+- Create Brevo email templates V1, V2, V8 in the Brevo dashboard
+- Build admin application detail page (`/admin/recruitment/:id`)
+- Begin Phase 1B — testing pipeline
+
+---
+
 ## Session — February 18, 2026 (Phase 1A — Project Scaffold + Application Form)
 
 ### Completed
