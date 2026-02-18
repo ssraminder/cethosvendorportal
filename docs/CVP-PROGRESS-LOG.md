@@ -14,6 +14,25 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — February 18, 2026 (Repo Setup)
+
+### Completed
+- Created `/docs/` directory and moved all planning docs into it (matches path references in documents)
+- Created `CLAUDE.md` at repo root — Claude Code auto-reads this file on every session
+- `CLAUDE.md` contains project rules, tech stack, business rules, and pointers to detailed docs
+
+### Files Changed
+- `docs/CVP-MASTER-PLAN.md` — moved from repo root to `/docs/`
+- `docs/CVP-DATABASE-SCHEMA.md` — moved from repo root to `/docs/`
+- `docs/CVP-CLAUDE-CODE-INSTRUCTIONS.md` — moved from repo root to `/docs/`
+- `docs/CVP-PROGRESS-LOG.md` — moved from repo root to `/docs/`
+- `CLAUDE.md` — created at repo root (new file)
+
+### Next Steps
+- Begin Phase 1A tasks (see list below)
+
+---
+
 ## Session — February 18, 2026 (Planning)
 
 ### Completed
