@@ -57,6 +57,14 @@ interface ProfileUpdateResponse {
   error?: string;
 }
 
+interface PhoneVerifyResponse {
+  success?: boolean;
+  masked_phone?: string;
+  vendor?: VendorProfile;
+  error?: string;
+  detail?: unknown;
+}
+
 export type {
   VendorProfile,
   AuthCheckResponse,
@@ -64,6 +72,7 @@ export type {
   AuthResponse,
   SessionResponse,
   ProfileUpdateResponse,
+  PhoneVerifyResponse,
 };
 
 export async function activateWithToken(token: string): Promise<AuthResponse> {
@@ -148,6 +157,37 @@ export async function updateProfile(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function sendPhoneVerification(
+  token: string,
+  phone: string
+): Promise<PhoneVerifyResponse> {
+  const res = await fetch(`${BASE}/vendor-verify-phone`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ action: "send", phone }),
+  });
+  return res.json();
+}
+
+export async function verifyPhoneCode(
+  token: string,
+  phone: string,
+  otp_code: string
+): Promise<PhoneVerifyResponse> {
+  const res = await fetch(`${BASE}/vendor-verify-phone`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ action: "verify", phone, otp_code }),
   });
   return res.json();
 }
