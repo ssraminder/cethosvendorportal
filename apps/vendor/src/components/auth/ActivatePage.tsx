@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, Navigate } from "react-router-dom";
-import { checkVendor, sendOtp, verifyOtp } from "../../api/vendorAuth";
+import {
+  activateWithToken,
+  checkVendor,
+  sendOtp,
+  verifyOtp,
+} from "../../api/vendorAuth";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { OtpInput } from "./OtpInput";
 import { CethosLogo } from "../shared/CethosLogo";
@@ -12,6 +17,7 @@ type Step = "checking" | "not-found" | "otp-verify";
 export function ActivatePage() {
   const { vendor, login } = useVendorAuth();
   const [searchParams] = useSearchParams();
+  const tokenParam = searchParams.get("token") || "";
   const emailParam = searchParams.get("email") || "";
 
   const [step, setStep] = useState<Step>("checking");
@@ -22,12 +28,11 @@ export function ActivatePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Already logged in — go to welcome or dashboard
+  // Already logged in
   if (vendor) {
     return <Navigate to="/welcome" replace />;
   }
 
-  // Fallback display contact
   const displayContact =
     maskedContact || (email ? maskEmail(email) : "your email");
 
@@ -37,24 +42,58 @@ export function ActivatePage() {
     return () => clearTimeout(timer);
   }, [resendCountdown]);
 
-  const doSendOtp = useCallback(async (targetEmail: string) => {
-    const result = await sendOtp(targetEmail, "email");
-    if (result.error) throw new Error(result.error);
-    setMaskedContact(result.masked_contact || "");
-    setStep("otp-verify");
-    setResendCountdown(60);
-    setOtpValue(["", "", "", "", "", ""]);
-  }, []);
+  const doSendOtp = useCallback(
+    async (targetEmail: string) => {
+      const result = await sendOtp(targetEmail, "email");
+      if (result.error) throw new Error(result.error);
+      setMaskedContact(result.masked_contact || "");
+      setStep("otp-verify");
+      setResendCountdown(60);
+      setOtpValue(["", "", "", "", "", ""]);
+    },
+    []
+  );
 
-  // Auto-check and send OTP on mount if email is in URL
+  // On mount: try token first, then email OTP fallback
   useEffect(() => {
-    if (!emailParam) {
+    if (!tokenParam && !emailParam) {
       setStep("not-found");
       return;
     }
 
     let cancelled = false;
+
     async function activate() {
+      // Path 1: Token-based activation (from invitation email)
+      if (tokenParam) {
+        try {
+          const result = await activateWithToken(tokenParam);
+          if (cancelled) return;
+
+          if (result.error) {
+            setError(result.error);
+            setStep("not-found");
+            return;
+          }
+
+          if (result.success && result.session_token && result.vendor) {
+            login(result.session_token, result.vendor, {
+              needsPassword: result.needs_password,
+              isFirstLogin: result.is_first_login,
+            });
+          }
+        } catch {
+          if (!cancelled) {
+            setError(
+              "Something went wrong. Please try logging in instead."
+            );
+            setStep("not-found");
+          }
+        }
+        return;
+      }
+
+      // Path 2: Email-based OTP fallback
       try {
         const check = await checkVendor(emailParam);
         if (cancelled) return;
@@ -77,7 +116,7 @@ export function ActivatePage() {
     return () => {
       cancelled = true;
     };
-  }, [emailParam, doSendOtp]);
+  }, [tokenParam, emailParam, login, doSendOtp]);
 
   async function handleVerify() {
     const code = otpValue.join("");
@@ -119,19 +158,21 @@ export function ActivatePage() {
     }
   }
 
-  // Checking state
+  // Checking / activating state
   if (step === "checking") {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
         <div className="text-center">
           <Loader2 className="w-8 h-8 text-[#0F9DA0] animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Setting up your account...</p>
+          <p className="text-gray-600">
+            {tokenParam ? "Activating your account..." : "Setting up your account..."}
+          </p>
         </div>
       </div>
     );
   }
 
-  // Not found or no email
+  // Not found / expired
   if (step === "not-found") {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
@@ -141,7 +182,7 @@ export function ActivatePage() {
               <CethosLogo size="md" />
             </div>
             <h2 className="text-lg font-semibold text-gray-900 mb-2">
-              Activation Link Issue
+              {tokenParam ? "Link Expired" : "Activation Link Issue"}
             </h2>
             <p className="text-sm text-gray-600 mb-6">
               {error ||
@@ -159,7 +200,7 @@ export function ActivatePage() {
     );
   }
 
-  // OTP verify
+  // OTP verify (email fallback path only)
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md">

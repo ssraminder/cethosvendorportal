@@ -56,7 +56,7 @@ export function OtpInput({ value, onChange, disabled }: OtpInputProps) {
   }
 
   return (
-    <div className="flex gap-3 justify-center">
+    <div className="flex gap-2 sm:gap-3 justify-center">
       {Array.from({ length: 6 }).map((_, i) => (
         <input
           key={i}
@@ -65,13 +65,16 @@ export function OtpInput({ value, onChange, disabled }: OtpInputProps) {
           }}
           type="text"
           inputMode="numeric"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          pattern="[0-9]*"
           maxLength={1}
           value={value[i] || ""}
           disabled={disabled}
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={handlePaste}
-          className="w-12 h-12 text-center text-xl font-semibold border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none disabled:bg-gray-100 disabled:text-gray-400"
+          onFocus={(e) => e.target.select()}
+          className="w-11 h-13 sm:w-12 sm:h-14 text-center text-xl sm:text-2xl font-semibold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none disabled:bg-gray-100 disabled:text-gray-400 transition-colors"
         />
       ))}
     </div>

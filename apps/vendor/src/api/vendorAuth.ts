@@ -59,6 +59,15 @@ export type {
   SessionResponse,
 };
 
+export async function activateWithToken(token: string): Promise<AuthResponse> {
+  const res = await fetch(`${BASE}/vendor-auth-activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  return res.json();
+}
+
 export async function checkVendor(email: string): Promise<AuthCheckResponse> {
   const res = await fetch(`${BASE}/vendor-auth-check`, {
     method: "POST",
