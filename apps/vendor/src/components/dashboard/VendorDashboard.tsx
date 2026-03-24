@@ -6,7 +6,6 @@ import {
   Mail,
   Globe,
   Phone,
-  Briefcase,
   CircleDot,
   KeyRound,
   AlertCircle,
@@ -76,7 +75,6 @@ export function VendorDashboard() {
     { icon: Mail, label: "Email", value: vendor.email },
     { icon: Phone, label: "Phone", value: vendor.phone || "Not provided" },
     { icon: Globe, label: "Country", value: vendor.country || "Not provided" },
-    { icon: Briefcase, label: "Type", value: vendor.vendor_type || "Not set" },
     { icon: CircleDot, label: "Availability", value: availabilityLabel(vendor.availability_status) },
   ];
 

@@ -51,12 +51,19 @@ interface SimpleResponse {
   error?: string;
 }
 
+interface ProfileUpdateResponse {
+  success?: boolean;
+  vendor?: VendorProfile;
+  error?: string;
+}
+
 export type {
   VendorProfile,
   AuthCheckResponse,
   OtpSendResponse,
   AuthResponse,
   SessionResponse,
+  ProfileUpdateResponse,
 };
 
 export async function activateWithToken(token: string): Promise<AuthResponse> {
@@ -126,6 +133,21 @@ export async function logoutSession(token: string): Promise<SimpleResponse> {
   const res = await fetch(`${BASE}/vendor-auth-logout`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
+export async function updateProfile(
+  token: string,
+  data: { email?: string; phone?: string }
+): Promise<ProfileUpdateResponse> {
+  const res = await fetch(`${BASE}/vendor-update-profile`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
   });
   return res.json();
 }

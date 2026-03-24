@@ -23,6 +23,7 @@ interface VendorAuthState {
     vendor: VendorProfile,
     options?: { needsPassword?: boolean; isFirstLogin?: boolean }
   ) => void;
+  setVendor: (vendor: VendorProfile) => void;
   markWelcomeComplete: () => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -131,6 +132,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
         isFirstLogin,
         isLoading,
         login,
+        setVendor,
         markWelcomeComplete,
         logout,
         refreshSession,

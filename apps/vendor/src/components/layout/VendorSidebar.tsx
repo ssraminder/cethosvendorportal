@@ -63,12 +63,6 @@ export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
           ))}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4">
-          <div className="h-px bg-gray-700/50 mb-4" />
-          <p className="text-[11px] text-gray-600 text-center">
-            Vendor Portal
-          </p>
-        </div>
       </aside>
     </>
   );
