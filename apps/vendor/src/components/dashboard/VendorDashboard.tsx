@@ -96,25 +96,47 @@ export function VendorDashboard() {
         <p className="text-gray-500 mt-1">{vendor.email}</p>
       </div>
 
-      {/* Password setup banner */}
-      {needsPassword && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-amber-800">
-              Set up a password for faster sign-in
-            </p>
-            <p className="text-xs text-amber-600 mt-0.5">
-              You signed in with a one-time code. Add a password so you can log
-              in more quickly next time.
-            </p>
-            <Link
-              to="/security"
-              className="inline-block mt-2 text-sm font-medium text-amber-700 hover:text-amber-900 underline underline-offset-2"
-            >
-              Set password now
-            </Link>
-          </div>
+      {/* Action banners for missing info */}
+      {(needsPassword || !vendor.phone) && (
+        <div className="space-y-3">
+          {!vendor.phone && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+              <Phone className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-800">
+                  Add your phone number
+                </p>
+                <p className="text-xs text-blue-600 mt-0.5">
+                  Required for SMS login and for project managers to reach you.
+                </p>
+                <Link
+                  to="/profile"
+                  className="inline-block mt-2 text-sm font-medium text-blue-700 hover:text-blue-900 underline underline-offset-2"
+                >
+                  Update profile
+                </Link>
+              </div>
+            </div>
+          )}
+          {needsPassword && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-800">
+                  Set up a password for faster sign-in
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  Optional — you can always use a verification code instead.
+                </p>
+                <Link
+                  to="/security"
+                  className="inline-block mt-2 text-sm font-medium text-amber-700 hover:text-amber-900 underline underline-offset-2"
+                >
+                  Set password now
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
