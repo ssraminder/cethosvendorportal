@@ -4,9 +4,11 @@ import {
   manageRates,
   type ManagedRate,
   type ServiceOption,
+  type LanguagePair,
 } from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import { formatCurrencyLabel, CURRENCIES } from "../../data/currencies";
+import { LANGUAGES } from "../../data/languages";
 import {
   DollarSign,
   Loader2,
@@ -16,9 +18,14 @@ import {
   X,
   CheckCircle,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 
-// --- Display label maps ---
+// --- Helpers ---
+
+function langName(code: string): string {
+  return LANGUAGES.find((l) => l.code === code)?.name ?? code;
+}
 
 const UNIT_LABELS: Record<string, string> = {
   per_word: "Per Word",
@@ -63,6 +70,7 @@ interface RateModalProps {
   mode: "add" | "edit";
   servicesByCategory: Record<string, ServiceOption[]>;
   defaultCurrency: string;
+  languagePairs: LanguagePair[];
   editingRate: ManagedRate | null;
   onClose: () => void;
   onSave: (data: {
@@ -74,6 +82,7 @@ interface RateModalProps {
     minimum_charge?: number;
     notes?: string;
     rate_id?: string;
+    language_pair_ids?: string[];
   }) => Promise<string | null>;
 }
 
@@ -81,6 +90,7 @@ function RateModal({
   mode,
   servicesByCategory,
   defaultCurrency,
+  languagePairs,
   editingRate,
   onClose,
   onSave,
@@ -93,6 +103,7 @@ function RateModal({
     editingRate?.minimum_charge?.toString() || ""
   );
   const [notes, setNotes] = useState(editingRate?.notes || "");
+  const [selectedPairIds, setSelectedPairIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -137,6 +148,31 @@ function RateModal({
     }
   }, [unitOptions, unit, mode]);
 
+  const activePairs = useMemo(
+    () => languagePairs.filter((lp) => lp.is_active),
+    [languagePairs]
+  );
+
+  function togglePair(id: string) {
+    setSelectedPairIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAllPairs() {
+    setSelectedPairIds(new Set(activePairs.map((lp) => lp.id)));
+  }
+
+  function deselectAllPairs() {
+    setSelectedPairIds(new Set());
+  }
+
   async function handleSave() {
     const rateNum = parseFloat(rate);
     if (!rate || isNaN(rateNum) || rateNum <= 0) {
@@ -146,6 +182,11 @@ function RateModal({
 
     if (mode === "add" && (!serviceId || !unit)) {
       setError("Please select a service and unit");
+      return;
+    }
+
+    if (mode === "add" && activePairs.length > 0 && selectedPairIds.size === 0) {
+      setError("Please select at least one language pair");
       return;
     }
 
@@ -164,6 +205,9 @@ function RateModal({
             currency,
             minimum_charge: minChargeNum,
             notes: notes.trim() || undefined,
+            language_pair_ids: activePairs.length > 0
+              ? [...selectedPairIds]
+              : undefined,
           }
         : {
             action: "update",
@@ -241,6 +285,74 @@ function RateModal({
                 placeholder="Select unit..."
                 disabled={!serviceId}
               />
+            )}
+          </div>
+
+          {/* Language Pairs */}
+          <div>
+            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+              Language Pairs
+            </label>
+            {mode === "edit" ? (
+              // Read-only badge in edit mode
+              editingRate?.source_language && editingRate?.target_language ? (
+                <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+                  {langName(editingRate.source_language)} &rarr; {langName(editingRate.target_language)}
+                </div>
+              ) : (
+                <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-400 italic">
+                  General (no specific language pair)
+                </div>
+              )
+            ) : activePairs.length === 0 ? (
+              <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+                <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>
+                  No language pairs configured. Add them on the{" "}
+                  <span className="font-medium">Languages</span> page first.
+                  This rate will apply generally.
+                </span>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <button
+                    type="button"
+                    onClick={selectAllPairs}
+                    className="text-xs text-[#0F9DA0] hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deselectAllPairs}
+                    className="text-xs text-gray-400 hover:underline"
+                  >
+                    Deselect All
+                  </button>
+                  <span className="text-xs text-gray-400 ml-auto">
+                    {selectedPairIds.size} of {activePairs.length} selected
+                  </span>
+                </div>
+                <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                  {activePairs.map((lp) => (
+                    <label
+                      key={lp.id}
+                      className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPairIds.has(lp.id)}
+                        onChange={() => togglePair(lp.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-[#0F9DA0] focus:ring-[#0F9DA0]"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {langName(lp.source_language)} &rarr; {langName(lp.target_language)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
@@ -351,7 +463,16 @@ function RemoveDialog({ rate, onClose, onConfirm }: RemoveDialogProps) {
           <p className="text-sm text-gray-600">
             Remove your rate for{" "}
             <span className="font-medium">{rate.service_name}</span>{" "}
-            ({UNIT_LABELS[rate.calculation_unit] || rate.calculation_unit})?
+            ({UNIT_LABELS[rate.calculation_unit] || rate.calculation_unit})
+            {rate.source_language && rate.target_language && (
+              <>
+                {" "}&mdash;{" "}
+                <span className="font-medium">
+                  {langName(rate.source_language)} &rarr; {langName(rate.target_language)}
+                </span>
+              </>
+            )}
+            ?
           </p>
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
@@ -384,6 +505,7 @@ export function VendorRates() {
   const [servicesByCategory, setServicesByCategory] = useState<
     Record<string, ServiceOption[]>
   >({});
+  const [languagePairs, setLanguagePairs] = useState<LanguagePair[]>([]);
   const [preferredCurrency, setPreferredCurrency] = useState("CAD");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -403,6 +525,7 @@ export function VendorRates() {
       } else {
         setRates(result.rates || []);
         setServicesByCategory(result.services_by_category || {});
+        setLanguagePairs(result.language_pairs || []);
         setPreferredCurrency(result.preferred_rate_currency || "CAD");
       }
     } catch {
@@ -443,14 +566,20 @@ export function VendorRates() {
     minimum_charge?: number;
     notes?: string;
     rate_id?: string;
+    language_pair_ids?: string[];
   }): Promise<string | null> {
     if (!sessionToken) return "Not authenticated";
     const result = await manageRates(sessionToken, data);
     if (result.error) return result.error;
 
-    setSuccess(
-      data.action === "add" ? "Rate added successfully" : "Rate updated successfully"
+    const msg = result.message || (
+      data.action === "add"
+        ? (result.count && result.count > 1
+            ? `${result.count} rates added successfully`
+            : "Rate added successfully")
+        : "Rate updated successfully"
     );
+    setSuccess(msg);
     await loadRates();
     return null;
   }
@@ -556,13 +685,18 @@ export function VendorRates() {
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-sm font-semibold text-gray-900">
                               {rate.service_name}
                             </h3>
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
                               Active
                             </span>
+                            {rate.source_language && rate.target_language && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700">
+                                {langName(rate.source_language)} &rarr; {langName(rate.target_language)}
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-gray-600 mt-1">
                             Rate:{" "}
@@ -621,6 +755,7 @@ export function VendorRates() {
           mode={modalMode}
           servicesByCategory={servicesByCategory}
           defaultCurrency={preferredCurrency}
+          languagePairs={languagePairs}
           editingRate={modalMode === "edit" ? editingRate : null}
           onClose={() => {
             setModalMode(null);
