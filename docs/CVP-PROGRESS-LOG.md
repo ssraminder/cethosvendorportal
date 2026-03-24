@@ -14,6 +14,19 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 24, 2026 (Login SMS switched to ClickSend)
+
+### Completed
+- Switched login OTP SMS channel from Brevo to ClickSend in `vendor-auth-otp-send` edge function
+- Brevo API key check now scoped to email channel only (no longer blocks SMS requests)
+- ClickSend credentials (`CLICKSEND_USERNAME`, `CLICKSEND_API_KEY`) used for SMS, matching `vendor-verify-phone` implementation
+- Deployed updated `vendor-auth-otp-send` edge function (v10)
+
+### Files Modified
+- `supabase/functions/vendor-auth-otp-send/index.ts` — replaced Brevo transactional SMS with ClickSend REST API
+
+---
+
 ## Session — March 24, 2026 (Phase 2 — Vendor Auth System + Core Shell)
 
 ### Completed
