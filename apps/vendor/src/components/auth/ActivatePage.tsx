@@ -28,11 +28,6 @@ export function ActivatePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Already logged in
-  if (vendor) {
-    return <Navigate to="/welcome" replace />;
-  }
-
   const displayContact =
     maskedContact || (email ? maskEmail(email) : "your email");
 
@@ -117,6 +112,11 @@ export function ActivatePage() {
       cancelled = true;
     };
   }, [tokenParam, emailParam, login, doSendOtp]);
+
+  // Redirect if already logged in (after all hooks)
+  if (vendor) {
+    return <Navigate to="/welcome" replace />;
+  }
 
   async function handleVerify() {
     const code = otpValue.join("");

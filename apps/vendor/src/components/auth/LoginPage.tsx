@@ -35,11 +35,6 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already logged in
-  if (vendor) {
-    return <Navigate to={isFirstLogin ? "/welcome" : "/"} replace />;
-  }
-
   useEffect(() => {
     if (resendCountdown <= 0) return;
     const timer = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
@@ -71,6 +66,11 @@ export function LoginPage() {
     },
     [email]
   );
+
+  // Redirect if already logged in (after all hooks)
+  if (vendor) {
+    return <Navigate to={isFirstLogin ? "/welcome" : "/"} replace />;
+  }
 
   // Step 1: Check vendor by email → auto-send email OTP
   async function handleEmailContinue() {
