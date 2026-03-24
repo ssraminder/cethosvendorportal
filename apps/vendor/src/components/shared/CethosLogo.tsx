@@ -1,20 +1,21 @@
 interface CethosLogoProps {
   size?: "sm" | "md" | "lg";
   showText?: boolean;
+  dark?: boolean;
 }
 
-export function CethosLogo({ size = "md", showText = true }: CethosLogoProps) {
-  const iconSize = size === "sm" ? 28 : size === "lg" ? 48 : 36;
+export function CethosLogo({ size = "md", showText = true, dark }: CethosLogoProps) {
+  const iconSize = size === "sm" ? 26 : size === "lg" ? 48 : 36;
   const fontSize =
     size === "sm"
-      ? "text-lg"
+      ? "text-base"
       : size === "lg"
         ? "text-3xl"
-        : "text-2xl";
+        : "text-xl";
+  const textColor = dark ? "text-white" : "text-gray-900";
 
   return (
-    <div className="flex items-center justify-center gap-2.5">
-      {/* Icon mark — teal circle with stylized C */}
+    <div className="flex items-center gap-2">
       <svg
         width={iconSize}
         height={iconSize}
@@ -30,9 +31,7 @@ export function CethosLogo({ size = "md", showText = true }: CethosLogoProps) {
         />
       </svg>
       {showText && (
-        <span
-          className={`${fontSize} font-bold text-gray-900 tracking-tight`}
-        >
+        <span className={`${fontSize} font-bold ${textColor} tracking-tight`}>
           CETHOS
         </span>
       )}
