@@ -148,7 +148,16 @@ export async function logoutSession(token: string): Promise<SimpleResponse> {
 
 export async function updateProfile(
   token: string,
-  data: { email?: string; phone?: string }
+  data: {
+    email?: string;
+    phone?: string;
+    full_name?: string;
+    city?: string;
+    country?: string;
+    tax_id?: string;
+    tax_rate?: string;
+    preferred_rate_currency?: string;
+  }
 ): Promise<ProfileUpdateResponse> {
   const res = await fetch(`${BASE}/vendor-update-profile`, {
     method: "POST",

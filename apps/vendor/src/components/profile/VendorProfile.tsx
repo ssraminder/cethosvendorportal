@@ -1,10 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   updateProfile,
   sendPhoneVerification,
   verifyPhoneCode,
 } from "../../api/vendorAuth";
+import { getFullProfile } from "../../api/vendorProfile";
+import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
+import { CurrencySelect } from "../shared/CurrencySelect";
+import { COUNTRIES } from "../../data/countries";
 import {
   Mail,
   Phone,
@@ -15,6 +19,11 @@ import {
   Check,
   X,
   Loader2,
+  MapPin,
+  Building2,
+  Receipt,
+  Percent,
+  DollarSign,
 } from "lucide-react";
 
 function statusBadge(status: string) {
@@ -33,13 +42,17 @@ function statusBadge(status: string) {
   );
 }
 
-// --- Editable email field (save directly) ---
-interface EditableEmailFieldProps {
+// --- Editable text field ---
+interface EditableFieldProps {
+  icon: typeof Mail;
+  label: string;
   value: string;
+  type?: string;
+  placeholder?: string;
   onSave: (value: string) => Promise<string | null>;
 }
 
-function EditableEmailField({ value, onSave }: EditableEmailFieldProps) {
+function EditableField({ icon: Icon, label, value, type = "text", placeholder, onSave }: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
@@ -71,16 +84,16 @@ function EditableEmailField({ value, onSave }: EditableEmailFieldProps) {
       <div className="px-6 py-4">
         <div className="flex items-start gap-4">
           <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Mail className="w-4 h-4 text-gray-400" />
+            <Icon className="w-4 h-4 text-gray-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">Email</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">{label}</p>
             <div className="flex gap-2">
               <input
-                type="email"
+                type={type}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={placeholder}
                 disabled={saving}
                 autoFocus
                 className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:border-[#0F9DA0] focus:ring-2 focus:ring-[#0F9DA0]/20 outline-none disabled:bg-gray-100"
@@ -103,19 +116,113 @@ function EditableEmailField({ value, onSave }: EditableEmailFieldProps) {
     );
   }
 
+  const isEmpty = !value || value === "Not provided";
   return (
     <div className="px-6 py-4 flex items-center gap-4 group">
       <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
-        <Mail className="w-4 h-4 text-gray-400" />
+        <Icon className="w-4 h-4 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">Email</p>
-        <p className="text-sm mt-0.5 truncate font-medium text-gray-900">{value}</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
+          {value || "Not provided"}
+        </p>
       </div>
       <button
         onClick={startEdit}
         className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-        title="Edit email"
+        title={`Edit ${label.toLowerCase()}`}
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// --- Editable searchable select field ---
+interface EditableSelectFieldProps {
+  icon: typeof Mail;
+  label: string;
+  value: string;
+  options: SelectOption[];
+  placeholder?: string;
+  onSave: (value: string) => Promise<string | null>;
+}
+
+function EditableSelectField({ icon: Icon, label, value, options, placeholder, onSave }: EditableSelectFieldProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function startEdit() {
+    setDraft(value);
+    setError("");
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setError("");
+  }
+
+  async function handleSave() {
+    if (draft === value) { setEditing(false); return; }
+    setSaving(true);
+    setError("");
+    const err = await onSave(draft);
+    setSaving(false);
+    if (err) { setError(err); } else { setEditing(false); }
+  }
+
+  if (editing) {
+    return (
+      <div className="px-6 py-4">
+        <div className="flex items-start gap-4">
+          <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+            <Icon className="w-4 h-4 text-gray-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">{label}</p>
+            <div className="flex gap-2 items-start">
+              <SearchableSelect
+                options={options}
+                value={draft}
+                onChange={setDraft}
+                placeholder={placeholder}
+                className="flex-1"
+              />
+              <button onClick={handleSave} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50 mt-1" title="Save">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              </button>
+              <button onClick={cancelEdit} disabled={saving} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md disabled:opacity-50 mt-1" title="Cancel">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const displayLabel = options.find((o) => o.value === value)?.label || value;
+  const isEmpty = !value || value === "Not provided";
+  return (
+    <div className="px-6 py-4 flex items-center gap-4 group">
+      <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
+          {displayLabel || "Not provided"}
+        </p>
+      </div>
+      <button
+        onClick={startEdit}
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
       </button>
@@ -228,7 +335,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">Phone</p>
             <p className="text-xs text-gray-500 mb-2">
-              Enter your number with country code. We'll send a verification SMS.
+              Enter your number with country code. We&apos;ll send a verification SMS.
             </p>
             <div className="flex gap-2">
               <input
@@ -365,9 +472,123 @@ function ReadOnlyField({ icon: Icon, label, value }: ReadOnlyFieldProps) {
   );
 }
 
+// --- Currency edit field ---
+interface EditableCurrencyFieldProps {
+  icon: typeof Mail;
+  label: string;
+  value: string;
+  onSave: (value: string) => Promise<string | null>;
+}
+
+function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCurrencyFieldProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function startEdit() {
+    setDraft(value);
+    setError("");
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setError("");
+  }
+
+  async function handleSave() {
+    if (draft === value) { setEditing(false); return; }
+    setSaving(true);
+    setError("");
+    const err = await onSave(draft);
+    setSaving(false);
+    if (err) { setError(err); } else { setEditing(false); }
+  }
+
+  if (editing) {
+    return (
+      <div className="px-6 py-4">
+        <div className="flex items-start gap-4">
+          <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+            <Icon className="w-4 h-4 text-gray-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">{label}</p>
+            <div className="flex gap-2 items-start">
+              <CurrencySelect
+                value={draft}
+                onChange={setDraft}
+                className="flex-1"
+              />
+              <button onClick={handleSave} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50 mt-1" title="Save">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              </button>
+              <button onClick={cancelEdit} disabled={saving} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md disabled:opacity-50 mt-1" title="Cancel">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isEmpty = !value;
+  return (
+    <div className="px-6 py-4 flex items-center gap-4 group">
+      <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
+          {value || "Not set"}
+        </p>
+      </div>
+      <button
+        onClick={startEdit}
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        title={`Edit ${label.toLowerCase()}`}
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 // --- Main profile page ---
 export function VendorProfile() {
   const { vendor, sessionToken, setVendor } = useVendorAuth();
+  const [taxId, setTaxId] = useState("");
+  const [taxRate, setTaxRate] = useState("");
+  const [preferredRateCurrency, setPreferredRateCurrency] = useState("CAD");
+  const [city, setCity] = useState("");
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  const countryOptions: SelectOption[] = COUNTRIES.map((c) => ({ value: c, label: c }));
+
+  const loadExtendedProfile = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      const result = await getFullProfile(sessionToken);
+      if (result.vendor) {
+        setCity(result.vendor.city || "");
+        setTaxId(result.vendor.tax_id || "");
+        setTaxRate(result.vendor.tax_rate?.toString() || "");
+        setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setProfileLoaded(true);
+    }
+  }, [sessionToken]);
+
+  useEffect(() => {
+    loadExtendedProfile();
+  }, [loadExtendedProfile]);
 
   if (!vendor || !sessionToken) return null;
 
@@ -378,11 +599,51 @@ export function VendorProfile() {
     .slice(0, 2)
     .toUpperCase();
 
-  async function saveEmail(value: string): Promise<string | null> {
-    const result = await updateProfile(sessionToken!, { email: value });
+  async function saveField(field: string, value: string): Promise<string | null> {
+    const result = await updateProfile(sessionToken!, { [field]: value });
     if (result.error) return result.error;
     if (result.vendor) setVendor(result.vendor);
     return null;
+  }
+
+  async function saveEmail(value: string): Promise<string | null> {
+    return saveField("email", value);
+  }
+
+  async function saveFullName(value: string): Promise<string | null> {
+    return saveField("full_name", value);
+  }
+
+  async function saveCity(value: string): Promise<string | null> {
+    const err = await saveField("city", value);
+    if (!err) setCity(value);
+    return err;
+  }
+
+  async function saveCountry(value: string): Promise<string | null> {
+    return saveField("country", value);
+  }
+
+  async function saveTaxId(value: string): Promise<string | null> {
+    const err = await saveField("tax_id", value);
+    if (!err) setTaxId(value);
+    return err;
+  }
+
+  async function saveTaxRate(value: string): Promise<string | null> {
+    const rate = parseFloat(value);
+    if (value && (isNaN(rate) || rate < 0 || rate > 100)) {
+      return "Tax rate must be between 0 and 100";
+    }
+    const err = await saveField("tax_rate", value);
+    if (!err) setTaxRate(value);
+    return err;
+  }
+
+  async function savePreferredRateCurrency(value: string): Promise<string | null> {
+    const err = await saveField("preferred_rate_currency", value);
+    if (!err) setPreferredRateCurrency(value);
+    return err;
   }
 
   return (
@@ -413,16 +674,80 @@ export function VendorProfile() {
           </h2>
         </div>
         <div className="divide-y divide-gray-100">
-          <EditableEmailField value={vendor.email} onSave={saveEmail} />
+          <EditableField
+            icon={Building2}
+            label="Full Name"
+            value={vendor.full_name}
+            placeholder="Your full name"
+            onSave={saveFullName}
+          />
+          <EditableField
+            icon={Mail}
+            label="Email"
+            value={vendor.email}
+            type="email"
+            placeholder="you@example.com"
+            onSave={saveEmail}
+          />
           <EditablePhoneField
             value={vendor.phone || ""}
             sessionToken={sessionToken}
             onVerified={setVendor}
           />
-          <ReadOnlyField icon={Globe} label="Country" value={vendor.country || "Not provided"} />
+          <EditableSelectField
+            icon={Globe}
+            label="Country"
+            value={vendor.country || ""}
+            options={countryOptions}
+            placeholder="Select country..."
+            onSave={saveCountry}
+          />
+          {profileLoaded && (
+            <EditableField
+              icon={MapPin}
+              label="City"
+              value={city}
+              placeholder="Your city"
+              onSave={saveCity}
+            />
+          )}
           <ReadOnlyField icon={CircleDot} label="Availability" value={vendor.availability_status || "Not set"} />
         </div>
       </div>
+
+      {/* Financial Details */}
+      {profileLoaded && (
+        <div className="mt-5 bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+              Financial Details
+            </h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            <EditableCurrencyField
+              icon={DollarSign}
+              label="Preferred Rate Currency"
+              value={preferredRateCurrency}
+              onSave={savePreferredRateCurrency}
+            />
+            <EditableField
+              icon={Receipt}
+              label="Tax ID (GST/HST/VAT)"
+              value={taxId}
+              placeholder="e.g., 123456789RT0001"
+              onSave={saveTaxId}
+            />
+            <EditableField
+              icon={Percent}
+              label="Tax Rate (%)"
+              value={taxRate}
+              type="number"
+              placeholder="e.g., 13"
+              onSave={saveTaxRate}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Security */}
       <div className="mt-5 bg-white rounded-xl border border-gray-200 overflow-hidden">
