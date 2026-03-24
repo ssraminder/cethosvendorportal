@@ -159,7 +159,9 @@ export async function updateProfile(
     full_name?: string;
     city?: string;
     country?: string;
+    province_state?: string;
     tax_id?: string;
+    tax_name?: string;
     tax_rate?: string;
     preferred_rate_currency?: string;
   }
