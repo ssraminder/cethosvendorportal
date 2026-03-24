@@ -16,7 +16,6 @@ function maskEmail(email: string): string {
 
 function maskPhone(phone: string): string {
   if (phone.length < 4) return "***";
-  // Keep country code prefix (up to first few chars) and last 2 digits
   const prefix = phone.startsWith("+") ? phone.slice(0, 3) : phone.slice(0, 1);
   const suffix = phone.slice(-2);
   const masked = "*".repeat(Math.max(0, phone.length - prefix.length - suffix.length));
