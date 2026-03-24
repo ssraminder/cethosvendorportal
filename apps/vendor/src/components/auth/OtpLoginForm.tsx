@@ -153,6 +153,11 @@ export function OtpLoginForm() {
             if (e.key === "Enter") handleSendCode();
           }}
         />
+        {channel === "sms" && (
+          <p className="mt-1.5 text-xs text-gray-500">
+            We'll use your email to look up your account, then send the code to the phone number on file.
+          </p>
+        )}
       </div>
 
       <div>
