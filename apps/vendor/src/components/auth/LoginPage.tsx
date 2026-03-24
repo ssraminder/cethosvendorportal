@@ -8,6 +8,8 @@ import {
 } from "../../api/vendorAuth";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { OtpInput } from "./OtpInput";
+import { CethosLogo } from "../shared/CethosLogo";
+import { maskEmail } from "../../utils/mask";
 import { Eye, EyeOff, ArrowLeft, Smartphone, KeyRound } from "lucide-react";
 
 type Step = "email" | "otp-verify" | "password";
@@ -43,6 +45,10 @@ export function LoginPage() {
     const timer = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [resendCountdown]);
+
+  // Compute display contact — use backend masked_contact, fallback to frontend mask
+  const displayContact =
+    maskedContact || (email ? maskEmail(email.trim()) : "your email");
 
   // Send OTP helper
   const doSendOtp = useCallback(
@@ -247,8 +253,8 @@ export function LoginPage() {
         <div className="space-y-6">
           <div className="text-center">
             <p className="text-sm text-gray-600">
-              Code sent {otpChannel === "sms" ? "via SMS" : "to"}{" "}
-              <span className="font-medium">{maskedContact}</span>
+              {otpChannel === "sms" ? "Code sent via SMS to" : "Code sent to"}{" "}
+              <span className="font-medium">{displayContact}</span>
             </p>
           </div>
 
@@ -391,10 +397,9 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-              CETHOS
-            </h1>
-            <p className="text-gray-500 mt-1">Vendor Portal</p>
+            <CethosLogo size="md" />
+            <div className="mt-3 h-0.5 w-16 bg-[#0F9DA0] mx-auto rounded-full" />
+            <p className="text-gray-500 mt-3">Vendor Portal</p>
           </div>
 
           {renderContent()}
