@@ -34,13 +34,15 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Look up vendor by email
     const { data: vendor, error: vendorErr } = await supabase
       .from("vendors")
       .select(
         "id, full_name, email, phone, status, vendor_type, country, availability_status"
       )
-      .eq("email", email.toLowerCase().trim())
+      .eq("email", normalizedEmail)
       .single();
 
     if (vendorErr || !vendor) {
@@ -96,6 +98,22 @@ serve(async (req: Request) => {
       );
     }
 
+    // Check and stamp first login via cvp_translators
+    let isFirstLogin = false;
+    const { data: translator } = await supabase
+      .from("cvp_translators")
+      .select("id, invite_accepted_at")
+      .eq("email", normalizedEmail)
+      .single();
+
+    if (translator && !translator.invite_accepted_at) {
+      isFirstLogin = true;
+      await supabase
+        .from("cvp_translators")
+        .update({ invite_accepted_at: new Date().toISOString() })
+        .eq("id", translator.id);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -103,6 +121,7 @@ serve(async (req: Request) => {
         expires_at: expiresAt,
         vendor,
         must_reset: auth.must_reset,
+        is_first_login: isFirstLogin,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

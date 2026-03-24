@@ -67,6 +67,22 @@ serve(async (req: Request) => {
       );
     }
 
+    // Check if password is set
+    const { data: auth } = await supabase
+      .from("vendor_auth")
+      .select("vendor_id")
+      .eq("vendor_id", session.vendor_id)
+      .single();
+
+    // Check first login status via cvp_translators
+    const { data: translator } = await supabase
+      .from("cvp_translators")
+      .select("invite_accepted_at")
+      .eq("email", vendor.email)
+      .single();
+
+    const isFirstLogin = translator ? !translator.invite_accepted_at : false;
+
     return new Response(
       JSON.stringify({
         vendor,
@@ -74,6 +90,8 @@ serve(async (req: Request) => {
           expires_at: session.expires_at,
           last_seen_at: now,
         },
+        needs_password: !auth,
+        is_first_login: isFirstLogin,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
