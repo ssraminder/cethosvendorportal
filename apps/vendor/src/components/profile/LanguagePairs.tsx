@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getFullProfile,
   updateLanguagePairs,
   type LanguagePair,
 } from "../../api/vendorProfile";
-import { Globe, Plus, X, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
+import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
+import { LANGUAGES } from "../../data/languages";
+import { Globe, Plus, X, ToggleLeft, ToggleRight, Loader2, AlertCircle } from "lucide-react";
 
 export function LanguagePairs() {
   const { sessionToken } = useVendorAuth();
@@ -17,6 +19,17 @@ export function LanguagePairs() {
   const [newTarget, setNewTarget] = useState("");
   const [saving, setSaving] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState("");
+
+  const languageOptions: SelectOption[] = useMemo(
+    () =>
+      LANGUAGES.map((l) => ({
+        value: l.code,
+        label: `${l.name} (${l.code})`,
+        group: l.group,
+      })),
+    []
+  );
 
   const loadPairs = useCallback(async () => {
     if (!sessionToken) return;
@@ -36,15 +49,30 @@ export function LanguagePairs() {
     loadPairs();
   }, [loadPairs]);
 
+  const validatePair = (source: string, target: string): string | null => {
+    if (!source || !target) return "Both source and target languages are required";
+    // Block exact same code (e.g., EN-US → EN-US)
+    if (source.toUpperCase() === target.toUpperCase()) {
+      return "Source and target language cannot be the same. Locale variants of the same language (e.g., EN-US → EN-CA) are allowed.";
+    }
+    return null;
+  };
+
   const handleAdd = async () => {
-    if (!sessionToken || !newSource.trim() || !newTarget.trim()) return;
+    if (!sessionToken) return;
+    const err = validatePair(newSource, newTarget);
+    if (err) {
+      setValidationError(err);
+      return;
+    }
+    setValidationError("");
     setSaving(true);
     setError("");
     try {
       const result = await updateLanguagePairs(sessionToken, {
         action: "add",
-        source_language: newSource.trim(),
-        target_language: newTarget.trim(),
+        source_language: newSource,
+        target_language: newTarget,
       });
       if (result.success && result.language_pairs) {
         setPairs(result.language_pairs);
@@ -97,6 +125,11 @@ export function LanguagePairs() {
     }
   };
 
+  // Clear validation error when selections change
+  useEffect(() => {
+    setValidationError("");
+  }, [newSource, newTarget]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -107,6 +140,12 @@ export function LanguagePairs() {
 
   const activePairs = pairs.filter((p) => p.is_active);
   const inactivePairs = pairs.filter((p) => !p.is_active);
+
+  /** Resolve a language code to its display name */
+  const langName = (code: string): string => {
+    const found = LANGUAGES.find((l) => l.code.toUpperCase() === code.toUpperCase());
+    return found ? found.name : code;
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6">
@@ -135,38 +174,47 @@ export function LanguagePairs() {
       {showAdd && (
         <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-3">Add New Language Pair</h3>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              placeholder="Source language (e.g., English)"
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <SearchableSelect
+              options={languageOptions}
               value={newSource}
-              onChange={(e) => setNewSource(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              onChange={setNewSource}
+              placeholder="Source language..."
+              className="flex-1 w-full"
             />
-            <span className="hidden sm:flex items-center text-gray-400">→</span>
-            <input
-              type="text"
-              placeholder="Target language (e.g., French)"
+            <span className="hidden sm:flex items-center text-gray-400 pt-2">→</span>
+            <SearchableSelect
+              options={languageOptions}
               value={newTarget}
-              onChange={(e) => setNewTarget(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              onChange={setNewTarget}
+              placeholder="Target language..."
+              className="flex-1 w-full"
             />
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-0 sm:pt-0">
               <button
                 onClick={handleAdd}
-                disabled={saving || !newSource.trim() || !newTarget.trim()}
+                disabled={saving || !newSource || !newTarget}
                 className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
               >
                 {saving ? "Adding..." : "Add"}
               </button>
               <button
-                onClick={() => setShowAdd(false)}
+                onClick={() => {
+                  setShowAdd(false);
+                  setValidationError("");
+                }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
             </div>
           </div>
+          {validationError && (
+            <div className="mt-3 flex items-start gap-2 text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              {validationError}
+            </div>
+          )}
         </div>
       )}
 
@@ -181,11 +229,14 @@ export function LanguagePairs() {
               <Globe className="h-5 w-5 text-teal-600" />
               <div>
                 <span className="font-medium text-gray-900">
-                  {pair.source_language}
+                  {langName(pair.source_language)}
                 </span>
                 <span className="mx-2 text-gray-400">→</span>
                 <span className="font-medium text-gray-900">
-                  {pair.target_language}
+                  {langName(pair.target_language)}
+                </span>
+                <span className="ml-2 text-xs text-gray-400">
+                  ({pair.source_language} → {pair.target_language})
                 </span>
               </div>
             </div>
@@ -233,9 +284,12 @@ export function LanguagePairs() {
                 <div className="flex items-center gap-3">
                   <Globe className="h-5 w-5 text-gray-400" />
                   <div className="text-gray-500">
-                    <span>{pair.source_language}</span>
+                    <span>{langName(pair.source_language)}</span>
                     <span className="mx-2">→</span>
-                    <span>{pair.target_language}</span>
+                    <span>{langName(pair.target_language)}</span>
+                    <span className="ml-2 text-xs text-gray-400">
+                      ({pair.source_language} → {pair.target_language})
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -265,7 +319,7 @@ export function LanguagePairs() {
         <div className="text-center py-12 text-gray-500">
           <Globe className="h-12 w-12 mx-auto mb-3 text-gray-300" />
           <p className="text-lg font-medium">No language pairs yet</p>
-          <p className="text-sm">Click "Add Pair" to get started.</p>
+          <p className="text-sm">Click &quot;Add Pair&quot; to get started.</p>
         </div>
       )}
     </div>

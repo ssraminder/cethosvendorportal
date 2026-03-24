@@ -48,7 +48,7 @@ serve(async (req: Request) => {
     const { data: vendor, error: vendorErr } = await supabase
       .from("vendors")
       .select(
-        "id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, certifications, years_experience, rate_per_page, rate_currency, specializations, minimum_rate, total_projects, last_project_date, rating"
+        "id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, certifications, years_experience, rate_per_page, rate_currency, specializations, minimum_rate, total_projects, last_project_date, rating, tax_id, tax_rate, preferred_rate_currency"
       )
       .eq("id", session.vendor_id)
       .single();
@@ -96,7 +96,7 @@ serve(async (req: Request) => {
     // Fetch payment info (mask sensitive details)
     const { data: paymentInfo } = await supabase
       .from("vendor_payment_info")
-      .select("id, preferred_currency, payment_method, tax_id, tax_rate, invoice_notes, created_at, updated_at")
+      .select("id, payment_currency, payment_method, invoice_notes, created_at, updated_at")
       .eq("vendor_id", session.vendor_id)
       .single();
 

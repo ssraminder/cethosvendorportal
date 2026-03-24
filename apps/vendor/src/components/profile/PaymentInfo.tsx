@@ -5,6 +5,7 @@ import {
   updatePaymentInfo,
   type PaymentInfo as PaymentInfoType,
 } from "../../api/vendorProfile";
+import { CurrencySelect } from "../shared/CurrencySelect";
 import { CreditCard, Loader2, Save, CheckCircle } from "lucide-react";
 
 const PAYMENT_METHODS = [
@@ -12,10 +13,9 @@ const PAYMENT_METHODS = [
   { value: "wire_transfer", label: "Wire Transfer" },
   { value: "paypal", label: "PayPal" },
   { value: "bank_transfer", label: "Direct Deposit / Bank Transfer" },
+  { value: "wise", label: "Wise" },
   { value: "cheque", label: "Cheque" },
 ] as const;
-
-const CURRENCIES = ["CAD", "USD", "EUR", "GBP"] as const;
 
 export function PaymentInfo() {
   const { sessionToken } = useVendorAuth();
@@ -28,8 +28,6 @@ export function PaymentInfo() {
   // Form state
   const [method, setMethod] = useState("");
   const [currency, setCurrency] = useState("CAD");
-  const [taxId, setTaxId] = useState("");
-  const [taxRate, setTaxRate] = useState("");
   const [invoiceNotes, setInvoiceNotes] = useState("");
 
   // Payment details (varies by method)
@@ -38,7 +36,11 @@ export function PaymentInfo() {
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankTransitNumber, setBankTransitNumber] = useState("");
   const [bankInstitution, setBankInstitution] = useState("");
+  const [bankSwiftCode, setBankSwiftCode] = useState("");
+  const [bankAddress, setBankAddress] = useState("");
   const [eTransferEmail, setETransferEmail] = useState("");
+  const [wiseEmail, setWiseEmail] = useState("");
+  const [chequeAddress, setChequeAddress] = useState("");
 
   const loadPaymentInfo = useCallback(async () => {
     if (!sessionToken) return;
@@ -47,9 +49,7 @@ export function PaymentInfo() {
       if (result.payment_info) {
         setPaymentInfo(result.payment_info);
         setMethod(result.payment_info.payment_method || "");
-        setCurrency(result.payment_info.preferred_currency || "CAD");
-        setTaxId(result.payment_info.tax_id || "");
-        setTaxRate(result.payment_info.tax_rate?.toString() || "");
+        setCurrency(result.payment_info.payment_currency || "CAD");
         setInvoiceNotes(result.payment_info.invoice_notes || "");
       }
     } catch {
@@ -68,15 +68,27 @@ export function PaymentInfo() {
       case "paypal":
         return { paypal_email: paypalEmail };
       case "bank_transfer":
-      case "wire_transfer":
         return {
           bank_name: bankName,
           account_number: bankAccountNumber,
           transit_number: bankTransitNumber,
           institution_number: bankInstitution,
         };
+      case "wire_transfer":
+        return {
+          bank_name: bankName,
+          account_number: bankAccountNumber,
+          transit_number: bankTransitNumber,
+          institution_number: bankInstitution,
+          swift_code: bankSwiftCode,
+          bank_address: bankAddress,
+        };
       case "e_transfer":
         return { e_transfer_email: eTransferEmail };
+      case "wise":
+        return { wise_email: wiseEmail };
+      case "cheque":
+        return { mailing_address: chequeAddress };
       default:
         return {};
     }
@@ -91,9 +103,7 @@ export function PaymentInfo() {
       const result = await updatePaymentInfo(sessionToken, {
         payment_method: method || undefined,
         payment_details: method ? buildPaymentDetails() : undefined,
-        preferred_currency: currency,
-        tax_id: taxId || undefined,
-        tax_rate: taxRate ? parseFloat(taxRate) : undefined,
+        payment_currency: currency,
         invoice_notes: invoiceNotes || undefined,
       });
       if (result.success) {
@@ -175,7 +185,7 @@ export function PaymentInfo() {
           </div>
         )}
 
-        {(method === "bank_transfer" || method === "wire_transfer") && (
+        {method === "bank_transfer" && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -226,6 +236,59 @@ export function PaymentInfo() {
           </div>
         )}
 
+        {method === "wire_transfer" && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bank Name
+              </label>
+              <input
+                type="text"
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Account #
+                </label>
+                <input
+                  type="text"
+                  value={bankAccountNumber}
+                  onChange={(e) => setBankAccountNumber(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SWIFT / Routing Code
+                </label>
+                <input
+                  type="text"
+                  value={bankSwiftCode}
+                  onChange={(e) => setBankSwiftCode(e.target.value)}
+                  placeholder="e.g., BOFAUS3N"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bank Address
+              </label>
+              <textarea
+                value={bankAddress}
+                onChange={(e) => setBankAddress(e.target.value)}
+                rows={2}
+                placeholder="Full bank address..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+            </div>
+          </div>
+        )}
+
         {method === "e_transfer" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -241,55 +304,51 @@ export function PaymentInfo() {
           </div>
         )}
 
-        <hr className="border-gray-200" />
-
-        {/* Preferred Currency */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Preferred Currency
-          </label>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Tax Information */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {method === "wise" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tax ID / GST/HST Number
+              Wise Email or Account ID
             </label>
             <input
               type="text"
-              value={taxId}
-              onChange={(e) => setTaxId(e.target.value)}
-              placeholder="e.g., 123456789RT0001"
+              value={wiseEmail}
+              onChange={(e) => setWiseEmail(e.target.value)}
+              placeholder="your-email@example.com or account ID"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
             />
           </div>
+        )}
+
+        {method === "cheque" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tax Rate (%)
+              Mailing Address
             </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="100"
-              value={taxRate}
-              onChange={(e) => setTaxRate(e.target.value)}
-              placeholder="e.g., 13"
+            <textarea
+              value={chequeAddress}
+              onChange={(e) => setChequeAddress(e.target.value)}
+              rows={3}
+              placeholder="Full mailing address for cheque delivery..."
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
             />
           </div>
+        )}
+
+        <hr className="border-gray-200" />
+
+        {/* Payment Currency */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Payment Currency
+          </label>
+          <p className="text-xs text-gray-500 mb-2">
+            The currency you want to receive payments in. This can differ from your rate currency.
+          </p>
+          <CurrencySelect
+            value={currency}
+            onChange={setCurrency}
+            placeholder="Select payment currency..."
+          />
         </div>
 
         {/* Invoice Notes */}

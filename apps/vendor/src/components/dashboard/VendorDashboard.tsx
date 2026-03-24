@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
-import { getFullProfile } from "../../api/vendorProfile";
+import { getFullProfile, updateAvailability } from "../../api/vendorProfile";
 import { getJobs, type VendorJob } from "../../api/vendorJobs";
 import { getInvoices } from "../../api/vendorInvoices";
 import {
@@ -47,14 +47,23 @@ function availabilityLabel(status: string | null) {
   return map[status] ?? status;
 }
 
+const AVAILABILITY_OPTIONS = [
+  { value: "available", label: "Available" },
+  { value: "busy", label: "Busy" },
+  { value: "unavailable", label: "Unavailable" },
+  { value: "vacation", label: "On vacation" },
+  { value: "on_leave", label: "On leave" },
+] as const;
+
 export function VendorDashboard() {
-  const { vendor, sessionToken, needsPassword } = useVendorAuth();
+  const { vendor, sessionToken, needsPassword, setVendor } = useVendorAuth();
   const [languagePairCount, setLanguagePairCount] = useState<number | null>(null);
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
   const [offeredJobs, setOfferedJobs] = useState<VendorJob[]>([]);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [completedJobCount, setCompletedJobCount] = useState(0);
   const [pendingPayment, setPendingPayment] = useState(0);
+  const [updatingAvailability, setUpdatingAvailability] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
     if (!sessionToken) return;
@@ -126,11 +135,25 @@ export function VendorDashboard() {
     });
   }
 
+  const handleAvailabilityChange = async (newStatus: string) => {
+    if (!sessionToken) return;
+    setUpdatingAvailability(true);
+    try {
+      const result = await updateAvailability(sessionToken, newStatus);
+      if (result.success && result.availability_status) {
+        setVendor({ ...vendor, availability_status: result.availability_status });
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setUpdatingAvailability(false);
+    }
+  };
+
   const infoItems = [
     { icon: Mail, label: "Email", value: vendor.email },
     { icon: Phone, label: "Phone", value: vendor.phone || "Not provided" },
     { icon: Globe, label: "Country", value: vendor.country || "Not provided" },
-    { icon: CircleDot, label: "Availability", value: availabilityLabel(vendor.availability_status) },
   ];
 
   return (
@@ -328,6 +351,25 @@ export function VendorDashboard() {
                 </div>
               );
             })}
+            {/* Availability toggle */}
+            <div className="px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CircleDot className="w-4 h-4 text-gray-400" />
+                <span className="text-sm text-gray-500">Availability</span>
+              </div>
+              <select
+                value={vendor.availability_status || "available"}
+                onChange={(e) => handleAvailabilityChange(e.target.value)}
+                disabled={updatingAvailability}
+                className="text-sm font-medium text-gray-900 bg-transparent border border-gray-200 rounded-lg px-2 py-1 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50"
+              >
+                {AVAILABILITY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

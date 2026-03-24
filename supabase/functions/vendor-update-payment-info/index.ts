@@ -8,14 +8,12 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const VALID_METHODS = ["bank_transfer", "paypal", "cheque", "e_transfer", "wire_transfer"] as const;
+const VALID_METHODS = ["bank_transfer", "paypal", "cheque", "e_transfer", "wire_transfer", "wise"] as const;
 
 interface PaymentInfoRequest {
   payment_method?: string;
   payment_details?: Record<string, unknown>;
-  preferred_currency?: string;
-  tax_id?: string;
-  tax_rate?: number;
+  payment_currency?: string;
   invoice_notes?: string;
 }
 
@@ -63,13 +61,6 @@ serve(async (req: Request) => {
       );
     }
 
-    if (body.tax_rate !== undefined && (body.tax_rate < 0 || body.tax_rate > 100)) {
-      return new Response(
-        JSON.stringify({ error: "Tax rate must be between 0 and 100" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Check if payment info already exists
     const { data: existing } = await supabase
       .from("vendor_payment_info")
@@ -82,9 +73,7 @@ serve(async (req: Request) => {
     };
     if (body.payment_method !== undefined) updates.payment_method = body.payment_method;
     if (body.payment_details !== undefined) updates.payment_details = body.payment_details;
-    if (body.preferred_currency !== undefined) updates.preferred_currency = body.preferred_currency;
-    if (body.tax_id !== undefined) updates.tax_id = body.tax_id;
-    if (body.tax_rate !== undefined) updates.tax_rate = body.tax_rate;
+    if (body.payment_currency !== undefined) updates.payment_currency = body.payment_currency;
     if (body.invoice_notes !== undefined) updates.invoice_notes = body.invoice_notes;
 
     if (existing) {
@@ -122,7 +111,7 @@ serve(async (req: Request) => {
     // Return updated info (without payment_details for security)
     const { data: updatedInfo } = await supabase
       .from("vendor_payment_info")
-      .select("id, preferred_currency, payment_method, tax_id, tax_rate, invoice_notes, updated_at")
+      .select("id, payment_currency, payment_method, invoice_notes, updated_at")
       .eq("vendor_id", session.vendor_id)
       .single();
 

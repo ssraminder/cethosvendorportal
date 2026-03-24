@@ -14,6 +14,85 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 24, 2026 (Vendor Portal Audit & Fixes)
+
+### Completed
+- **Full audit** of vendor portal (vendor.cethos.com) against feature checklist — identified 17 gaps
+- **Database migration 010**: Move tax_id and tax_rate from vendor_payment_info to vendors table, add preferred_rate_currency, rename preferred_currency to payment_currency
+- **Profile page overhaul** (`VendorProfile.tsx`):
+  - Added editable Full Name field
+  - Added editable City field
+  - Added editable Country field (searchable dropdown with 100+ countries)
+  - Added Preferred Rate Currency field (searchable dropdown with 76 currencies)
+  - Added Tax ID (GST/HST/VAT) field — moved from Payment page
+  - Added Tax Rate (%) field — moved from Payment page
+  - New "Financial Details" section on profile page
+- **Payment page fixes** (`PaymentInfo.tsx`):
+  - Removed tax_id and tax_rate fields (moved to profile)
+  - Added **Wise** payment method (6th option)
+  - Added cheque **mailing address** fields
+  - Added wire transfer **SWIFT/routing code** and **bank address** fields
+  - Replaced hardcoded 4-currency dropdown with full **76-currency searchable dropdown**
+  - Renamed "Preferred Currency" to "Payment Currency" with explanation
+- **Language Pairs page** (`LanguagePairs.tsx`):
+  - Replaced free-text inputs with **searchable dropdowns** (type-ahead, grouped by base language)
+  - Added comprehensive **ISO 639-1 + BCP 47 language list** (~170 entries with regional variants)
+  - Added **same-language validation** — blocks identical source/target (EN-US → EN-US)
+  - Allows **locale variants** (EN-US → EN-CA is valid)
+  - Display both language name and code
+- **Dashboard** (`VendorDashboard.tsx`):
+  - Added interactive **availability toggle** (dropdown: Available/Busy/Unavailable/Vacation/On Leave)
+- **Shared components** created:
+  - `SearchableSelect` — reusable combobox with type-ahead search, grouped options, clear button
+  - `CurrencySelect` — currency-specific dropdown using SearchableSelect, format "CAD - Canadian Dollar (C$)"
+- **Data files** created:
+  - `data/languages.ts` — 170+ languages with ISO codes and regional variants
+  - `data/currencies.ts` — 76 currencies with codes, names, symbols
+  - `data/countries.ts` — 100+ countries matching recruitment app
+- **Edge function updates**:
+  - `vendor-update-profile` — now handles full_name, city, country, tax_id, tax_rate, preferred_rate_currency
+  - `vendor-get-profile` — returns new vendor fields, updated payment_info select
+  - `vendor-update-payment-info` — removed tax fields, added Wise method, renamed to payment_currency
+- **New notification edge functions**:
+  - `notify-vendor-job-offer` — email vendor when a job is assigned
+  - `notify-vendor-deadline-reminder` — cron-compatible: finds jobs due in 24hrs, sends reminders
+  - `notify-vendor-job-approved` — email vendor when delivery is approved
+- **API type updates**:
+  - `vendorProfile.ts` — PaymentInfo uses payment_currency, VendorFullProfile has tax_id/tax_rate/preferred_rate_currency
+  - `vendorAuth.ts` — updateProfile accepts full_name, city, country, tax_id, tax_rate, preferred_rate_currency
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `supabase/migrations/010_vendor_schema_updates.sql`
+- `apps/vendor/src/components/shared/SearchableSelect.tsx`
+- `apps/vendor/src/components/shared/CurrencySelect.tsx`
+- `apps/vendor/src/data/languages.ts`
+- `apps/vendor/src/data/currencies.ts`
+- `apps/vendor/src/data/countries.ts`
+- `supabase/functions/notify-vendor-job-offer/index.ts`
+- `supabase/functions/notify-vendor-deadline-reminder/index.ts`
+- `supabase/functions/notify-vendor-job-approved/index.ts`
+
+### Files Modified
+- `apps/vendor/src/components/profile/VendorProfile.tsx` — full rewrite with new fields
+- `apps/vendor/src/components/profile/PaymentInfo.tsx` — tax removal, Wise, cheque/wire fixes, CurrencySelect
+- `apps/vendor/src/components/profile/LanguagePairs.tsx` — searchable dropdowns, validation
+- `apps/vendor/src/components/dashboard/VendorDashboard.tsx` — availability toggle
+- `apps/vendor/src/api/vendorProfile.ts` — updated types
+- `apps/vendor/src/api/vendorAuth.ts` — expanded updateProfile params
+- `supabase/functions/vendor-update-profile/index.ts` — new fields
+- `supabase/functions/vendor-get-profile/index.ts` — new fields, renamed payment column
+- `supabase/functions/vendor-update-payment-info/index.ts` — removed tax, added Wise, renamed column
+
+### Remaining Gaps (Not in Scope for This Session)
+- Certification upload UI on profile page (edge function exists, no frontend)
+- Vendor registration/application form (by design — handled at join.cethos.com)
+- pg_cron setup for deadline-reminder-checker (SQL cron job needs to be registered in Supabase dashboard)
+- Brevo email templates for new notification functions (IDs 20, 21, 22 are placeholders)
+
+---
+
 ## Session — March 24, 2026 (Phase 2 — Full Vendor Portal Build)
 
 ### Completed

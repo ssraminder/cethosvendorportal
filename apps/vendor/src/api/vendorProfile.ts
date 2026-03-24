@@ -38,10 +38,8 @@ interface VendorRate {
 
 interface PaymentInfo {
   id: string;
-  preferred_currency: string;
+  payment_currency: string;
   payment_method: string | null;
-  tax_id: string | null;
-  tax_rate: number | null;
   invoice_notes: string | null;
   updated_at: string;
 }
@@ -84,6 +82,9 @@ interface VendorFullProfile {
   total_projects: number;
   last_project_date: string | null;
   rating: number | null;
+  tax_id: string | null;
+  tax_rate: number | null;
+  preferred_rate_currency: string | null;
 }
 
 interface FullProfileResponse {
@@ -172,9 +173,7 @@ export async function updatePaymentInfo(
   data: {
     payment_method?: string;
     payment_details?: Record<string, unknown>;
-    preferred_currency?: string;
-    tax_id?: string;
-    tax_rate?: number;
+    payment_currency?: string;
     invoice_notes?: string;
   }
 ): Promise<PaymentInfoResponse> {
