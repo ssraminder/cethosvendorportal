@@ -116,10 +116,10 @@ serve(async (req: Request) => {
       const clicksendUsername = Deno.env.get("CLICKSEND_USERNAME");
       const clicksendApiKey = Deno.env.get("CLICKSEND_API_KEY");
       if (!clicksendUsername || !clicksendApiKey) {
-        console.error("CLICKSEND credentials not configured");
+        console.error("CLICKSEND credentials missing — username:", !!clicksendUsername, "apiKey:", !!clicksendApiKey);
         return new Response(
-          JSON.stringify({ error: "SMS service not configured" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "SMS service not configured. CLICKSEND credentials missing." }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
