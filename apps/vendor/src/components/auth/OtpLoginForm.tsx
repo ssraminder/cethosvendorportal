@@ -7,7 +7,7 @@ import { Mail, Smartphone } from "lucide-react";
 export function OtpLoginForm() {
   const { login } = useVendorAuth();
   const [step, setStep] = useState<"request" | "verify">("request");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const [maskedContact, setMaskedContact] = useState("");
   const [otpValue, setOtpValue] = useState<string[]>(["", "", "", "", "", ""]);
@@ -22,8 +22,12 @@ export function OtpLoginForm() {
   }, [resendCountdown]);
 
   const handleSendCode = useCallback(async () => {
-    if (!email.trim()) {
-      setError("Please enter your email address");
+    if (!identifier.trim()) {
+      setError(
+        channel === "sms"
+          ? "Please enter your phone number"
+          : "Please enter your email address"
+      );
       return;
     }
 
@@ -31,7 +35,7 @@ export function OtpLoginForm() {
     setLoading(true);
 
     try {
-      const result = await sendOtp(email.trim(), channel);
+      const result = await sendOtp(identifier.trim(), channel);
 
       if (result.error) {
         let message = result.error;
@@ -50,7 +54,7 @@ export function OtpLoginForm() {
     } finally {
       setLoading(false);
     }
-  }, [email, channel]);
+  }, [identifier, channel]);
 
   async function handleVerify() {
     const code = otpValue.join("");
@@ -63,7 +67,7 @@ export function OtpLoginForm() {
     setLoading(true);
 
     try {
-      const result = await verifyOtp(email.trim(), code);
+      const result = await verifyOtp(identifier.trim(), code, channel);
 
       if (result.error) {
         setError(result.error);
@@ -82,7 +86,7 @@ export function OtpLoginForm() {
     handleSendCode();
   }
 
-  function handleBackToEmail() {
+  function handleBack() {
     setStep("request");
     setError("");
     setOtpValue(["", "", "", "", "", ""]);
@@ -113,10 +117,10 @@ export function OtpLoginForm() {
 
         <div className="flex justify-between text-sm">
           <button
-            onClick={handleBackToEmail}
+            onClick={handleBack}
             className="text-gray-500 hover:text-gray-700"
           >
-            &larr; Use a different email
+            &larr; {channel === "sms" ? "Use a different number" : "Use a different email"}
           </button>
           <button
             onClick={handleResend}
@@ -135,27 +139,6 @@ export function OtpLoginForm() {
   return (
     <div className="space-y-5">
       <div>
-        <label
-          htmlFor="otp-email"
-          className="block text-sm font-medium text-gray-700 mb-1.5"
-        >
-          Email address
-        </label>
-        <input
-          id="otp-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          disabled={loading}
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none disabled:bg-gray-100"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSendCode();
-          }}
-        />
-      </div>
-
-      <div>
         <p className="block text-sm font-medium text-gray-700 mb-2">
           Send code via
         </p>
@@ -166,7 +149,11 @@ export function OtpLoginForm() {
               name="channel"
               value="email"
               checked={channel === "email"}
-              onChange={() => setChannel("email")}
+              onChange={() => {
+                setChannel("email");
+                setIdentifier("");
+                setError("");
+              }}
               className="text-blue-600"
             />
             <Mail className="w-4 h-4 text-gray-500" />
@@ -178,13 +165,38 @@ export function OtpLoginForm() {
               name="channel"
               value="sms"
               checked={channel === "sms"}
-              onChange={() => setChannel("sms")}
+              onChange={() => {
+                setChannel("sms");
+                setIdentifier("");
+                setError("");
+              }}
               className="text-blue-600"
             />
             <Smartphone className="w-4 h-4 text-gray-500" />
             <span className="text-sm text-gray-700">SMS</span>
           </label>
         </div>
+      </div>
+
+      <div>
+        <label
+          htmlFor="otp-identifier"
+          className="block text-sm font-medium text-gray-700 mb-1.5"
+        >
+          {channel === "sms" ? "Phone number" : "Email address"}
+        </label>
+        <input
+          id="otp-identifier"
+          type={channel === "sms" ? "tel" : "email"}
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          placeholder={channel === "sms" ? "+1 234 567 8900" : "you@example.com"}
+          disabled={loading}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none disabled:bg-gray-100"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSendCode();
+          }}
+        />
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

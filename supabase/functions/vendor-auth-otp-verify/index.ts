@@ -8,18 +8,16 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-interface OtpVerifyRequest {
-  email: string;
-  otp_code: string;
-}
-
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { email, otp_code } = (await req.json()) as OtpVerifyRequest;
+    const { email, otp_code } = (await req.json()) as {
+      email: string;
+      otp_code: string;
+    };
 
     if (!email || !otp_code) {
       return new Response(
@@ -102,12 +100,20 @@ serve(async (req: Request) => {
       );
     }
 
+    // Check if password is set
+    const { data: auth } = await supabase
+      .from("vendor_auth")
+      .select("vendor_id")
+      .eq("vendor_id", otp.vendor_id)
+      .single();
+
     return new Response(
       JSON.stringify({
         success: true,
         session_token: sessionToken,
         expires_at: expiresAt,
         vendor,
+        needs_password: !auth,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

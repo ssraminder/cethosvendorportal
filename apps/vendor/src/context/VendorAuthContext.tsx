@@ -15,8 +15,9 @@ import {
 interface VendorAuthState {
   vendor: VendorProfile | null;
   sessionToken: string | null;
+  needsPassword: boolean;
   isLoading: boolean;
-  login: (sessionToken: string, vendor: VendorProfile) => void;
+  login: (sessionToken: string, vendor: VendorProfile, needsPassword?: boolean) => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -28,19 +29,22 @@ const STORAGE_KEY = "vendor_session_token";
 export function VendorAuthProvider({ children }: { children: ReactNode }) {
   const [vendor, setVendor] = useState<VendorProfile | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [needsPassword, setNeedsPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const clearAuth = useCallback(() => {
     setVendor(null);
     setSessionToken(null);
+    setNeedsPassword(false);
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const login = useCallback(
-    (token: string, vendorData: VendorProfile) => {
+    (token: string, vendorData: VendorProfile, needsPw?: boolean) => {
       localStorage.setItem(STORAGE_KEY, token);
       setSessionToken(token);
       setVendor(vendorData);
+      setNeedsPassword(!!needsPw);
     },
     []
   );
@@ -91,7 +95,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <VendorAuthContext.Provider
-      value={{ vendor, sessionToken, isLoading, login, logout, refreshSession }}
+      value={{ vendor, sessionToken, needsPassword, isLoading, login, logout, refreshSession }}
     >
       {children}
     </VendorAuthContext.Provider>

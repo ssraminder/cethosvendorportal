@@ -11,6 +11,13 @@ interface VendorProfile {
   availability_status: string | null;
 }
 
+interface AuthCheckResponse {
+  exists: boolean;
+  has_phone: boolean;
+  has_password: boolean;
+  error?: string;
+}
+
 interface OtpSendResponse {
   success?: boolean;
   channel?: string;
@@ -25,6 +32,7 @@ interface AuthResponse {
   expires_at?: string;
   vendor?: VendorProfile;
   must_reset?: boolean;
+  needs_password?: boolean;
   error?: string;
 }
 
@@ -39,7 +47,22 @@ interface SimpleResponse {
   error?: string;
 }
 
-export type { VendorProfile, OtpSendResponse, AuthResponse, SessionResponse };
+export type {
+  VendorProfile,
+  AuthCheckResponse,
+  OtpSendResponse,
+  AuthResponse,
+  SessionResponse,
+};
+
+export async function checkVendor(email: string): Promise<AuthCheckResponse> {
+  const res = await fetch(`${BASE}/vendor-auth-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return res.json();
+}
 
 export async function sendOtp(
   email: string,
