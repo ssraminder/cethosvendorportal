@@ -148,10 +148,8 @@ function RateModal({
     }
   }, [unitOptions, unit, mode]);
 
-  const activePairs = useMemo(
-    () => languagePairs.filter((lp) => lp.is_active),
-    [languagePairs]
-  );
+  // Edge function already returns only active pairs, no need to filter
+  const activePairs = languagePairs;
 
   function togglePair(id: string) {
     setSelectedPairIds((prev) => {
