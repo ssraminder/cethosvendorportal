@@ -121,7 +121,28 @@ serve(async (req: Request) => {
     let maskedContact: string;
 
     if (channel === "email") {
-      const htmlContent = `<p>Hi ${vendor.full_name},</p><p>Your login code is: <strong>${otpCode}</strong></p><p>This code expires in 10 minutes.</p><p>If you did not request this, ignore this email.</p>`;
+      const htmlContent = `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <div style="text-align: center; padding: 30px 0 20px;">
+    <svg width="40" height="40" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="24" cy="24" r="24" fill="#0F9DA0"/>
+      <path d="M26.5 14C20.15 14 15 19.15 15 25.5C15 31.85 20.15 37 26.5 37C29.5 37 32.2 35.8 34.2 33.8L31.4 31C30.1 32.3 28.4 33 26.5 33C22.36 33 19 29.64 19 25.5C19 21.36 22.36 18 26.5 18C28.4 18 30.1 18.7 31.4 20L34.2 17.2C32.2 15.2 29.5 14 26.5 14Z" fill="white"/>
+    </svg>
+  </div>
+  <div style="padding: 0 24px;">
+    <p style="color: #374151; font-size: 15px;">Hi ${vendor.full_name},</p>
+    <p style="color: #374151; font-size: 15px; line-height: 1.5;">Your verification code is:</p>
+    <div style="text-align: center; margin: 24px 0;">
+      <div style="display: inline-block; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px 40px;">
+        <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #111827; font-family: 'Courier New', monospace;">${otpCode}</span>
+      </div>
+    </div>
+    <p style="color: #6b7280; font-size: 13px; text-align: center;">This code expires in 10 minutes.</p>
+    <div style="border-top: 1px solid #e5e7eb; margin-top: 32px; padding-top: 16px;">
+      <p style="color: #9ca3af; font-size: 12px; line-height: 1.5;">If you did not request this code, you can safely ignore this email.</p>
+    </div>
+  </div>
+</div>`;
 
       const emailRes = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
@@ -132,7 +153,7 @@ serve(async (req: Request) => {
         body: JSON.stringify({
           sender: { name: "CETHOS", email: "donotreply@cethos.com" },
           to: [{ email: vendor.email, name: vendor.full_name }],
-          subject: "Your CETHOS login code",
+          subject: `${otpCode} is your CETHOS verification code`,
           htmlContent,
         }),
       });
