@@ -14,6 +14,78 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 24, 2026 (Phase 2 — Vendor Auth System + Core Shell)
+
+### Completed
+- Built vendor portal authentication system with custom auth (not Supabase Auth/GoTrue)
+- Created 6 Supabase edge functions for vendor auth:
+  - `vendor-auth-otp-send` — sends 6-digit OTP via Brevo email or SMS, rate limiting (60s), masking helpers
+  - `vendor-auth-otp-verify` — verifies OTP code, creates 30-day session, returns vendor profile
+  - `vendor-auth-password` — bcrypt password login with session creation
+  - `vendor-auth-session` — validates Bearer token, updates last_seen_at, returns vendor + session data
+  - `vendor-auth-logout` — deletes session from DB
+  - `vendor-set-password` — set/change password with current password verification, strength validation
+- Set up vendor portal frontend app (`apps/vendor/`) with React + Vite + TypeScript + Tailwind CSS
+- Built complete frontend:
+  - **API layer** (`src/api/vendorAuth.ts`) — typed fetch wrappers for all 6 edge functions
+  - **Auth context** (`src/context/VendorAuthContext.tsx`) — session persistence via localStorage, auto-validate on mount, login/logout/refresh helpers
+  - **LoginPage** — centered card with tab switcher (Email Code / Password)
+  - **OtpLoginForm** — two-step flow: request code (email/SMS channel selector) → enter 6-digit code (with resend countdown)
+  - **OtpInput** — 6-box digit input with auto-advance, backspace navigation, paste support
+  - **PasswordLoginForm** — email + password with show/hide toggle, "forgot password" link to OTP tab
+  - **VendorShell** — authenticated layout with collapsible sidebar + header + Outlet
+  - **VendorSidebar** — nav links (Dashboard, Profile, Security) with active state highlighting, mobile responsive
+  - **VendorHeader** — vendor name, availability status badge, logout button
+  - **VendorDashboard** — placeholder welcome page
+  - **VendorProfile** — display-only profile with all vendor fields
+  - **SetPasswordForm** — current/new/confirm password with strength indicator (weak/good/strong)
+- Protected routes redirect to `/login` when no valid session
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `supabase/functions/vendor-auth-otp-send/index.ts`
+- `supabase/functions/vendor-auth-otp-verify/index.ts`
+- `supabase/functions/vendor-auth-password/index.ts`
+- `supabase/functions/vendor-auth-session/index.ts`
+- `supabase/functions/vendor-auth-logout/index.ts`
+- `supabase/functions/vendor-set-password/index.ts`
+- `apps/vendor/package.json`
+- `apps/vendor/index.html`
+- `apps/vendor/vite.config.ts`
+- `apps/vendor/tsconfig.json`
+- `apps/vendor/tsconfig.app.json`
+- `apps/vendor/tsconfig.node.json`
+- `apps/vendor/src/index.css`
+- `apps/vendor/src/main.tsx`
+- `apps/vendor/src/App.tsx`
+- `apps/vendor/src/api/vendorAuth.ts`
+- `apps/vendor/src/context/VendorAuthContext.tsx`
+- `apps/vendor/src/components/auth/LoginPage.tsx`
+- `apps/vendor/src/components/auth/OtpLoginForm.tsx`
+- `apps/vendor/src/components/auth/PasswordLoginForm.tsx`
+- `apps/vendor/src/components/auth/OtpInput.tsx`
+- `apps/vendor/src/components/layout/VendorShell.tsx`
+- `apps/vendor/src/components/layout/VendorSidebar.tsx`
+- `apps/vendor/src/components/layout/VendorHeader.tsx`
+- `apps/vendor/src/components/dashboard/VendorDashboard.tsx`
+- `apps/vendor/src/components/profile/VendorProfile.tsx`
+- `apps/vendor/src/components/profile/SetPasswordForm.tsx`
+
+### Files Removed
+- `apps/vendor/src/placeholder.ts` — replaced with full vendor app
+
+### Next Steps
+- Deploy 6 new edge functions to Supabase (`supabase functions deploy`)
+- Create database tables: `vendors`, `vendor_auth`, `vendor_otp`, `vendor_sessions` (if not yet migrated)
+- Set up Netlify site for `vendor.cethos.com` pointing to `apps/vendor/`
+- Set `VITE_SUPABASE_URL` env var in Netlify
+- Test OTP email flow end-to-end
+- Test SMS flow (may need Brevo sender name registration)
+- Build out vendor dashboard and profile management features
+
+---
+
 ## Session — February 18, 2026 (Phase 1B — Testing Pipeline)
 
 ### Completed
@@ -319,7 +391,7 @@ All tasks in Phase 1A are pending.
 | 1B | Testing pipeline | ✅ Complete (edge functions + frontend + cron) |
 | 1C | Review, negotiation, approval | ⬜ Not started |
 | 1D | Profile health system | ⬜ Not started |
-| 2 | Vendor working portal | ⬜ Not started (Phase 2) |
+| 2 | Vendor working portal | 🟡 In progress — auth system + core shell built |
 
 ---
 
