@@ -35,18 +35,6 @@ function statusBadge(status: string) {
   );
 }
 
-function availabilityLabel(status: string | null) {
-  if (!status) return "Not set";
-  const map: Record<string, string> = {
-    available: "Available",
-    busy: "Busy",
-    unavailable: "Unavailable",
-    vacation: "On vacation",
-    on_leave: "On leave",
-  };
-  return map[status] ?? status;
-}
-
 const AVAILABILITY_OPTIONS = [
   { value: "available", label: "Available" },
   { value: "busy", label: "Busy" },
