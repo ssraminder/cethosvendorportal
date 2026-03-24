@@ -48,7 +48,7 @@ serve(async (req: Request) => {
     const { data: vendor, error: vendorErr } = await supabase
       .from("vendors")
       .select(
-        "id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, certifications, years_experience, rate_per_page, rate_currency, specializations, minimum_rate, total_projects, last_project_date, rating, tax_id, tax_rate, preferred_rate_currency"
+        "id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, certifications, years_experience, rate_per_page, rate_currency, specializations, minimum_rate, total_projects, last_project_date, rating, tax_id, tax_name, tax_rate, preferred_rate_currency"
       )
       .eq("id", session.vendor_id)
       .single();

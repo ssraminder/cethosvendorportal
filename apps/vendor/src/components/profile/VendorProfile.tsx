@@ -5,7 +5,12 @@ import {
   sendPhoneVerification,
   verifyPhoneCode,
 } from "../../api/vendorAuth";
-import { getFullProfile } from "../../api/vendorProfile";
+import {
+  getFullProfile,
+  lookupProvinces,
+  lookupTaxRate,
+  type Province,
+} from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { COUNTRIES } from "../../data/countries";
@@ -562,12 +567,31 @@ function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCur
 export function VendorProfile() {
   const { vendor, sessionToken, setVendor } = useVendorAuth();
   const [taxId, setTaxId] = useState("");
+  const [taxName, setTaxName] = useState("");
   const [taxRate, setTaxRate] = useState("");
   const [preferredRateCurrency, setPreferredRateCurrency] = useState("CAD");
   const [city, setCity] = useState("");
+  const [provinceState, setProvinceState] = useState("");
+  const [provinces, setProvinces] = useState<Province[]>([]);
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   const countryOptions: SelectOption[] = COUNTRIES.map((c) => ({ value: c, label: c }));
+
+  const isCanada = vendor?.country === "Canada";
+
+  const provinceOptions: SelectOption[] = provinces.map((p) => ({
+    value: p.region_code,
+    label: p.region_name,
+  }));
+
+  // Derive the Tax ID label from tax_name
+  function getTaxIdLabel(tn: string): string {
+    if (tn === "HST") return "HST Number";
+    if (tn === "GST") return "GST Number";
+    if (tn === "GST+QST") return "GST/QST Number";
+    if (tn === "GST+PST") return "GST/PST Number";
+    return "Tax ID / VAT Number";
+  }
 
   const loadExtendedProfile = useCallback(async () => {
     if (!sessionToken) return;
@@ -576,8 +600,18 @@ export function VendorProfile() {
       if (result.vendor) {
         setCity(result.vendor.city || "");
         setTaxId(result.vendor.tax_id || "");
+        setTaxName(result.vendor.tax_name || "");
         setTaxRate(result.vendor.tax_rate?.toString() || "");
         setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
+        setProvinceState(result.vendor.province_state || "");
+
+        // Load provinces if vendor is in Canada
+        if (result.vendor.country === "Canada") {
+          const provResult = await lookupProvinces();
+          if (provResult.provinces) {
+            setProvinces(provResult.provinces);
+          }
+        }
       }
     } catch {
       // Non-critical
@@ -621,22 +655,52 @@ export function VendorProfile() {
   }
 
   async function saveCountry(value: string): Promise<string | null> {
-    return saveField("country", value);
+    const result = await updateProfile(sessionToken!, { country: value });
+    if (result.error) return result.error;
+    if (result.vendor) setVendor(result.vendor);
+
+    if (value === "Canada") {
+      // Load provinces for the dropdown
+      const provResult = await lookupProvinces();
+      if (provResult.provinces) {
+        setProvinces(provResult.provinces);
+      }
+    } else {
+      // Non-Canada: clear province and reset tax fields
+      setProvinces([]);
+      setProvinceState("");
+      setTaxName("N/A");
+      setTaxRate("0");
+    }
+    return null;
+  }
+
+  async function saveProvince(value: string): Promise<string | null> {
+    // Look up the tax info for this province
+    const taxResult = await lookupTaxRate(value);
+    if (taxResult.error) return taxResult.error;
+
+    const newTaxName = taxResult.tax_name || "";
+    const newTaxRate = taxResult.tax_rate ?? 0;
+
+    // Save province + tax fields together
+    const result = await updateProfile(sessionToken!, {
+      province_state: value,
+      tax_name: newTaxName,
+      tax_rate: newTaxRate.toString(),
+    });
+    if (result.error) return result.error;
+    if (result.vendor) setVendor(result.vendor);
+
+    setProvinceState(value);
+    setTaxName(newTaxName);
+    setTaxRate(newTaxRate.toString());
+    return null;
   }
 
   async function saveTaxId(value: string): Promise<string | null> {
     const err = await saveField("tax_id", value);
     if (!err) setTaxId(value);
-    return err;
-  }
-
-  async function saveTaxRate(value: string): Promise<string | null> {
-    const rate = parseFloat(value);
-    if (value && (isNaN(rate) || rate < 0 || rate > 100)) {
-      return "Tax rate must be between 0 and 100";
-    }
-    const err = await saveField("tax_rate", value);
-    if (!err) setTaxRate(value);
     return err;
   }
 
@@ -702,6 +766,16 @@ export function VendorProfile() {
             placeholder="Select country..."
             onSave={saveCountry}
           />
+          {profileLoaded && isCanada && provinceOptions.length > 0 && (
+            <EditableSelectField
+              icon={MapPin}
+              label="Province"
+              value={provinceState}
+              options={provinceOptions}
+              placeholder="Select province..."
+              onSave={saveProvince}
+            />
+          )}
           {profileLoaded && (
             <EditableField
               icon={MapPin}
@@ -732,18 +806,20 @@ export function VendorProfile() {
             />
             <EditableField
               icon={Receipt}
-              label="Tax ID (GST/HST/VAT)"
+              label={getTaxIdLabel(taxName)}
               value={taxId}
               placeholder="e.g., 123456789RT0001"
               onSave={saveTaxId}
             />
-            <EditableField
+            <ReadOnlyField
+              icon={Receipt}
+              label="Tax Type"
+              value={taxName || "Not set"}
+            />
+            <ReadOnlyField
               icon={Percent}
-              label="Tax Rate (%)"
-              value={taxRate}
-              type="number"
-              placeholder="e.g., 13"
-              onSave={saveTaxRate}
+              label="Tax Rate"
+              value={taxRate ? `${(parseFloat(taxRate) * 100).toFixed(2).replace(/\.?0+$/, "")}%` : "0%"}
             />
           </div>
         </div>

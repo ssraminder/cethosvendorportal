@@ -21,7 +21,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid },
   { to: "/profile", label: "Profile", icon: User },
   { to: "/languages", label: "Languages", icon: Globe },
-  { to: "/rates", label: "Rates", icon: DollarSign },
+  { to: "/rates", label: "Services & Rates", icon: DollarSign },
   { to: "/payment", label: "Payment", icon: CreditCard },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },

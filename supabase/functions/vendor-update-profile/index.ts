@@ -14,7 +14,9 @@ interface UpdateRequest {
   full_name?: string;
   city?: string;
   country?: string;
+  province_state?: string;
   tax_id?: string;
+  tax_name?: string;
   tax_rate?: string;
   preferred_rate_currency?: string;
 }
@@ -55,7 +57,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const { email, phone, full_name, city, country, tax_id, tax_rate, preferred_rate_currency } = (await req.json()) as UpdateRequest;
+    const { email, phone, full_name, city, country, province_state, tax_id, tax_name, tax_rate, preferred_rate_currency } = (await req.json()) as UpdateRequest;
 
     // Validate email format if provided
     if (email !== undefined) {
@@ -89,7 +91,17 @@ serve(async (req: Request) => {
     if (phone !== undefined) updates.phone = phone.trim() || null;
     if (full_name !== undefined) updates.full_name = full_name.trim();
     if (city !== undefined) updates.city = city.trim() || null;
-    if (country !== undefined) updates.country = country.trim() || null;
+    if (country !== undefined) {
+      updates.country = country.trim() || null;
+      // When country changes away from Canada, clear province and reset tax fields
+      if (country.trim() !== "Canada") {
+        updates.province_state = null;
+        updates.tax_name = "N/A";
+        updates.tax_rate = 0;
+      }
+    }
+    if (province_state !== undefined) updates.province_state = province_state.trim() || null;
+    if (tax_name !== undefined) updates.tax_name = tax_name.trim() || null;
     if (tax_id !== undefined) updates.tax_id = tax_id.trim() || null;
     if (tax_rate !== undefined) {
       const rate = tax_rate ? parseFloat(tax_rate) : null;
@@ -145,7 +157,7 @@ serve(async (req: Request) => {
     // Fetch updated vendor profile
     const { data: updatedVendor } = await supabase
       .from("vendors")
-      .select("id, full_name, email, phone, status, vendor_type, country, city, availability_status, tax_id, tax_rate, preferred_rate_currency")
+      .select("id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, tax_id, tax_name, tax_rate, preferred_rate_currency")
       .eq("id", session.vendor_id)
       .single();
 

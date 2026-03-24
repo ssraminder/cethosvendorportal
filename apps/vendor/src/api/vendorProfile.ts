@@ -83,6 +83,7 @@ interface VendorFullProfile {
   last_project_date: string | null;
   rating: number | null;
   tax_id: string | null;
+  tax_name: string | null;
   tax_rate: number | null;
   preferred_rate_currency: string | null;
 }
@@ -128,6 +129,60 @@ interface CertResponse extends SimpleResponse {
   certifications?: CertificationEntry[];
 }
 
+// --- Tax / Province types ---
+
+interface Province {
+  region_code: string;
+  region_name: string;
+  tax_name: string;
+  rate: string;
+}
+
+interface ProvincesResponse {
+  success?: boolean;
+  provinces?: Province[];
+  error?: string;
+}
+
+interface TaxLookupResponse {
+  success?: boolean;
+  tax_name?: string;
+  tax_rate?: number;
+  error?: string;
+}
+
+// --- Manage Rates types ---
+
+interface ServiceOption {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  default_calculation_units: string[];
+}
+
+interface ManagedRate {
+  id: string;
+  service_id: string;
+  service_name: string;
+  service_code: string;
+  service_category: string;
+  calculation_unit: string;
+  rate: number;
+  currency: string;
+  minimum_charge: number | null;
+  is_active: boolean;
+  notes: string | null;
+  source: string;
+}
+
+interface ManageRatesResponse extends SimpleResponse {
+  rates?: ManagedRate[];
+  services_by_category?: Record<string, ServiceOption[]>;
+  preferred_rate_currency?: string;
+  rate_id?: string;
+}
+
 export type {
   LanguagePair,
   VendorRate,
@@ -142,6 +197,12 @@ export type {
   RateChangeResponse,
   CertResponse,
   ServiceInfo,
+  Province,
+  ProvincesResponse,
+  TaxLookupResponse,
+  ServiceOption,
+  ManagedRate,
+  ManageRatesResponse,
 };
 
 // --- API Functions ---
@@ -241,6 +302,46 @@ export async function uploadCertification(
   }
 ): Promise<CertResponse> {
   const res = await fetch(`${BASE}/vendor-upload-certification`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// --- Tax Rate Lookup ---
+
+export async function lookupProvinces(): Promise<ProvincesResponse> {
+  const res = await fetch(`${BASE}/lookup-tax-rate`);
+  return res.json();
+}
+
+export async function lookupTaxRate(provinceCode: string): Promise<TaxLookupResponse> {
+  const res = await fetch(
+    `${BASE}/lookup-tax-rate?province_code=${encodeURIComponent(provinceCode)}`
+  );
+  return res.json();
+}
+
+// --- Manage Rates (CRUD) ---
+
+export async function manageRates(
+  token: string,
+  data: {
+    action: "get" | "add" | "update" | "remove";
+    service_id?: string;
+    calculation_unit?: string;
+    rate?: number;
+    currency?: string;
+    minimum_charge?: number;
+    notes?: string;
+    rate_id?: string;
+  }
+): Promise<ManageRatesResponse> {
+  const res = await fetch(`${BASE}/vendor-manage-rates`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
