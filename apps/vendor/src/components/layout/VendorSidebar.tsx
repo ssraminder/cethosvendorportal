@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { CethosLogo } from "../shared/CethosLogo";
-import { LayoutGrid, User, Lock, X } from "lucide-react";
+import { LayoutGrid, User, Shield, X } from "lucide-react";
 
 interface VendorSidebarProps {
   isOpen: boolean;
@@ -9,14 +9,13 @@ interface VendorSidebarProps {
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid },
-  { to: "/profile", label: "My Profile", icon: User },
-  { to: "/security", label: "Security", icon: Lock },
+  { to: "/profile", label: "Profile", icon: User },
+  { to: "/security", label: "Security", icon: Shield },
 ] as const;
 
 export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/30 z-40 lg:hidden"
@@ -25,24 +24,25 @@ export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
       )}
 
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 transform transition-transform lg:translate-x-0 lg:static lg:z-auto ${
+        className={`fixed top-0 left-0 z-50 h-full w-60 bg-[#111827] transform transition-transform lg:translate-x-0 lg:static lg:z-auto ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between p-5 border-b border-gray-200">
-          <div className="flex items-center gap-1.5">
-            <CethosLogo size="sm" />
-            <span className="text-xs text-gray-400">Vendor</span>
+        <div className="flex items-center justify-between h-16 px-5">
+          <div className="flex items-center gap-2">
+            <CethosLogo size="sm" dark />
           </div>
           <button
             onClick={onClose}
-            className="lg:hidden text-gray-400 hover:text-gray-600"
+            className="lg:hidden text-gray-500 hover:text-gray-300"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="p-3 space-y-1">
+        <div className="h-px bg-gray-700/50 mx-4" />
+
+        <nav className="p-3 mt-2 space-y-0.5">
           {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -50,18 +50,25 @@ export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
               end={to === "/"}
               onClick={onClose}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
                   isActive
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    ? "bg-white/10 text-white"
+                    : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
                 }`
               }
             >
-              <Icon className="w-4.5 h-4.5" />
+              <Icon className="w-[18px] h-[18px]" />
               {label}
             </NavLink>
           ))}
         </nav>
+
+        <div className="absolute bottom-0 left-0 right-0 p-4">
+          <div className="h-px bg-gray-700/50 mb-4" />
+          <p className="text-[11px] text-gray-600 text-center">
+            Vendor Portal
+          </p>
+        </div>
       </aside>
     </>
   );
