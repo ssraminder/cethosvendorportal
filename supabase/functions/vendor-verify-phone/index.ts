@@ -48,11 +48,13 @@ serve(async (req: Request) => {
     const action = body.action as string;
 
     if (action === "send") {
-      const phone = (body.phone as string)?.trim();
+      // Normalize: strip spaces, dashes, parens — keep + and digits only
+      const rawPhone = (body.phone as string)?.trim() || "";
+      const phone = rawPhone.replace(/[\s\-().]/g, "");
 
-      if (!phone || phone.length < 7) {
+      if (!phone || phone.length < 8 || !phone.startsWith("+")) {
         return new Response(
-          JSON.stringify({ error: "Please enter a valid phone number" }),
+          JSON.stringify({ error: "Enter phone with country code, e.g. +14165551234" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -163,7 +165,7 @@ serve(async (req: Request) => {
 
     if (action === "verify") {
       const otpCode = (body.otp_code as string)?.trim();
-      const phone = (body.phone as string)?.trim();
+      const phone = ((body.phone as string)?.trim() || "").replace(/[\s\-().]/g, "");
 
       if (!otpCode || !phone) {
         return new Response(
