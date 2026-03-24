@@ -6,7 +6,7 @@ import {
   type ServiceOption,
 } from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
-import { CurrencySelect } from "../shared/CurrencySelect";
+import { formatCurrencyLabel, CURRENCIES } from "../../data/currencies";
 import {
   DollarSign,
   Loader2,
@@ -88,9 +88,7 @@ function RateModal({
   const [serviceId, setServiceId] = useState(editingRate?.service_id || "");
   const [unit, setUnit] = useState(editingRate?.calculation_unit || "");
   const [rate, setRate] = useState(editingRate ? editingRate.rate.toString() : "");
-  const [currency, setCurrency] = useState(
-    editingRate?.currency || defaultCurrency || "CAD"
-  );
+  const currency = defaultCurrency || "CAD";
   const [minCharge, setMinCharge] = useState(
     editingRate?.minimum_charge?.toString() || ""
   );
@@ -262,21 +260,15 @@ function RateModal({
             />
           </div>
 
-          {/* Currency */}
+          {/* Currency (read-only, from profile) */}
           <div>
             <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
               Currency
             </label>
-            {mode === "edit" ? (
-              <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
-                {editingRate?.currency}
-              </div>
-            ) : (
-              <CurrencySelect
-                value={currency}
-                onChange={setCurrency}
-              />
-            )}
+            <div className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-500">
+              {formatCurrencyLabel(CURRENCIES.find((c) => c.code === currency) || { code: currency, name: currency, symbol: "" })}
+              <span className="text-xs text-gray-400 ml-2">(set in Profile)</span>
+            </div>
           </div>
 
           {/* Minimum Charge */}
