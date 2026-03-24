@@ -14,6 +14,57 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 24, 2026 (Profile Enhancements + Services & Rates Page)
+
+### Completed
+- **Profile page — Province & Tax auto-lookup:**
+  - Added province dropdown (visible only when country = Canada), sourced from `tax_rates` DB table
+  - Province selection auto-populates `tax_name` and `tax_rate` (both READ-ONLY)
+  - Tax ID label changes dynamically based on tax type (HST Number / GST Number / GST/QST Number / etc.)
+  - When country != Canada: province hidden, tax_name = "N/A", tax_rate = 0%
+  - Created `lookup-tax-rate` edge function (GET, public, returns provinces list or single province tax info)
+
+- **Services & Rates page (NEW — replaces old read-only rates view):**
+  - Full rate card management: add, edit, remove service rates
+  - Services grouped by category (Translation, Review & QA, Interpretation, Multimedia, Technology, Other)
+  - Add Service modal: searchable service dropdown (grouped by category), rate, unit, currency, minimum charge, notes
+  - Edit Rate modal: pre-filled, service/unit locked, editable rate/min charge/notes
+  - Remove Rate: confirmation dialog, soft-deactivate (is_active = false)
+  - Duplicate detection: 409 error when adding same service+unit combo
+  - Created `vendor-manage-rates` edge function (POST with actions: get/add/update/remove)
+
+- **Edge function updates:**
+  - `vendor-update-profile`: added province_state, tax_name handling; auto-clears tax when country changes from Canada
+  - `vendor-get-profile`: added tax_name to vendor select query
+
+- **API layer:**
+  - Added `lookupProvinces()`, `lookupTaxRate()`, `manageRates()` functions
+  - Added types: Province, ManagedRate, ServiceOption, ManageRatesResponse
+  - Updated VendorProfile and VendorFullProfile types with tax_name field
+
+- **Navigation:** Renamed sidebar "Rates" to "Services & Rates"
+
+### Files Changed
+- `supabase/functions/lookup-tax-rate/index.ts` (NEW)
+- `supabase/functions/vendor-manage-rates/index.ts` (NEW)
+- `supabase/functions/vendor-update-profile/index.ts` (modified)
+- `supabase/functions/vendor-get-profile/index.ts` (modified)
+- `apps/vendor/src/api/vendorProfile.ts` (modified)
+- `apps/vendor/src/api/vendorAuth.ts` (modified)
+- `apps/vendor/src/components/profile/VendorProfile.tsx` (modified)
+- `apps/vendor/src/components/profile/VendorRates.tsx` (rewritten)
+- `apps/vendor/src/components/layout/VendorSidebar.tsx` (modified)
+
+### Edge Functions to Deploy
+```
+supabase functions deploy lookup-tax-rate
+supabase functions deploy vendor-manage-rates
+supabase functions deploy vendor-update-profile
+supabase functions deploy vendor-get-profile
+```
+
+---
+
 ## Session — March 24, 2026 (Vendor Portal Audit & Fixes)
 
 ### Completed

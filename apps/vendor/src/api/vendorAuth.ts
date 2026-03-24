@@ -8,7 +8,12 @@ interface VendorProfile {
   status: string;
   vendor_type: string | null;
   country: string | null;
+  province_state: string | null;
   availability_status: string | null;
+  tax_id: string | null;
+  tax_name: string | null;
+  tax_rate: number | null;
+  preferred_rate_currency: string | null;
 }
 
 interface AuthCheckResponse {
@@ -154,7 +159,9 @@ export async function updateProfile(
     full_name?: string;
     city?: string;
     country?: string;
+    province_state?: string;
     tax_id?: string;
+    tax_name?: string;
     tax_rate?: string;
     preferred_rate_currency?: string;
   }
