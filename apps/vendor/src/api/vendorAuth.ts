@@ -164,6 +164,7 @@ export async function updateProfile(
     tax_name?: string;
     tax_rate?: string;
     preferred_rate_currency?: string;
+    native_languages?: string[];
   }
 ): Promise<ProfileUpdateResponse> {
   const res = await fetch(`${BASE}/vendor-update-profile`, {

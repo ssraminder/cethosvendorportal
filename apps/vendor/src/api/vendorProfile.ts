@@ -86,6 +86,7 @@ interface VendorFullProfile {
   tax_name: string | null;
   tax_rate: number | null;
   preferred_rate_currency: string | null;
+  native_languages: string[] | null;
 }
 
 interface FullProfileResponse {
@@ -174,6 +175,9 @@ interface ManagedRate {
   is_active: boolean;
   notes: string | null;
   source: string;
+  language_pair_id: string | null;
+  source_language: string | null;
+  target_language: string | null;
 }
 
 interface ManageRatesResponse extends SimpleResponse {
@@ -181,6 +185,9 @@ interface ManageRatesResponse extends SimpleResponse {
   services_by_category?: Record<string, ServiceOption[]>;
   preferred_rate_currency?: string;
   rate_id?: string;
+  language_pairs?: LanguagePair[];
+  count?: number;
+  skipped?: number;
 }
 
 export type {
@@ -339,6 +346,7 @@ export async function manageRates(
     minimum_charge?: number;
     notes?: string;
     rate_id?: string;
+    language_pair_ids?: string[];
   }
 ): Promise<ManageRatesResponse> {
   const res = await fetch(`${BASE}/vendor-manage-rates`, {

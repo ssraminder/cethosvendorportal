@@ -14,6 +14,7 @@ import {
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { COUNTRIES } from "../../data/countries";
+import { LANGUAGES } from "../../data/languages";
 import {
   Mail,
   Phone,
@@ -29,6 +30,7 @@ import {
   Receipt,
   Percent,
   DollarSign,
+  Languages,
 } from "lucide-react";
 
 function statusBadge(status: string) {
@@ -563,6 +565,85 @@ function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCur
   );
 }
 
+// --- Native Languages multi-select ---
+interface NativeLanguagesFieldProps {
+  value: string[];
+  onSave: (codes: string[]) => Promise<string | null>;
+}
+
+function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const langOptions: SelectOption[] = LANGUAGES
+    .filter((l) => !value.includes(l.code))
+    .map((l) => ({ value: l.code, label: l.name, group: l.group }));
+
+  async function addLanguage(code: string) {
+    if (!code || value.includes(code)) return;
+    setSaving(true);
+    setError("");
+    const err = await onSave([...value, code]);
+    setSaving(false);
+    if (err) setError(err);
+  }
+
+  async function removeLanguage(code: string) {
+    setSaving(true);
+    setError("");
+    const err = await onSave(value.filter((c) => c !== code));
+    setSaving(false);
+    if (err) setError(err);
+  }
+
+  function langLabel(code: string): string {
+    return LANGUAGES.find((l) => l.code === code)?.name ?? code;
+  }
+
+  return (
+    <div className="px-6 py-4">
+      <div className="flex items-start gap-4">
+        <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+          <Languages className="w-4 h-4 text-gray-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+            Native Language(s)
+          </p>
+          {value.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {value.map((code) => (
+                <span
+                  key={code}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700"
+                >
+                  {langLabel(code)}
+                  <button
+                    onClick={() => removeLanguage(code)}
+                    disabled={saving}
+                    className="ml-0.5 text-teal-500 hover:text-teal-800 disabled:opacity-50"
+                    title={`Remove ${langLabel(code)}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <SearchableSelect
+            options={langOptions}
+            value=""
+            onChange={addLanguage}
+            placeholder={value.length === 0 ? "Select your native language(s)..." : "Add another language..."}
+            disabled={saving}
+          />
+          {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Main profile page ---
 export function VendorProfile() {
   const { vendor, sessionToken, setVendor } = useVendorAuth();
@@ -573,6 +654,7 @@ export function VendorProfile() {
   const [city, setCity] = useState("");
   const [provinceState, setProvinceState] = useState("");
   const [provinces, setProvinces] = useState<Province[]>([]);
+  const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   const countryOptions: SelectOption[] = COUNTRIES.map((c) => ({ value: c, label: c }));
@@ -604,6 +686,7 @@ export function VendorProfile() {
         setTaxRate(result.vendor.tax_rate?.toString() || "");
         setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
         setProvinceState(result.vendor.province_state || "");
+        setNativeLanguages(result.vendor.native_languages || []);
 
         // Load provinces if vendor is in Canada
         if (result.vendor.country === "Canada") {
@@ -704,6 +787,14 @@ export function VendorProfile() {
     return err;
   }
 
+  async function saveNativeLanguages(codes: string[]): Promise<string | null> {
+    const result = await updateProfile(sessionToken!, { native_languages: codes });
+    if (result.error) return result.error;
+    if (result.vendor) setVendor(result.vendor);
+    setNativeLanguages(codes);
+    return null;
+  }
+
   async function savePreferredRateCurrency(value: string): Promise<string | null> {
     const err = await saveField("preferred_rate_currency", value);
     if (!err) setPreferredRateCurrency(value);
@@ -783,6 +874,12 @@ export function VendorProfile() {
               value={city}
               placeholder="Your city"
               onSave={saveCity}
+            />
+          )}
+          {profileLoaded && (
+            <NativeLanguagesField
+              value={nativeLanguages}
+              onSave={saveNativeLanguages}
             />
           )}
           <ReadOnlyField icon={CircleDot} label="Availability" value={vendor.availability_status || "Not set"} />
