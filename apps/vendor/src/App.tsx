@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { VendorAuthProvider } from "./context/VendorAuthContext";
 import { LoginPage } from "./components/auth/LoginPage";
+import { ActivatePage } from "./components/auth/ActivatePage";
+import { WelcomePage } from "./components/onboarding/WelcomePage";
 import { VendorShell } from "./components/layout/VendorShell";
 import { VendorDashboard } from "./components/dashboard/VendorDashboard";
 import { VendorProfile } from "./components/profile/VendorProfile";
@@ -12,6 +14,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/activate" element={<ActivatePage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/" element={<VendorShell />}>
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />

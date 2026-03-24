@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Navigate } from "react-router-dom";
 import {
   checkVendor,
   sendOtp,
@@ -12,7 +13,7 @@ import { Eye, EyeOff, ArrowLeft, Smartphone, KeyRound } from "lucide-react";
 type Step = "email" | "otp-verify" | "password";
 
 export function LoginPage() {
-  const { vendor, login } = useVendorAuth();
+  const { vendor, isFirstLogin, login } = useVendorAuth();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -34,8 +35,7 @@ export function LoginPage() {
 
   // Redirect if already logged in
   if (vendor) {
-    window.location.href = "/";
-    return null;
+    return <Navigate to={isFirstLogin ? "/welcome" : "/"} replace />;
   }
 
   useEffect(() => {
@@ -146,7 +146,10 @@ export function LoginPage() {
       if (result.error) {
         setError(result.error);
       } else if (result.success && result.session_token && result.vendor) {
-        login(result.session_token, result.vendor, result.needs_password);
+        login(result.session_token, result.vendor, {
+          needsPassword: result.needs_password,
+          isFirstLogin: result.is_first_login,
+        });
       }
     } catch {
       setError("Verification failed. Please try again.");
@@ -173,7 +176,9 @@ export function LoginPage() {
       if (result.error) {
         setError(result.error);
       } else if (result.success && result.session_token && result.vendor) {
-        login(result.session_token, result.vendor);
+        login(result.session_token, result.vendor, {
+          isFirstLogin: result.is_first_login,
+        });
       }
     } catch {
       setError("Login failed. Please try again.");

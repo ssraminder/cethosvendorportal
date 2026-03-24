@@ -15,6 +15,7 @@ interface AuthCheckResponse {
   exists: boolean;
   has_phone: boolean;
   has_password: boolean;
+  is_first_login: boolean;
   error?: string;
 }
 
@@ -33,12 +34,15 @@ interface AuthResponse {
   vendor?: VendorProfile;
   must_reset?: boolean;
   needs_password?: boolean;
+  is_first_login?: boolean;
   error?: string;
 }
 
 interface SessionResponse {
   vendor?: VendorProfile;
   session?: { expires_at: string; last_seen_at: string };
+  is_first_login?: boolean;
+  needs_password?: boolean;
   error?: string;
 }
 
