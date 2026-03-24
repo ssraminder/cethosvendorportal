@@ -1,6 +1,16 @@
 import { NavLink } from "react-router-dom";
 import { CethosLogo } from "../shared/CethosLogo";
-import { LayoutGrid, User, Shield, X } from "lucide-react";
+import {
+  LayoutGrid,
+  User,
+  Shield,
+  Globe,
+  DollarSign,
+  CreditCard,
+  Briefcase,
+  FileText,
+  X,
+} from "lucide-react";
 
 interface VendorSidebarProps {
   isOpen: boolean;
@@ -10,6 +20,11 @@ interface VendorSidebarProps {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid },
   { to: "/profile", label: "Profile", icon: User },
+  { to: "/languages", label: "Languages", icon: Globe },
+  { to: "/rates", label: "Rates", icon: DollarSign },
+  { to: "/payment", label: "Payment", icon: CreditCard },
+  { to: "/jobs", label: "Jobs", icon: Briefcase },
+  { to: "/invoices", label: "Invoices", icon: FileText },
   { to: "/security", label: "Security", icon: Shield },
 ] as const;
 

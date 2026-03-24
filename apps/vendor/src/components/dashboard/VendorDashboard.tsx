@@ -1,5 +1,9 @@
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { getFullProfile } from "../../api/vendorProfile";
+import { getJobs, type VendorJob } from "../../api/vendorJobs";
+import { getInvoices } from "../../api/vendorInvoices";
 import {
   User,
   Shield,
@@ -8,7 +12,11 @@ import {
   Phone,
   CircleDot,
   KeyRound,
-  AlertCircle,
+  Briefcase,
+  DollarSign,
+  Clock,
+  FileText,
+  ChevronRight,
 } from "lucide-react";
 
 function statusBadge(status: string) {
@@ -33,13 +41,60 @@ function availabilityLabel(status: string | null) {
     available: "Available",
     busy: "Busy",
     unavailable: "Unavailable",
+    vacation: "On vacation",
     on_leave: "On leave",
   };
   return map[status] ?? status;
 }
 
 export function VendorDashboard() {
-  const { vendor, needsPassword } = useVendorAuth();
+  const { vendor, sessionToken, needsPassword } = useVendorAuth();
+  const [languagePairCount, setLanguagePairCount] = useState<number | null>(null);
+  const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
+  const [offeredJobs, setOfferedJobs] = useState<VendorJob[]>([]);
+  const [activeJobCount, setActiveJobCount] = useState(0);
+  const [completedJobCount, setCompletedJobCount] = useState(0);
+  const [pendingPayment, setPendingPayment] = useState(0);
+
+  const loadDashboardData = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      // Load profile data
+      const profileResult = await getFullProfile(sessionToken);
+      if (profileResult.language_pairs) {
+        setLanguagePairCount(profileResult.language_pairs.filter((lp) => lp.is_active).length);
+      }
+      if (profileResult.profile_completeness !== undefined) {
+        setProfileCompleteness(profileResult.profile_completeness);
+      }
+
+      // Load jobs
+      const jobsResult = await getJobs(sessionToken);
+      if (jobsResult.jobs) {
+        setOfferedJobs(jobsResult.jobs.filter((j) => j.status === "offered"));
+        setActiveJobCount(
+          jobsResult.jobs.filter((j) =>
+            ["accepted", "in_progress", "delivered", "under_review", "revision_requested"].includes(j.status)
+          ).length
+        );
+        setCompletedJobCount(
+          jobsResult.jobs.filter((j) => ["approved", "completed"].includes(j.status)).length
+        );
+      }
+
+      // Load invoice summary
+      const invoiceResult = await getInvoices(sessionToken);
+      if (invoiceResult.summary) {
+        setPendingPayment(invoiceResult.summary.pending_amount);
+      }
+    } catch {
+      // Dashboard data is supplementary — don't block on errors
+    }
+  }, [sessionToken]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   if (!vendor) return null;
 
@@ -100,6 +155,63 @@ export function VendorDashboard() {
         </div>
       </div>
 
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Link to="/languages" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
+            <Globe className="h-3.5 w-3.5" />
+            Language Pairs
+          </div>
+          <p className="text-2xl font-bold text-gray-900">
+            {languagePairCount !== null ? languagePairCount : "—"}
+          </p>
+        </Link>
+        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
+            <Briefcase className="h-3.5 w-3.5" />
+            Active Jobs
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{activeJobCount}</p>
+        </Link>
+        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
+            <FileText className="h-3.5 w-3.5" />
+            Completed
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{completedJobCount}</p>
+        </Link>
+        <Link to="/invoices" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
+            <DollarSign className="h-3.5 w-3.5" />
+            Pending
+          </div>
+          <p className="text-2xl font-bold text-amber-600">
+            {pendingPayment > 0
+              ? new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(pendingPayment)
+              : "$0"}
+          </p>
+        </Link>
+      </div>
+
+      {/* Profile Completeness */}
+      {profileCompleteness !== null && profileCompleteness < 100 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Profile Completeness</span>
+            <span className="text-sm font-bold text-teal-600">{profileCompleteness}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-teal-500 h-2 rounded-full transition-all"
+              style={{ width: `${profileCompleteness}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Complete your profile to improve your chances of receiving job assignments.
+          </p>
+        </div>
+      )}
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">
@@ -136,6 +248,49 @@ export function VendorDashboard() {
               </Link>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Offered Jobs */}
+      {offeredJobs.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">
+              Job Offers ({offeredJobs.length})
+            </h2>
+            <Link
+              to="/jobs"
+              className="text-xs text-[#0F9DA0] hover:text-[#0d7f82] font-medium"
+            >
+              View all &rarr;
+            </Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {offeredJobs.slice(0, 3).map((job) => (
+              <Link
+                key={job.id}
+                to={`/jobs/${job.id}`}
+                className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50"
+              >
+                <div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {job.source_language?.name || "—"} → {job.target_language?.name || "—"}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                    {job.domain && <span className="capitalize">{job.domain}</span>}
+                    {job.word_count && <span>{job.word_count.toLocaleString()} words</span>}
+                    {job.deadline && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {new Date(job.deadline).toLocaleDateString("en-CA")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-gray-400" />
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
@@ -208,19 +363,22 @@ export function VendorDashboard() {
             </p>
           </Link>
 
-          {vendor.status === "active" && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center mb-3">
-                <AlertCircle className="w-5 h-5 text-green-600" />
-              </div>
-              <p className="text-sm font-semibold text-gray-900">
-                Ready for Projects
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Your account is active and ready to receive assignments.
-              </p>
+          <Link
+            to="/jobs"
+            className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-gray-300 hover:shadow-sm transition-all group"
+          >
+            <div className="w-10 h-10 rounded-lg bg-[#0F9DA0]/10 flex items-center justify-center mb-3">
+              <Briefcase className="w-5 h-5 text-[#0F9DA0]" />
             </div>
-          )}
+            <p className="text-sm font-semibold text-gray-900 group-hover:text-[#0F9DA0] transition-colors">
+              Jobs
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {offeredJobs.length > 0
+                ? `${offeredJobs.length} job offer${offeredJobs.length !== 1 ? "s" : ""} waiting`
+                : "View your job assignments"}
+            </p>
+          </Link>
         </div>
       </div>
     </div>

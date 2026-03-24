@@ -14,6 +14,98 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 24, 2026 (Phase 2 — Full Vendor Portal Build)
+
+### Completed
+- Audited entire vendor portal codebase — mapped all built vs missing features
+- Built 13 new Supabase edge functions for vendor portal:
+  - `vendor-get-profile` — full profile with language pairs, rates, payment info, profile completeness
+  - `vendor-update-availability` — toggle availability status (available/busy/vacation/unavailable)
+  - `vendor-update-payment-info` — upsert payment method, bank details, tax info
+  - `vendor-update-language-pairs` — add/remove/toggle language pairs with dedup
+  - `vendor-update-rates` — submit rate change requests (flagged for admin review)
+  - `vendor-upload-certification` — upload cert documents to Supabase Storage
+  - `vendor-get-jobs` — list jobs with language name enrichment, pagination, status filter
+  - `vendor-accept-job` — accept offered job (validates status)
+  - `vendor-decline-job` — decline offered job with optional reason
+  - `vendor-upload-delivery` — upload translated files to vendor-deliveries bucket
+  - `vendor-get-source-files` — signed URLs for source documents (1hr expiry)
+  - `vendor-get-invoices` — list invoices with job references and summary stats
+  - `vendor-get-invoice-pdf` — signed URL for invoice PDF download
+- Created 2 new database tables via migration:
+  - `cvp_jobs` — job assignments with full lifecycle (offered → accepted → delivered → completed)
+  - `cvp_payments` — invoice and payment tracking
+- Created 2 Supabase Storage buckets: `vendor-deliveries`, `vendor-certifications`
+- Built complete frontend for all missing vendor portal features:
+  - **Language Pairs page** (`/languages`) — list active/inactive pairs, add new, toggle, remove
+  - **Rates page** (`/rates`) — table view with service names, request rate change with inline form
+  - **Payment Info page** (`/payment`) — method selector, dynamic bank/PayPal/e-Transfer fields, tax info
+  - **Job Board page** (`/jobs`) — three-tab view (Offered/Active/Completed), accept/decline actions, deadline countdown
+  - **Job Detail page** (`/jobs/:id`) — full job info, instructions, source file download, delivery upload, reviewer feedback
+  - **Invoices page** (`/invoices`) — summary cards (total earned, pending, count), filterable table
+  - **Invoice Detail page** (`/invoices/:id`) — full invoice breakdown, PDF download
+- Enhanced **Dashboard** with:
+  - Quick stats: language pairs count, active jobs, completed jobs, pending payments
+  - Profile completeness progress bar
+  - Offered jobs section (shows up to 3 pending offers)
+  - Quick action cards for Profile, Security, Jobs
+- Updated **Sidebar navigation** with 8 nav items: Dashboard, Profile, Languages, Rates, Payment, Jobs, Invoices, Security
+- Created 3 new API modules:
+  - `vendorProfile.ts` — getFullProfile, updateAvailability, updatePaymentInfo, updateLanguagePairs, updateRates, uploadCertification
+  - `vendorJobs.ts` — getJobs, acceptJob, declineJob, uploadDelivery, getSourceFiles
+  - `vendorInvoices.ts` — getInvoices, getInvoicePdf
+- All edge functions deployed to Supabase via MCP
+- Created `docs/CVP-VENDOR-PORTAL-ADMIN-PROMPT.md` — self-contained prompt for building admin-side vendor management in the CETHOS portal, covering:
+  - Vendor management dashboard + detail page
+  - Job assignment + delivery review workflow
+  - Invoice/payment management
+  - Rate change review queue
+  - Profile health dashboard
+  - Application review completion (Phase 1C)
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `supabase/functions/vendor-get-profile/index.ts`
+- `supabase/functions/vendor-update-availability/index.ts`
+- `supabase/functions/vendor-update-payment-info/index.ts`
+- `supabase/functions/vendor-update-language-pairs/index.ts`
+- `supabase/functions/vendor-update-rates/index.ts`
+- `supabase/functions/vendor-upload-certification/index.ts`
+- `supabase/functions/vendor-get-jobs/index.ts`
+- `supabase/functions/vendor-accept-job/index.ts`
+- `supabase/functions/vendor-decline-job/index.ts`
+- `supabase/functions/vendor-upload-delivery/index.ts`
+- `supabase/functions/vendor-get-source-files/index.ts`
+- `supabase/functions/vendor-get-invoices/index.ts`
+- `supabase/functions/vendor-get-invoice-pdf/index.ts`
+- `supabase/migrations/009_cvp_jobs_and_payments.sql`
+- `apps/vendor/src/api/vendorProfile.ts`
+- `apps/vendor/src/api/vendorJobs.ts`
+- `apps/vendor/src/api/vendorInvoices.ts`
+- `apps/vendor/src/components/profile/LanguagePairs.tsx`
+- `apps/vendor/src/components/profile/VendorRates.tsx`
+- `apps/vendor/src/components/profile/PaymentInfo.tsx`
+- `apps/vendor/src/components/jobs/JobBoard.tsx`
+- `apps/vendor/src/components/jobs/JobDetail.tsx`
+- `apps/vendor/src/components/invoices/InvoiceList.tsx`
+- `apps/vendor/src/components/invoices/InvoiceDetail.tsx`
+- `docs/CVP-VENDOR-PORTAL-ADMIN-PROMPT.md`
+
+### Files Modified
+- `apps/vendor/src/App.tsx` — added 7 new routes (languages, rates, payment, jobs, jobs/:id, invoices, invoices/:id)
+- `apps/vendor/src/components/layout/VendorSidebar.tsx` — added 5 new nav items
+- `apps/vendor/src/components/dashboard/VendorDashboard.tsx` — enhanced with stats, completeness, offered jobs
+
+### Next Steps
+- Use `CVP-VENDOR-PORTAL-ADMIN-PROMPT.md` to build admin pages in the CETHOS portal repo
+- Build Phase 1C edge functions (approve, reject, negotiate, waitlist) — see admin prompt
+- Build Phase 1D edge functions (profile health cron jobs)
+- Set up Netlify deployment for vendor.cethos.com
+- End-to-end testing: login → dashboard → accept job → upload delivery → view invoice
+
+---
+
 ## Session — March 24, 2026 (Phase 2 — Vendor Auth System + Core Shell)
 
 ### Completed
@@ -391,7 +483,7 @@ All tasks in Phase 1A are pending.
 | 1B | Testing pipeline | ✅ Complete (edge functions + frontend + cron) |
 | 1C | Review, negotiation, approval | ⬜ Not started |
 | 1D | Profile health system | ⬜ Not started |
-| 2 | Vendor working portal | 🟡 In progress — auth system + core shell built |
+| 2 | Vendor working portal | 🟡 In progress — auth + core shell + profile + jobs + invoices built |
 
 ---
 
