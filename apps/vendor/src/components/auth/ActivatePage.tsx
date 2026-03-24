@@ -3,6 +3,8 @@ import { useSearchParams, Navigate } from "react-router-dom";
 import { checkVendor, sendOtp, verifyOtp } from "../../api/vendorAuth";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { OtpInput } from "./OtpInput";
+import { CethosLogo } from "../shared/CethosLogo";
+import { maskEmail } from "../../utils/mask";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 type Step = "checking" | "not-found" | "otp-verify";
@@ -24,6 +26,10 @@ export function ActivatePage() {
   if (vendor) {
     return <Navigate to="/welcome" replace />;
   }
+
+  // Fallback display contact
+  const displayContact =
+    maskedContact || (email ? maskEmail(email) : "your email");
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -118,7 +124,7 @@ export function ActivatePage() {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 text-[#0F9DA0] animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Setting up your account...</p>
         </div>
       </div>
@@ -131,9 +137,12 @@ export function ActivatePage() {
       <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <h1 className="text-xl font-bold text-gray-900 mb-2">
+            <div className="mb-6">
+              <CethosLogo size="md" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
               Activation Link Issue
-            </h1>
+            </h2>
             <p className="text-sm text-gray-600 mb-6">
               {error ||
                 "This activation link may be invalid or expired. Please use the login page to sign in with your email."}
@@ -156,17 +165,16 @@ export function ActivatePage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-              CETHOS
-            </h1>
-            <p className="text-gray-500 mt-1">Activate Your Account</p>
+            <CethosLogo size="md" />
+            <div className="mt-3 h-0.5 w-16 bg-[#0F9DA0] mx-auto rounded-full" />
+            <p className="text-gray-500 mt-3">Activate Your Account</p>
           </div>
 
           <div className="space-y-6">
             <div className="text-center">
               <p className="text-sm text-gray-600">
                 We sent a verification code to{" "}
-                <span className="font-medium">{maskedContact}</span>
+                <span className="font-medium">{displayContact}</span>
               </p>
             </div>
 

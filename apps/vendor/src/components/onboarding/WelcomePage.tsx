@@ -1,5 +1,6 @@
 import { useNavigate, Navigate } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { CethosLogo } from "../shared/CethosLogo";
 import {
   PartyPopper,
   User,
@@ -42,14 +43,16 @@ export function WelcomePage() {
       <div className="w-full max-w-lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
-            <PartyPopper className="w-8 h-8 text-blue-600" />
+          <CethosLogo size="lg" />
+          <div className="mt-3 h-0.5 w-20 bg-[#0F9DA0] mx-auto rounded-full" />
+          <div className="mt-5 inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-50">
+            <PartyPopper className="w-7 h-7 text-blue-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Welcome to CETHOS!
+          <h1 className="text-2xl font-bold text-gray-900 mt-3">
+            Welcome, {vendor.full_name}!
           </h1>
-          <p className="text-gray-600 mt-2 text-lg">
-            Hi {vendor.full_name}, your vendor account is ready.
+          <p className="text-gray-600 mt-1">
+            Your vendor account is ready.
           </p>
         </div>
 

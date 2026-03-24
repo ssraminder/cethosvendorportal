@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { CethosLogo } from "../shared/CethosLogo";
 import { LayoutGrid, User, Lock, X } from "lucide-react";
 
 interface VendorSidebarProps {
@@ -29,11 +30,9 @@ export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
         }`}
       >
         <div className="flex items-center justify-between p-5 border-b border-gray-200">
-          <div>
-            <span className="text-lg font-bold text-gray-900 tracking-tight">
-              CETHOS
-            </span>
-            <span className="text-xs text-gray-400 ml-2">Vendor</span>
+          <div className="flex items-center gap-1.5">
+            <CethosLogo size="sm" />
+            <span className="text-xs text-gray-400">Vendor</span>
           </div>
           <button
             onClick={onClose}
