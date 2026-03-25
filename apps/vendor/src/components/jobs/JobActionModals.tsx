@@ -4,6 +4,7 @@ import {
   acceptStep,
   declineStep,
   deliverStep,
+  submitCounterOffer,
   type VendorStep,
 } from "../../api/vendorJobs";
 import {
@@ -12,6 +13,7 @@ import {
   Upload,
   FileText,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -435,6 +437,266 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
                 {isRevision ? "Submit Revision" : "Submit Delivery"}
               </>
             )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NegotiateModal
+// ---------------------------------------------------------------------------
+
+const RATE_UNIT_OPTIONS = [
+  { value: "per_word", label: "Per Word" },
+  { value: "per_page", label: "Per Page" },
+  { value: "per_hour", label: "Per Hour" },
+  { value: "flat", label: "Flat" },
+];
+
+const CURRENCY_OPTIONS = ["CAD", "USD", "EUR", "GBP"];
+
+interface NegotiateProps {
+  step: VendorStep;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export function NegotiateModal({ step, onClose, onSuccess }: NegotiateProps) {
+  const { sessionToken } = useVendorAuth();
+  const [counterRate, setCounterRate] = useState(step.vendor_rate?.toString() ?? "");
+  const [counterRateUnit, setCounterRateUnit] = useState(step.vendor_rate_unit ?? "per_word");
+  const [counterTotal, setCounterTotal] = useState(step.vendor_total?.toString() ?? "");
+  const [counterCurrency, setCounterCurrency] = useState(step.vendor_currency ?? "CAD");
+  const [counterDeadline, setCounterDeadline] = useState("");
+  const [counterNote, setCounterNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const currency = step.vendor_currency ?? "CAD";
+  const fmt = (val: number) =>
+    new Intl.NumberFormat("en-CA", { style: "currency", currency }).format(val);
+
+  const validate = (): string | null => {
+    const rate = parseFloat(counterRate);
+    const total = parseFloat(counterTotal);
+
+    if ((!rate || rate <= 0) && (!total || total <= 0)) {
+      return "Rate or total must be greater than 0.";
+    }
+
+    if (!counterNote || counterNote.trim().length < 10) {
+      return "Note is required (minimum 10 characters).";
+    }
+
+    // At least one value must differ from original
+    const rateChanged = rate !== step.vendor_rate;
+    const totalChanged = total !== step.vendor_total;
+    const deadlineChanged = counterDeadline.trim() !== "";
+
+    if (!rateChanged && !totalChanged && !deadlineChanged) {
+      return "At least one value must differ from the original offer (rate, total, or deadline).";
+    }
+
+    return null;
+  };
+
+  const handleSubmit = async () => {
+    if (!sessionToken || !step.offer_id) return;
+
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const { status, data } = await submitCounterOffer(sessionToken, {
+        offer_id: step.offer_id,
+        step_id: step.id,
+        counter_rate: parseFloat(counterRate) || null,
+        counter_rate_unit: counterRateUnit,
+        counter_total: parseFloat(counterTotal) || null,
+        counter_currency: counterCurrency,
+        counter_deadline: counterDeadline || null,
+        counter_note: counterNote,
+      });
+
+      if (status === 410) {
+        setError("This offer has expired.");
+        onSuccess();
+        onClose();
+        return;
+      }
+
+      if (status === 409) {
+        setError("You already have a pending counter-proposal.");
+        return;
+      }
+
+      if (!data.success) {
+        setError(data.error ?? "Failed to submit counter-proposal.");
+        return;
+      }
+
+      onSuccess();
+      onClose();
+    } catch {
+      setError("Failed to submit counter-proposal.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Negotiate &mdash; {step.name}
+          </h3>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+          {/* Current offer terms */}
+          <div className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Current Offer Terms</p>
+            <p className="text-sm text-gray-700">
+              {step.vendor_rate != null && step.vendor_rate_unit
+                ? <>{fmt(step.vendor_rate)}/{step.vendor_rate_unit.replace("_", " ")}</>
+                : "Rate not set"
+              }
+              {step.vendor_total != null && (
+                <> &middot; {currency} {fmt(step.vendor_total)}</>
+              )}
+            </p>
+            {step.deadline && (
+              <p className="text-sm text-gray-500 mt-0.5">
+                Deadline: {new Date(step.deadline).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}
+              </p>
+            )}
+          </div>
+
+          {/* Counter-proposal form */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700">Your Counter-Proposal</p>
+
+            {/* Rate + Rate Unit */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={counterRate}
+                  onChange={(e) => setCounterRate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rate Unit</label>
+                <select
+                  value={counterRateUnit}
+                  onChange={(e) => setCounterRateUnit(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                >
+                  {RATE_UNIT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Total + Currency */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Total *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={counterTotal}
+                  onChange={(e) => setCounterTotal(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+                <select
+                  value={counterCurrency}
+                  onChange={(e) => setCounterCurrency(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Deadline */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Deadline (optional)</label>
+              <input
+                type="datetime-local"
+                value={counterDeadline}
+                onChange={(e) => setCounterDeadline(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+            </div>
+
+            {/* Note */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Note to PM *</label>
+              <textarea
+                value={counterNote}
+                onChange={(e) => setCounterNote(e.target.value)}
+                placeholder="Explain why you're proposing different terms..."
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+            </div>
+          </div>
+
+          {/* Info note */}
+          <div className="flex items-start gap-2 text-xs text-gray-500">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gray-400" />
+            <span>The PM will review your proposal. You can still accept or decline the original offer at any time.</span>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-50"
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            Submit Counter-Proposal
           </button>
         </div>
       </div>

@@ -14,6 +14,25 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Vendor Negotiate / Counter-Offer UI)
+
+### Completed
+- **Counter-offer API function:** Added `submitCounterOffer` to `vendorJobs.ts` calling `vendor-counter-offer` edge function. Added `CounterOfferPayload` and `CounterOfferResponse` types.
+- **Counter-offer fields on types:** Added `counter_status`, `counter_rate`, `counter_rate_unit`, `counter_total`, `counter_currency`, `counter_note`, `counter_at`, `counter_rejection_reason`, `counter_responded_at` to both `VendorStep` and `JobDetailJob` interfaces.
+- **NegotiateModal component:** New modal in `JobActionModals.tsx` with rate, rate unit, total, currency, deadline, and note fields. Pre-fills from current offer terms. Validates that at least one value differs, note >= 10 chars, and rate/total > 0. Handles 410 (expired) and 409 (already pending) responses.
+- **Negotiate button on job cards:** Added "Negotiate" button alongside Accept/Decline on offered tab cards. Disabled with "Counter Pending" label when `counter_status === 'proposed'`. Re-enabled after rejection.
+- **Counter-status badges on cards:** Shows pending (orange), accepted (green with revised terms), and rejected (red with reason) badges on offered job cards.
+- **Negotiate button in job detail modal footer:** Added between Decline and Accept buttons. Same disable logic as card button.
+- **Negotiation history in job detail modal:** New section after Language & Rate showing counter-proposal details, status, notes, and timestamps for proposed/accepted/rejected states.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added counter-offer fields to `VendorStep` and `JobDetailJob`, added `submitCounterOffer` API function
+- `apps/vendor/src/components/jobs/JobActionModals.tsx` — Added `NegotiateModal` component
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Added negotiate button, counter-status badges, negotiate modal integration
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Added negotiation history section, negotiate button in footer, negotiate modal integration
+
+---
+
 ## Session — March 25, 2026 (Vendor Portal Audit Fixes)
 
 ### Completed

@@ -37,6 +37,15 @@ export interface VendorStep {
   offer_id: string | null;
   expires_at: string | null;
   is_rush: boolean;
+  counter_status: string | null;
+  counter_rate: number | null;
+  counter_rate_unit: string | null;
+  counter_total: number | null;
+  counter_currency: string | null;
+  counter_note: string | null;
+  counter_at: string | null;
+  counter_rejection_reason: string | null;
+  counter_responded_at: string | null;
 }
 
 /** @deprecated Use VendorStep instead */
@@ -96,6 +105,15 @@ export interface JobDetailJob {
   offer_id: string | null;
   offer_status: string | null;
   customer_name: string | null;
+  counter_status: string | null;
+  counter_rate: number | null;
+  counter_rate_unit: string | null;
+  counter_total: number | null;
+  counter_currency: string | null;
+  counter_note: string | null;
+  counter_at: string | null;
+  counter_rejection_reason: string | null;
+  counter_responded_at: string | null;
 }
 
 export interface VolumeDocument {
@@ -201,6 +219,41 @@ export async function deliverStep(
     body: formData,
   });
   return res.json();
+}
+
+// --- Counter-offer ---
+
+export interface CounterOfferPayload {
+  offer_id: string;
+  step_id: string;
+  counter_rate: number | null;
+  counter_rate_unit: string;
+  counter_total: number | null;
+  counter_currency: string;
+  counter_deadline: string | null;
+  counter_note: string;
+}
+
+export interface CounterOfferResponse {
+  success?: boolean;
+  counter_status?: string;
+  error?: string;
+}
+
+export async function submitCounterOffer(
+  token: string,
+  payload: CounterOfferPayload
+): Promise<{ status: number; data: CounterOfferResponse }> {
+  const res = await fetch(`${BASE}/vendor-counter-offer`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const data: CounterOfferResponse = await res.json();
+  return { status: res.status, data };
 }
 
 export async function getJobDetail(

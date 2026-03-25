@@ -8,7 +8,7 @@ import {
   type VolumeDocument,
 } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
-import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
+import { AcceptConfirmModal, DeclineModal, DeliverModal, NegotiateModal } from "./JobActionModals";
 import {
   X,
   Clock,
@@ -101,7 +101,7 @@ interface JobDetailModalProps {
 
 export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps) {
   const { sessionToken } = useVendorAuth();
-  const [actionModal, setActionModal] = useState<"accept" | "decline" | "deliver" | null>(null);
+  const [actionModal, setActionModal] = useState<"accept" | "decline" | "deliver" | "negotiate" | null>(null);
   const [detail, setDetail] = useState<JobDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -265,6 +265,46 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                     <p className="text-sm text-gray-400 italic">Rate to be discussed</p>
                   )}
                 </section>
+
+                {/* NEGOTIATION HISTORY */}
+                {job.counter_status && job.counter_status !== "none" && (
+                  <section className="rounded-lg border border-gray-200 p-4">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Negotiation</h4>
+
+                    {job.counter_status === "proposed" && (
+                      <div className="p-2 bg-orange-50 border border-orange-200 rounded text-sm">
+                        <div className="font-medium text-orange-700">Counter-proposal pending</div>
+                        <div className="text-gray-600 mt-1">
+                          Your proposed rate: {job.counter_rate != null && fmt(job.counter_rate)}/{job.counter_rate_unit?.replace("_", " ") ?? "unit"}
+                          {job.counter_total != null && (
+                            <> &middot; Total: {job.counter_currency ?? currency} {fmt(job.counter_total)}</>
+                          )}
+                        </div>
+                        {job.counter_note && <div className="text-gray-500 italic mt-1">&ldquo;{job.counter_note}&rdquo;</div>}
+                        {job.counter_at && <div className="text-gray-400 text-xs mt-1">Submitted {formatShortDate(job.counter_at)}</div>}
+                      </div>
+                    )}
+
+                    {job.counter_status === "accepted" && (
+                      <div className="p-2 bg-green-50 border border-green-200 rounded text-sm">
+                        <div className="font-medium text-green-700">Counter accepted by PM</div>
+                        <div className="text-gray-600 mt-1">Offer updated to the terms you proposed.</div>
+                        {job.counter_responded_at && <div className="text-gray-400 text-xs mt-1">Accepted {formatShortDate(job.counter_responded_at)}</div>}
+                      </div>
+                    )}
+
+                    {job.counter_status === "rejected" && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded text-sm">
+                        <div className="font-medium text-red-700">Counter rejected</div>
+                        {job.counter_rejection_reason && (
+                          <div className="text-gray-600 mt-1">Reason: &ldquo;{job.counter_rejection_reason}&rdquo;</div>
+                        )}
+                        <div className="text-gray-500 mt-1">Original offer terms remain. You can negotiate again, accept, or decline.</div>
+                        {job.counter_responded_at && <div className="text-gray-400 text-xs mt-1">Rejected {formatShortDate(job.counter_responded_at)}</div>}
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {/* 3. DEADLINE & TIMING */}
                 <section className="rounded-lg border border-gray-200 p-4">
@@ -577,6 +617,13 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   Decline
                 </button>
                 <button
+                  onClick={() => setActionModal("negotiate")}
+                  disabled={job?.counter_status === "proposed"}
+                  className="px-4 py-2 text-sm font-medium text-orange-600 border border-orange-400 rounded-lg hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {job?.counter_status === "proposed" ? "Counter Pending" : "Negotiate"}
+                </button>
+                <button
                   onClick={() => setActionModal("accept")}
                   disabled={expired}
                   className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -610,6 +657,9 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
       )}
       {actionModal === "deliver" && (
         <DeliverModal step={step} onClose={() => setActionModal(null)} onSuccess={handleActionSuccess} />
+      )}
+      {actionModal === "negotiate" && (
+        <NegotiateModal step={step} onClose={() => setActionModal(null)} onSuccess={handleActionSuccess} />
       )}
     </>
   );
