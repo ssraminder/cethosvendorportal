@@ -14,6 +14,48 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Auto-Accept Tab Switch + T&C service_id Fix)
+
+### Completed
+- **Fix 1 — Auto-Accept Tab Switch (V4):** NegotiateModal now passes `autoAssigned` flag through `onSuccess` callback. JobBoard's `handleActionSuccess` detects it and calls `setTab("active")` + `fetchTab("active")` so vendor sees their new assignment immediately. Also threaded through JobDetailModal's `onAction` prop.
+- **Fix 2 — T&C service_id (V5):** `checkTermsForOffer()` now accepts and forwards `service_id` to the `get_terms` request. TermsModal accepts `serviceId` prop and includes it in the `accept_terms` request. Both JobBoard and JobDetailModal pass `step.service_id` through the terms flow.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — `onSuccess` callback now includes optional `autoAssigned` boolean
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — `handleActionSuccess` supports `switchToActive`, termsModal state includes `serviceId`, passes `service_id` to `checkTermsForOffer` and TermsModal
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — `onAction` prop updated to pass message+switchToActive, termsModal state includes `serviceId`, passes `service_id` through terms flow
+- `apps/vendor/src/components/jobs/TermsModal.tsx` — `checkTermsForOffer` accepts `serviceId` param, TermsModal accepts `serviceId` prop, both `get_terms` and `accept_terms` include `service_id`
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
+## Session — March 25, 2026 (Vendor Portal Pending Features Audit)
+
+### Completed
+- **Investigative audit** of 5 vendor portal features (V1–V5): Negotiate button + modal, conditional negotiate + auto-accept, modal fix (units/picker), auto-assign response handling, T&C gate modal.
+- **V1 Negotiate Button + Modal:** ✅ Fully implemented — button on cards + detail modal, NegotiateModal with counter rate/total/deadline/note, calls vendor-counter-offer API.
+- **V2 Conditional + Auto-Accept:** ✅ Fully implemented — button gated by negotiation_allowed, disabled when counter_status=proposed, distinct messages for auto-accept vs queued.
+- **V3 Modal Fix (units/picker):** ✅ Fully implemented — original offer summary box, rate unit inherited, date+time picker with 30-min increments, deadline pre-filled.
+- **V4 Auto-Assign Handling:** ⚠️ Partial — toast + refetch work, but tab does NOT auto-switch to "active" after auto-accept. Vendor must manually navigate.
+- **V5 T&C Gate Modal:** ⚠️ Partial — gates both Accept and Negotiate flows, distinguishes immediate/conditional, but service_id not passed in get_terms call. Both vendor-counter-offer and vendor-accept-terms edge functions not yet deployed.
+
+### Gaps Identified
+- V4: `handleActionSuccess` in JobBoard.tsx needs to detect auto-accept and call `setTab("active")` (small fix)
+- V5: `checkTermsForOffer` in TermsModal.tsx needs `service_id` parameter (small fix)
+- V5: `vendor-accept-terms` edge function needs to be built (medium complexity)
+- V5: `vendor-counter-offer` edge function needs to be built (medium complexity)
+
+### Files Reviewed (no code changes)
+- `apps/vendor/src/components/jobs/JobBoard.tsx`
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx`
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx`
+- `apps/vendor/src/components/jobs/TermsModal.tsx`
+- `apps/vendor/src/components/jobs/JobActionModals.tsx`
+- `apps/vendor/src/api/vendorJobs.ts`
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
 ## Session — March 25, 2026 (Terms & Conditions Gate)
 
 ### Completed

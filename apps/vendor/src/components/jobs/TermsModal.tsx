@@ -29,6 +29,7 @@ interface TermsModalProps {
   offerId: string;
   stepId: string;
   orderId: string;
+  serviceId?: string | null;
   actionType: "accept_offer" | "submit_counter";
 }
 
@@ -40,6 +41,7 @@ export function TermsModal({
   offerId,
   stepId,
   orderId,
+  serviceId,
   actionType,
 }: TermsModalProps) {
   const { sessionToken } = useVendorAuth();
@@ -71,6 +73,7 @@ export function TermsModal({
           offer_id: offerId,
           step_id: stepId,
           order_id: orderId,
+          service_id: serviceId || undefined,
           action_type: actionType,
           acceptance_type: acceptanceType,
         }),
@@ -185,7 +188,8 @@ interface CheckTermsResult {
 
 export async function checkTermsForOffer(
   sessionToken: string,
-  offerId: string
+  offerId: string,
+  serviceId?: string | null
 ): Promise<CheckTermsResult> {
   try {
     const response = await fetch(`${FUNCTIONS_URL}/vendor-accept-terms`, {
@@ -197,6 +201,7 @@ export async function checkTermsForOffer(
       body: JSON.stringify({
         action: "get_terms",
         offer_id: offerId,
+        service_id: serviceId || undefined,
       }),
     });
 

@@ -98,7 +98,7 @@ function isPdf(file: JobDetailFile): boolean {
 interface JobDetailModalProps {
   step: VendorStep;
   onClose: () => void;
-  onAction: () => void;
+  onAction: (message?: string, switchToActive?: boolean) => void;
 }
 
 export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps) {
@@ -116,6 +116,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
     offerId: string;
     stepId: string;
     orderId: string;
+    serviceId?: string | null;
     actionType: "accept_offer" | "submit_counter";
     pendingAction: () => void;
   } | null>(null);
@@ -129,7 +130,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
       return;
     }
 
-    const result = await checkTermsForOffer(sessionToken, step.offer_id);
+    const result = await checkTermsForOffer(sessionToken, step.offer_id, step.service_id);
 
     if (!result.needsTerms || !result.terms) {
       onProceed();
@@ -142,6 +143,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
       offerId: step.offer_id,
       stepId: step.id,
       orderId: step.order_id ?? "",
+      serviceId: step.service_id,
       actionType,
       pendingAction: onProceed,
     });
@@ -677,9 +679,9 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
         <NegotiateModal
           job={step}
           onClose={() => setShowNegotiate(false)}
-          onSuccess={() => {
+          onSuccess={(msg, autoAssigned) => {
             setShowNegotiate(false);
-            onAction();
+            onAction(msg, autoAssigned);
           }}
         />
       )}
@@ -696,6 +698,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
           offerId={termsModal.offerId}
           stepId={termsModal.stepId}
           orderId={termsModal.orderId}
+          serviceId={termsModal.serviceId}
           actionType={termsModal.actionType}
         />
       )}
