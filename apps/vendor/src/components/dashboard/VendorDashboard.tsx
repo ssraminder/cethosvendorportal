@@ -18,6 +18,12 @@ import {
   Clock,
   FileText,
   ChevronRight,
+  Camera,
+  CalendarCheck,
+  Languages,
+  Settings,
+  CreditCard,
+  CheckCircle2,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
@@ -26,15 +32,15 @@ function getLanguageName(code: string | null): string {
 }
 
 function statusBadge(status: string) {
-  const map: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-    active: { bg: "bg-green-50", text: "text-green-700", dot: "bg-green-500", label: "Active" },
-    onboarding: { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500", label: "Onboarding" },
-    suspended: { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", label: "Suspended" },
-    inactive: { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400", label: "Inactive" },
+  const map: Record<string, { bg: string; text: string; dot: string; border: string; label: string }> = {
+    active: { bg: "bg-green-50", text: "text-green-700", dot: "bg-green-500", border: "border-green-100", label: "Active" },
+    onboarding: { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500", border: "border-blue-100", label: "Onboarding" },
+    suspended: { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", border: "border-red-100", label: "Suspended" },
+    inactive: { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400", border: "border-gray-200", label: "Inactive" },
   };
-  const s = map[status] ?? { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400", label: status };
+  const s = map[status] ?? { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400", border: "border-gray-200", label: status };
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text} border ${s.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>
@@ -47,6 +53,14 @@ const AVAILABILITY_OPTIONS = [
   { value: "unavailable", label: "Unavailable" },
   { value: "vacation", label: "On vacation" },
   { value: "on_leave", label: "On leave" },
+] as const;
+
+const PROFILE_STEPS = [
+  { key: "photo", label: "Add a profile photo", icon: Camera },
+  { key: "availability", label: "Set your availability", icon: CalendarCheck },
+  { key: "languages", label: "Add language pairs", icon: Languages },
+  { key: "rates", label: "Configure services & rates", icon: Settings },
+  { key: "payment", label: "Add payment information", icon: CreditCard },
 ] as const;
 
 export function VendorDashboard() {
@@ -62,7 +76,6 @@ export function VendorDashboard() {
   const loadDashboardData = useCallback(async () => {
     if (!sessionToken) return;
     try {
-      // Load profile data
       const profileResult = await getFullProfile(sessionToken);
       if (profileResult.language_pairs) {
         setLanguagePairCount(profileResult.language_pairs.filter((lp: { is_active: boolean }) => lp.is_active).length);
@@ -71,7 +84,6 @@ export function VendorDashboard() {
         setProfileCompleteness(profileResult.profile_completeness);
       }
 
-      // Load job counts from all tabs
       const [offeredResult, activeResult, completedResult] = await Promise.all([
         getSteps(sessionToken, "offered"),
         getSteps(sessionToken, "active"),
@@ -82,13 +94,12 @@ export function VendorDashboard() {
       if (activeResult.counts) setActiveJobCount(activeResult.counts.active);
       if (completedResult.counts) setCompletedJobCount(completedResult.counts.completed);
 
-      // Load invoice summary
       const invoiceResult = await getInvoices(sessionToken);
       if (invoiceResult.summary) {
         setPendingPayment(invoiceResult.summary.pending_amount);
       }
     } catch {
-      // Dashboard data is supplementary — don't block on errors
+      // Dashboard data is supplementary
     }
   }, [sessionToken]);
 
@@ -98,12 +109,20 @@ export function VendorDashboard() {
 
   if (!vendor) return null;
 
-  const initials = vendor.full_name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const handleAvailabilityChange = async (newStatus: string) => {
+    if (!sessionToken) return;
+    setUpdatingAvailability(true);
+    try {
+      const result = await updateAvailability(sessionToken, newStatus);
+      if (result.success && result.availability_status) {
+        setVendor({ ...vendor, availability_status: result.availability_status });
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setUpdatingAvailability(false);
+    }
+  };
 
   const alerts: { icon: typeof KeyRound; message: string; link: string; linkText: string; color: string }[] = [];
 
@@ -126,21 +145,6 @@ export function VendorDashboard() {
     });
   }
 
-  const handleAvailabilityChange = async (newStatus: string) => {
-    if (!sessionToken) return;
-    setUpdatingAvailability(true);
-    try {
-      const result = await updateAvailability(sessionToken, newStatus);
-      if (result.success && result.availability_status) {
-        setVendor({ ...vendor, availability_status: result.availability_status });
-      }
-    } catch {
-      // Non-critical
-    } finally {
-      setUpdatingAvailability(false);
-    }
-  };
-
   const infoItems = [
     { icon: Mail, label: "Email", value: vendor.email },
     { icon: Phone, label: "Phone", value: vendor.phone || "Not provided" },
@@ -149,57 +153,58 @@ export function VendorDashboard() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Welcome card */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="bg-gradient-to-r from-[#0F9DA0] to-[#0d7f82] px-6 py-8">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-              <span className="text-lg font-bold text-white">{initials}</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">
-                Welcome back, {vendor.full_name}
-              </h1>
-              <div className="flex items-center gap-3 mt-1.5">
-                {statusBadge(vendor.status)}
-                <span className="text-sm text-white/70">{vendor.email}</span>
-              </div>
-            </div>
-          </div>
+      {/* Welcome row */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Welcome back, {vendor.full_name}
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Here&apos;s what&apos;s happening with your account
+          </p>
         </div>
+        {statusBadge(vendor.status)}
       </div>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Link to="/languages" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
-            <Globe className="h-3.5 w-3.5" />
-            Language Pairs
+        <Link to="/languages" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Language Pairs</span>
+            <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+              <Globe className="w-4 h-4 text-teal-600" />
+            </div>
           </div>
           <p className="text-2xl font-bold text-gray-900">
             {languagePairCount !== null ? languagePairCount : "—"}
           </p>
         </Link>
-        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
-            <Briefcase className="h-3.5 w-3.5" />
-            Active Jobs
+        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Jobs</span>
+            <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+              <Briefcase className="w-4 h-4 text-teal-600" />
+            </div>
           </div>
           <p className="text-2xl font-bold text-gray-900">{activeJobCount}</p>
         </Link>
-        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
-            <FileText className="h-3.5 w-3.5" />
-            Completed
+        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Completed</span>
+            <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+              <FileText className="w-4 h-4 text-teal-600" />
+            </div>
           </div>
           <p className="text-2xl font-bold text-gray-900">{completedJobCount}</p>
         </Link>
-        <Link to="/invoices" className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-          <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
-            <DollarSign className="h-3.5 w-3.5" />
-            Pending
+        <Link to="/invoices" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pending</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <DollarSign className="w-4 h-4 text-amber-600" />
+            </div>
           </div>
-          <p className="text-2xl font-bold text-amber-600">
+          <p className={`text-2xl font-bold ${pendingPayment > 0 ? "text-amber-600" : "text-gray-900"}`}>
             {pendingPayment > 0
               ? new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(pendingPayment)
               : "$0"}
@@ -211,18 +216,31 @@ export function VendorDashboard() {
       {profileCompleteness !== null && profileCompleteness < 100 && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Profile Completeness</span>
-            <span className="text-sm font-bold text-teal-600">{profileCompleteness}%</span>
+            <h2 className="text-sm font-semibold text-gray-800">Profile Completeness</h2>
+            <span className="text-sm font-semibold text-teal-600">{profileCompleteness}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-gray-100 rounded-full h-1.5 mb-4">
             <div
-              className="bg-teal-500 h-2 rounded-full transition-all"
+              className="bg-teal-500 h-1.5 rounded-full transition-all"
               style={{ width: `${profileCompleteness}%` }}
             />
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Complete your profile to improve your chances of receiving job assignments.
-          </p>
+          <div className="space-y-2">
+            {PROFILE_STEPS.map(({ key, label, icon: StepIcon }) => {
+              const done = key === "languages" && languagePairCount != null && languagePairCount > 0;
+              return (
+                <div key={key} className="flex items-center gap-2.5 text-sm text-gray-500">
+                  {done ? (
+                    <CheckCircle2 className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                  ) : (
+                    <div className="w-4 h-4 rounded-full border-2 border-gray-200 flex-shrink-0" />
+                  )}
+                  <StepIcon className="w-3.5 h-3.5 text-gray-400" />
+                  <span className={done ? "line-through text-gray-400" : ""}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -269,12 +287,12 @@ export function VendorDashboard() {
       {offeredJobs.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-gray-800">
               Job Offers ({offeredJobs.length})
             </h2>
             <Link
               to="/jobs"
-              className="text-xs text-[#0F9DA0] hover:text-[#0d7f82] font-medium"
+              className="text-sm text-teal-600 hover:text-teal-700 font-medium"
             >
               View all &rarr;
             </Link>
@@ -284,7 +302,7 @@ export function VendorDashboard() {
               <Link
                 key={step.id}
                 to={`/jobs/${step.id}`}
-                className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50"
+                className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
               >
                 <div>
                   <div className="text-sm font-medium text-gray-900">
@@ -312,14 +330,14 @@ export function VendorDashboard() {
         {/* Profile summary */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-gray-800">
               Profile Summary
             </h2>
             <Link
               to="/profile"
-              className="text-xs text-[#0F9DA0] hover:text-[#0d7f82] font-medium"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-600 hover:text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 hover:bg-teal-50 transition-colors"
             >
-              View full profile
+              Edit Profile
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
@@ -365,53 +383,65 @@ export function VendorDashboard() {
         </div>
 
         {/* Quick actions */}
-        <div className="space-y-4">
-          <Link
-            to="/profile"
-            className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-gray-300 hover:shadow-sm transition-all group"
-          >
-            <div className="w-10 h-10 rounded-lg bg-[#0F9DA0]/10 flex items-center justify-center mb-3">
-              <User className="w-5 h-5 text-[#0F9DA0]" />
-            </div>
-            <p className="text-sm font-semibold text-gray-900 group-hover:text-[#0F9DA0] transition-colors">
-              My Profile
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              View your account details
-            </p>
-          </Link>
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-800">Quick Links</h2>
+          </div>
+          <div className="divide-y divide-gray-50">
+            <Link
+              to="/profile"
+              className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer group transition-colors"
+            >
+              <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
+                <User className="w-4.5 h-4.5 text-teal-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 group-hover:text-teal-600 transition-colors">
+                  My Profile
+                </p>
+                <p className="text-xs text-gray-400">View your account details</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
+            </Link>
 
-          <Link
-            to="/security"
-            className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-gray-300 hover:shadow-sm transition-all group"
-          >
-            <div className="w-10 h-10 rounded-lg bg-[#0F9DA0]/10 flex items-center justify-center mb-3">
-              <Shield className="w-5 h-5 text-[#0F9DA0]" />
-            </div>
-            <p className="text-sm font-semibold text-gray-900 group-hover:text-[#0F9DA0] transition-colors">
-              Security
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {needsPassword ? "Set up your password" : "Manage password"}
-            </p>
-          </Link>
+            <Link
+              to="/security"
+              className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer group transition-colors"
+            >
+              <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
+                <Shield className="w-4.5 h-4.5 text-teal-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 group-hover:text-teal-600 transition-colors">
+                  Security
+                </p>
+                <p className="text-xs text-gray-400">
+                  {needsPassword ? "Set up your password" : "Manage password"}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
+            </Link>
 
-          <Link
-            to="/jobs"
-            className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-gray-300 hover:shadow-sm transition-all group"
-          >
-            <div className="w-10 h-10 rounded-lg bg-[#0F9DA0]/10 flex items-center justify-center mb-3">
-              <Briefcase className="w-5 h-5 text-[#0F9DA0]" />
-            </div>
-            <p className="text-sm font-semibold text-gray-900 group-hover:text-[#0F9DA0] transition-colors">
-              Jobs
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {offeredJobs.length > 0
-                ? `${offeredJobs.length} job offer${offeredJobs.length !== 1 ? "s" : ""} waiting`
-                : "View your job assignments"}
-            </p>
-          </Link>
+            <Link
+              to="/jobs"
+              className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer group transition-colors"
+            >
+              <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
+                <Briefcase className="w-4.5 h-4.5 text-teal-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 group-hover:text-teal-600 transition-colors">
+                  Jobs
+                </p>
+                <p className="text-xs text-gray-400">
+                  {offeredJobs.length > 0
+                    ? `${offeredJobs.length} job offer${offeredJobs.length !== 1 ? "s" : ""} waiting`
+                    : "View your job assignments"}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
+            </Link>
+          </div>
         </div>
       </div>
     </div>

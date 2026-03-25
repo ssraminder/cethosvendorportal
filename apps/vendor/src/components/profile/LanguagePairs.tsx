@@ -151,7 +151,7 @@ export function LanguagePairs() {
     <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Language Pairs</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Language Pairs</h1>
           <p className="text-sm text-gray-500 mt-1">
             {activePairs.length} active pair{activePairs.length !== 1 ? "s" : ""}
           </p>
@@ -219,55 +219,62 @@ export function LanguagePairs() {
       )}
 
       {/* Active Pairs */}
-      <div className="space-y-2">
-        {activePairs.map((pair) => (
-          <div
-            key={pair.id}
-            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm"
-          >
-            <div className="flex items-center gap-3">
-              <Globe className="h-5 w-5 text-teal-600" />
-              <div>
-                <span className="font-medium text-gray-900">
-                  {langName(pair.source_language)}
-                </span>
-                <span className="mx-2 text-gray-400">→</span>
-                <span className="font-medium text-gray-900">
-                  {langName(pair.target_language)}
-                </span>
-                <span className="ml-2 text-xs text-gray-400">
-                  ({pair.source_language} → {pair.target_language})
-                </span>
+      {activePairs.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-3 border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Language Pair</span>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</span>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</span>
+          </div>
+          {activePairs.map((pair) => (
+            <div
+              key={pair.id}
+              className="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Globe className="h-4 w-4 text-teal-600 shrink-0" />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {langName(pair.source_language)}
+                  </span>
+                  <span className="mx-2 text-gray-400">→</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {langName(pair.target_language)}
+                  </span>
+                  <span className="ml-2 text-xs text-gray-400">
+                    ({pair.source_language} → {pair.target_language})
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
                 Active
               </span>
-              <button
-                onClick={() => handleToggle(pair.id)}
-                disabled={actionId === pair.id}
-                className="p-1 text-gray-400 hover:text-amber-600"
-                title="Deactivate"
-              >
-                {actionId === pair.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ToggleRight className="h-5 w-5 text-teal-600" />
-                )}
-              </button>
-              <button
-                onClick={() => handleRemove(pair.id)}
-                disabled={actionId === pair.id}
-                className="p-1 text-gray-400 hover:text-red-600"
-                title="Remove"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleToggle(pair.id)}
+                  disabled={actionId === pair.id}
+                  className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                  title="Deactivate"
+                >
+                  {actionId === pair.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ToggleRight className="h-5 w-5 text-teal-600" />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleRemove(pair.id)}
+                  disabled={actionId === pair.id}
+                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Remove"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Inactive Pairs */}
       {inactivePairs.length > 0 && (

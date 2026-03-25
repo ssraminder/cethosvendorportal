@@ -94,7 +94,7 @@ function EditableField({ icon: Icon, label, value, type = "text", placeholder, o
             <Icon className="w-4 h-4 text-gray-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">{label}</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">{label}</p>
             <div className="flex gap-2">
               <input
                 type={type}
@@ -130,7 +130,7 @@ function EditableField({ icon: Icon, label, value, type = "text", placeholder, o
         <Icon className="w-4 h-4 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
         <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
           {value || "Not provided"}
         </p>
@@ -190,7 +190,7 @@ function EditableSelectField({ icon: Icon, label, value, options, placeholder, o
             <Icon className="w-4 h-4 text-gray-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">{label}</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">{label}</p>
             <div className="flex gap-2 items-start">
               <SearchableSelect
                 options={options}
@@ -221,7 +221,7 @@ function EditableSelectField({ icon: Icon, label, value, options, placeholder, o
         <Icon className="w-4 h-4 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
         <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
           {displayLabel || "Not provided"}
         </p>
@@ -340,7 +340,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
             <Phone className="w-4 h-4 text-gray-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">Phone</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Phone</p>
             <p className="text-xs text-gray-500 mb-2">
               Enter your number with country code. We&apos;ll send a verification SMS.
             </p>
@@ -384,7 +384,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
             <Phone className="w-4 h-4 text-[#0F9DA0]" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">Verify Phone</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Verify Phone</p>
             <p className="text-xs text-gray-600 mb-2">
               Code sent to <span className="font-medium">{maskedPhone}</span>
             </p>
@@ -439,7 +439,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
         <Phone className="w-4 h-4 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">Phone</p>
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Phone</p>
         <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
           {value || "Not provided"}
         </p>
@@ -470,7 +470,7 @@ function ReadOnlyField({ icon: Icon, label, value }: ReadOnlyFieldProps) {
         <Icon className="w-4 h-4 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
         <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
           {value}
         </p>
@@ -521,7 +521,7 @@ function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCur
             <Icon className="w-4 h-4 text-gray-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">{label}</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">{label}</p>
             <div className="flex gap-2 items-start">
               <CurrencySelect
                 value={draft}
@@ -549,7 +549,7 @@ function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCur
         <Icon className="w-4 h-4 text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
         <p className={`text-sm mt-0.5 truncate ${isEmpty ? "text-gray-400 italic" : "font-medium text-gray-900"}`}>
           {value || "Not set"}
         </p>
@@ -607,7 +607,7 @@ function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
           <Languages className="w-4 h-4 text-gray-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
             Native Language(s)
           </p>
           {value.length > 0 && (
@@ -804,27 +804,31 @@ export function VendorProfile() {
   return (
     <div className="max-w-2xl mx-auto">
       {/* Profile header */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="bg-gradient-to-r from-[#0F9DA0] to-[#0d7f82] h-28" />
-        <div className="px-6 pb-6">
-          <div className="flex items-end gap-4 -mt-10">
-            <div className="w-20 h-20 rounded-full bg-[#0F9DA0] border-4 border-white flex items-center justify-center shadow-sm">
-              <span className="text-xl font-bold text-white">{initials}</span>
-            </div>
-            <div className="pb-1 flex-1 min-w-0">
-              <h1 className="text-xl font-bold text-gray-900 truncate">{vendor.full_name}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                {statusBadge(vendor.status)}
-              </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-teal-600 flex items-center justify-center">
+            <span className="text-xl font-bold text-white">{initials}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-semibold text-gray-900 truncate">{vendor.full_name}</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <span className="text-sm text-gray-500">{vendor.status.charAt(0).toUpperCase() + vendor.status.slice(1)}</span>
             </div>
           </div>
+          <a
+            href="/profile"
+            className="text-sm font-medium text-teal-600 hover:text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 hover:bg-teal-50 transition-colors"
+          >
+            Edit Profile
+          </a>
         </div>
       </div>
 
       {/* Account details */}
       <div className="mt-5 bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+          <h2 className="text-base font-semibold text-gray-800">
             Account Details
           </h2>
         </div>
@@ -890,7 +894,7 @@ export function VendorProfile() {
       {profileLoaded && (
         <div className="mt-5 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+            <h2 className="text-base font-semibold text-gray-800">
               Financial Details
             </h2>
           </div>
@@ -929,7 +933,7 @@ export function VendorProfile() {
             <Shield className="w-4 h-4 text-gray-400" />
           </div>
           <div className="flex-1">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">Security</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Security</p>
             <p className="text-sm font-medium text-gray-900 mt-0.5">
               Manage your password and sign-in settings
             </p>

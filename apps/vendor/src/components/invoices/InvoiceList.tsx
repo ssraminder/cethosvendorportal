@@ -65,7 +65,7 @@ export function InvoiceList() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Invoices</h1>
       </div>
 
       {error && (
@@ -74,27 +74,27 @@ export function InvoiceList() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-gray-500 uppercase">Total Earned</div>
-          <div className="mt-1 text-xl font-bold text-green-600">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-shadow">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Earned</div>
+          <div className={`mt-2 text-2xl font-bold ${totalEarned > 0 ? "text-green-600" : "text-gray-900"}`}>
             {new Intl.NumberFormat("en-CA", {
               style: "currency",
               currency: "CAD",
             }).format(totalEarned)}
           </div>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-gray-500 uppercase">Pending</div>
-          <div className="mt-1 text-xl font-bold text-amber-600">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-shadow">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pending</div>
+          <div className={`mt-2 text-2xl font-bold ${pendingAmount > 0 ? "text-amber-600" : "text-gray-900"}`}>
             {new Intl.NumberFormat("en-CA", {
               style: "currency",
               currency: "CAD",
             }).format(pendingAmount)}
           </div>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="text-xs text-gray-500 uppercase">Total Invoices</div>
-          <div className="mt-1 text-xl font-bold text-gray-900">{invoices.length}</div>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-shadow">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Invoices</div>
+          <div className="mt-2 text-2xl font-bold text-gray-900">{invoices.length}</div>
         </div>
       </div>
 
@@ -104,10 +104,10 @@ export function InvoiceList() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2.5 text-sm border-b-[3px] transition-colors ${
               filter === f
-                ? "border-teal-600 text-teal-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                ? "border-teal-600 text-teal-600 font-semibold"
+                : "border-transparent text-gray-600 font-medium hover:text-gray-800"
             }`}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
