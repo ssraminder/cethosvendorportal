@@ -632,9 +632,8 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
         <NegotiateModal
           job={step}
           onClose={() => setShowNegotiate(false)}
-          onSuccess={(msg) => {
+          onSuccess={() => {
             setShowNegotiate(false);
-            // Brief display then trigger parent refresh
             onAction();
           }}
         />
