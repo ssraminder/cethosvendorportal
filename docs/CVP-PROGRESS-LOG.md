@@ -14,6 +14,21 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Auto-Accept Tab Switch + T&C service_id Fix)
+
+### Completed
+- **Fix 1 — Auto-Accept Tab Switch (V4):** NegotiateModal now passes `autoAssigned` flag through `onSuccess` callback. JobBoard's `handleActionSuccess` detects it and calls `setTab("active")` + `fetchTab("active")` so vendor sees their new assignment immediately. Also threaded through JobDetailModal's `onAction` prop.
+- **Fix 2 — T&C service_id (V5):** `checkTermsForOffer()` now accepts and forwards `service_id` to the `get_terms` request. TermsModal accepts `serviceId` prop and includes it in the `accept_terms` request. Both JobBoard and JobDetailModal pass `step.service_id` through the terms flow.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — `onSuccess` callback now includes optional `autoAssigned` boolean
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — `handleActionSuccess` supports `switchToActive`, termsModal state includes `serviceId`, passes `service_id` to `checkTermsForOffer` and TermsModal
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — `onAction` prop updated to pass message+switchToActive, termsModal state includes `serviceId`, passes `service_id` through terms flow
+- `apps/vendor/src/components/jobs/TermsModal.tsx` — `checkTermsForOffer` accepts `serviceId` param, TermsModal accepts `serviceId` prop, both `get_terms` and `accept_terms` include `service_id`
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
 ## Session — March 25, 2026 (Vendor Portal Pending Features Audit)
 
 ### Completed

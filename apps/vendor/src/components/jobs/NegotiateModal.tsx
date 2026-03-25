@@ -33,7 +33,7 @@ const unitLabel = (unit: string): string => {
 interface NegotiateModalProps {
   job: VendorStep;
   onClose: () => void;
-  onSuccess: (message: string) => void;
+  onSuccess: (message: string, autoAssigned?: boolean) => void;
 }
 
 export function NegotiateModal({ job, onClose, onSuccess }: NegotiateModalProps) {
@@ -120,7 +120,7 @@ export function NegotiateModal({ job, onClose, onSuccess }: NegotiateModalProps)
 
       if (data.auto_accepted && data.auto_assigned) {
         // Vendor is now fully assigned — job moves to Active tab
-        onSuccess("Your proposal has been accepted! You are now assigned to this job.");
+        onSuccess("Your proposal has been accepted! You are now assigned to this job.", true);
       } else if (data.auto_accepted) {
         // Fallback for edge case
         onSuccess("Your proposal has been accepted!");

@@ -95,6 +95,7 @@ export function JobBoard() {
     offerId: string;
     stepId: string;
     orderId: string;
+    serviceId?: string | null;
     actionType: "accept_offer" | "submit_counter";
     pendingAction: () => void;
   } | null>(null);
@@ -109,7 +110,7 @@ export function JobBoard() {
       return;
     }
 
-    const result = await checkTermsForOffer(sessionToken, step.offer_id);
+    const result = await checkTermsForOffer(sessionToken, step.offer_id, step.service_id);
 
     if (!result.needsTerms || !result.terms) {
       onProceed();
@@ -122,6 +123,7 @@ export function JobBoard() {
       offerId: step.offer_id,
       stepId: step.id,
       orderId: step.order_id ?? "",
+      serviceId: step.service_id,
       actionType,
       pendingAction: onProceed,
     });
@@ -193,11 +195,16 @@ export function JobBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramId, sessionToken]);
 
-  const handleActionSuccess = (message: string) => {
+  const handleActionSuccess = (message: string, switchToActive?: boolean) => {
     setActionModal(null);
     setSelectedStep(null);
     setSuccessMsg(message);
-    fetchTab(tab);
+    if (switchToActive) {
+      setTab("active");
+      fetchTab("active");
+    } else {
+      fetchTab(tab);
+    }
     setTimeout(() => setSuccessMsg(""), 4000);
   };
 
@@ -456,10 +463,10 @@ export function JobBoard() {
         <JobDetailModal
           step={selectedStep}
           onClose={handleDetailClose}
-          onAction={() => {
+          onAction={(message, switchToActive) => {
             setSelectedStep(null);
             if (paramId) navigate("/jobs", { replace: true });
-            handleActionSuccess("Action completed successfully!");
+            handleActionSuccess(message || "Action completed successfully!", switchToActive);
           }}
         />
       )}
@@ -490,7 +497,7 @@ export function JobBoard() {
         <NegotiateModal
           job={negotiatingJob}
           onClose={() => setNegotiatingJob(null)}
-          onSuccess={(msg) => { setNegotiatingJob(null); handleActionSuccess(msg); }}
+          onSuccess={(msg, autoAssigned) => { setNegotiatingJob(null); handleActionSuccess(msg, autoAssigned); }}
         />
       )}
       {termsModal?.isOpen && (
@@ -506,6 +513,7 @@ export function JobBoard() {
           offerId={termsModal.offerId}
           stepId={termsModal.stepId}
           orderId={termsModal.orderId}
+          serviceId={termsModal.serviceId}
           actionType={termsModal.actionType}
         />
       )}
