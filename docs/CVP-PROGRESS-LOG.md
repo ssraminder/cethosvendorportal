@@ -14,6 +14,24 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Job Detail Modal Phase 2 — Rich Detail)
+
+### Completed
+- **Inline PDF Preview:** Source, reference, and delivered PDF files can be previewed inline via iframe toggle (Preview/Hide button). Non-PDF files show Download only.
+- **Per-File Document Details (Expandable):** Volume section shows collapsed summary ("3 documents · 2,450 words · 8 pages") with click-to-expand per-file details showing word count, page count, file type, file size, and Preview/Download buttons. Documents matched to source files by filename.
+- **Previous Step Deliverables:** Step 2+ jobs show a distinct blue-tinted section ("Files from Previous Step") with explanatory text, filtering source_files by `source === "previous_step"`. Step 1 jobs show "Source Files" only.
+- **Reference Files Section:** Green-tinted section with reference materials, shown only when reference_files exist. Same preview/download behavior.
+- **Enhanced Revision Context:** Amber section with revision number, PM feedback in highlighted block, previous delivery files, original source files, compare guidance text, and "Deliver Revision" CTA. Positioned prominently after Deadline section.
+- **Customer First Name Display:** Shows customer first name in Order Info section (extracted from `customer_name` field). Hidden when null.
+- **FileRowWithPreview component:** New reusable component replacing FileRow, supports PDF preview toggle and color tinting for different sections (default/blue/green).
+- Added `customer_name` to `JobDetailJob` interface.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added `customer_name` to `JobDetailJob`
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Complete rewrite with Phase 2 features
+
+---
+
 ## Session — March 25, 2026 (Enhanced Job Detail Modal)
 
 ### Completed

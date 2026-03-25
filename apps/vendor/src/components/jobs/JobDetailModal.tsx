@@ -5,6 +5,7 @@ import {
   type VendorStep,
   type JobDetailResponse,
   type JobDetailFile,
+  type VolumeDocument,
 } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
 import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
@@ -17,6 +18,10 @@ import {
   Loader2,
   Calendar,
   Timer,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
@@ -84,6 +89,10 @@ function isExpired(expiresAt: string | null): boolean {
   return new Date(expiresAt).getTime() < Date.now();
 }
 
+function isPdf(file: JobDetailFile): boolean {
+  return file.mime_type === "application/pdf";
+}
+
 interface JobDetailModalProps {
   step: VendorStep;
   onClose: () => void;
@@ -96,6 +105,8 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
   const [detail, setDetail] = useState<JobDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  const [volumeExpanded, setVolumeExpanded] = useState(false);
 
   useEffect(() => {
     if (!sessionToken) return;
@@ -132,18 +143,35 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
     window.open(file.download_url, "_blank");
   };
 
+  const togglePreview = (storagePath: string) => {
+    setPreviewFileId((prev) => (prev === storagePath ? null : storagePath));
+  };
+
   // Use detail data when available, fall back to step data for header
   const job = detail?.job;
   const status = job?.status ?? step.status;
   const badge = STATUS_BADGES[status] ?? STATUS_BADGES.offered;
   const expired = isExpired(job?.expires_at ?? step.expires_at ?? null);
   const canDeliver = ["accepted", "in_progress", "revision_requested"].includes(status);
-  const isRevision = status === "revision_requested";
+  const isRevision = status === "revision_requested" || (job?.revision_count ?? 0) > 0;
   const canAccept = status === "offered" && !expired;
 
   const currency = job?.vendor_currency ?? step.vendor_currency ?? "CAD";
   const fmt = (val: number) =>
     new Intl.NumberFormat("en-CA", { style: "currency", currency }).format(val);
+
+  // Categorize source files
+  const originalFiles = detail?.source_files.filter((f) => f.source !== "previous_step") ?? [];
+  const previousStepFiles = detail?.source_files.filter((f) => f.source === "previous_step") ?? [];
+
+  // Match volume documents to source files by filename
+  const getFileForDoc = (doc: VolumeDocument): JobDetailFile | undefined => {
+    return detail?.source_files.find(
+      (f) => f.filename === doc.filename || f.filename.replace(/\.[^.]+$/, "") === doc.filename.replace(/\.[^.]+$/, "")
+    );
+  };
+
+  const customerFirstName = job?.customer_name?.split(" ")[0] || null;
 
   return (
     <>
@@ -189,13 +217,21 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
               </div>
             ) : job ? (
               <>
-                {/* ORDER INFO */}
+                {/* 1. ORDER INFO with customer name */}
                 <section className="rounded-lg border border-gray-200 p-4">
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Order Info</h4>
                   <div className="flex items-center gap-3 flex-wrap text-sm">
                     <span className="text-gray-700">
                       Order <span className="font-medium text-gray-900">#{job.order_number}</span>
                     </span>
+                    {customerFirstName && (
+                      <>
+                        <span className="text-gray-400">&middot;</span>
+                        <span className="text-gray-700">
+                          Customer: <span className="font-medium text-gray-900">{customerFirstName}</span>
+                        </span>
+                      </>
+                    )}
                     <span className="text-gray-400">&middot;</span>
                     <span className="text-gray-700">Service: <span className="font-medium text-gray-900">{job.service_name}</span></span>
                     {job.is_rush && (
@@ -206,7 +242,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   </div>
                 </section>
 
-                {/* LANGUAGE & RATE */}
+                {/* 2. LANGUAGE & RATE */}
                 <section className="rounded-lg border border-gray-200 p-4">
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Language &amp; Rate</h4>
                   {(job.source_language || job.target_language) && (
@@ -230,7 +266,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   )}
                 </section>
 
-                {/* DEADLINE & TIMING */}
+                {/* 3. DEADLINE & TIMING */}
                 <section className="rounded-lg border border-gray-200 p-4">
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Deadline &amp; Timing</h4>
                   <div className="space-y-1.5 text-sm">
@@ -280,57 +316,218 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   </div>
                 </section>
 
-                {/* VOLUME */}
-                {detail.volume && detail.volume.total_files > 0 && (
-                  <section className="rounded-lg border border-gray-200 p-4">
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Volume</h4>
-                    <p className="text-sm text-gray-700 mb-2">
-                      {detail.volume.total_files} document{detail.volume.total_files !== 1 ? "s" : ""}
-                      {detail.volume.total_word_count > 0 && <> &middot; {detail.volume.total_word_count.toLocaleString()} words</>}
-                      {detail.volume.total_page_count > 0 && <> &middot; {detail.volume.total_page_count} pages</>}
+                {/* 4. REVISION CONTEXT (prominent position when applicable) */}
+                {isRevision && status === "revision_requested" && (
+                  <section className="rounded-lg bg-amber-50 border border-amber-300 p-4">
+                    <div className="flex items-start gap-2 mb-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                      <h4 className="text-sm font-bold text-amber-800">
+                        Revision #{job.revision_count} Requested
+                      </h4>
+                    </div>
+
+                    {job.rejection_reason && (
+                      <div className="ml-7 mb-4">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">PM Feedback:</p>
+                        <p className="text-sm text-amber-900 whitespace-pre-wrap bg-amber-100/50 rounded p-3 border border-amber-200">
+                          {job.rejection_reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {detail.delivered_files.length > 0 && (
+                      <div className="ml-7 mb-3">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Your Previous Delivery</p>
+                        <div className="space-y-1">
+                          {detail.delivered_files.map((file, i) => (
+                            <FileRowWithPreview
+                              key={i}
+                              file={file}
+                              previewFileId={previewFileId}
+                              onTogglePreview={togglePreview}
+                              onDownload={handleDownload}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {originalFiles.length > 0 && (
+                      <div className="ml-7 mb-3">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Original Source Files</p>
+                        <div className="space-y-1">
+                          {originalFiles.map((file, i) => (
+                            <FileRowWithPreview
+                              key={i}
+                              file={file}
+                              previewFileId={previewFileId}
+                              onTogglePreview={togglePreview}
+                              onDownload={handleDownload}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="ml-7 text-xs text-amber-700 italic">
+                      Compare your previous delivery against the source files and address the feedback above.
                     </p>
-                    {detail.volume.documents.length > 0 && (
-                      <div className="space-y-1 text-sm text-gray-600">
-                        {detail.volume.documents.map((doc, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <FileText className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                            <span>{doc.filename}</span>
-                            {doc.word_count > 0 && <span className="text-gray-400">&mdash; {doc.word_count.toLocaleString()} words</span>}
-                            {doc.page_count > 0 && <span className="text-gray-400">, {doc.page_count} pages</span>}
-                          </div>
-                        ))}
+
+                    {canDeliver && (
+                      <div className="ml-7 mt-3">
+                        <button
+                          onClick={() => setActionModal("deliver")}
+                          className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+                        >
+                          Deliver Revision
+                        </button>
                       </div>
                     )}
                   </section>
                 )}
 
-                {/* SOURCE FILES */}
-                <section className="rounded-lg border border-gray-200 p-4">
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Source Files</h4>
-                  {detail.source_files.length > 0 ? (
-                    <div className="space-y-2">
-                      {detail.source_files.map((file, i) => (
-                        <FileRow key={i} file={file} onDownload={handleDownload} />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400">No source files available</p>
-                  )}
-                </section>
-
-                {/* REFERENCE FILES */}
-                {detail.reference_files.length > 0 && (
+                {/* 5. VOLUME & DOCUMENTS (expandable) */}
+                {detail.volume && detail.volume.total_files > 0 && (
                   <section className="rounded-lg border border-gray-200 p-4">
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Reference Files</h4>
-                    <div className="space-y-2">
-                      {detail.reference_files.map((file, i) => (
-                        <FileRow key={i} file={file} onDownload={handleDownload} />
+                    <button
+                      onClick={() => setVolumeExpanded(!volumeExpanded)}
+                      className="w-full flex items-center justify-between text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-gray-500" />
+                        <span className="text-sm text-gray-700">
+                          {detail.volume.total_files} document{detail.volume.total_files !== 1 ? "s" : ""}
+                          {detail.volume.total_word_count > 0 && <> &middot; {detail.volume.total_word_count.toLocaleString()} words</>}
+                          {detail.volume.total_page_count > 0 && <> &middot; {detail.volume.total_page_count} pages</>}
+                        </span>
+                      </div>
+                      {volumeExpanded ? (
+                        <ChevronUp className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+
+                    {volumeExpanded && detail.volume.documents.length > 0 && (
+                      <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
+                        {detail.volume.documents.map((doc, i) => {
+                          const matchedFile = getFileForDoc(doc);
+                          return (
+                            <div key={i} className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <FileText className="h-4 w-4 text-gray-400 shrink-0" />
+                                <span className="text-sm font-medium text-gray-800 truncate">{doc.filename}</span>
+                              </div>
+                              <div className="ml-6 text-xs text-gray-500 mb-2">
+                                {doc.word_count > 0 && <>{doc.word_count.toLocaleString()} words</>}
+                                {doc.page_count > 0 && <>{doc.word_count > 0 ? " · " : ""}{doc.page_count} pages</>}
+                                {matchedFile?.mime_type && (
+                                  <> · {matchedFile.mime_type === "application/pdf" ? "PDF" : matchedFile.mime_type.split("/")[1]?.toUpperCase() ?? "File"}</>
+                                )}
+                                {matchedFile?.file_size != null && matchedFile.file_size > 0 && (
+                                  <> · {formatFileSize(matchedFile.file_size)}</>
+                                )}
+                              </div>
+                              {matchedFile && (
+                                <div className="ml-6">
+                                  <div className="flex items-center gap-2">
+                                    {isPdf(matchedFile) && (
+                                      <button
+                                        onClick={() => togglePreview(matchedFile.storage_path)}
+                                        className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
+                                      >
+                                        {previewFileId === matchedFile.storage_path ? (
+                                          <><EyeOff className="h-3.5 w-3.5" /> Hide</>
+                                        ) : (
+                                          <><Eye className="h-3.5 w-3.5" /> Preview</>
+                                        )}
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleDownload(matchedFile)}
+                                      className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
+                                    >
+                                      <Download className="h-3.5 w-3.5" />
+                                      Download
+                                    </button>
+                                  </div>
+                                  {isPdf(matchedFile) && previewFileId === matchedFile.storage_path && (
+                                    <iframe
+                                      src={matchedFile.download_url}
+                                      className="w-full h-96 border border-gray-200 rounded mt-2"
+                                      title={`Preview: ${matchedFile.filename}`}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {/* 6. SOURCE FILES */}
+                {originalFiles.length > 0 && (
+                  <section className="rounded-lg border border-gray-200 p-4">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Source Files</h4>
+                    <div className="space-y-1">
+                      {originalFiles.map((file, i) => (
+                        <FileRowWithPreview
+                          key={i}
+                          file={file}
+                          previewFileId={previewFileId}
+                          onTogglePreview={togglePreview}
+                          onDownload={handleDownload}
+                        />
                       ))}
                     </div>
                   </section>
                 )}
 
-                {/* INSTRUCTIONS */}
+                {/* 7. PREVIOUS STEP FILES (blue section, only for step > 1) */}
+                {previousStepFiles.length > 0 && (
+                  <section className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+                    <h4 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Files from Previous Step</h4>
+                    <p className="text-xs text-blue-600 mb-3">
+                      These files were delivered by the previous step (Step {(job.step_number ?? 1) - 1}). They are your starting point.
+                    </p>
+                    <div className="space-y-1">
+                      {previousStepFiles.map((file, i) => (
+                        <FileRowWithPreview
+                          key={i}
+                          file={file}
+                          previewFileId={previewFileId}
+                          onTogglePreview={togglePreview}
+                          onDownload={handleDownload}
+                          tintColor="blue"
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* 8. REFERENCE FILES (green section) */}
+                {detail.reference_files.length > 0 && (
+                  <section className="rounded-lg bg-green-50 border border-green-200 p-4">
+                    <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Reference Materials</h4>
+                    <div className="space-y-1">
+                      {detail.reference_files.map((file, i) => (
+                        <FileRowWithPreview
+                          key={i}
+                          file={file}
+                          previewFileId={previewFileId}
+                          onTogglePreview={togglePreview}
+                          onDownload={handleDownload}
+                          tintColor="green"
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* 9. INSTRUCTIONS */}
                 {job.instructions && (
                   <section>
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Instructions</h4>
@@ -340,34 +537,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   </section>
                 )}
 
-                {/* REVISION CONTEXT */}
-                {isRevision && (job.rejection_reason || detail.delivered_files.length > 0) && (
-                  <section className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-                    <div className="flex items-start gap-2 mb-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                      <h4 className="text-sm font-semibold text-amber-800">
-                        Revision Requested{job.revision_count > 0 && ` (Revision #${job.revision_count})`}
-                      </h4>
-                    </div>
-                    {job.rejection_reason && (
-                      <p className="text-sm text-amber-800 whitespace-pre-wrap mb-3 ml-6">
-                        {job.rejection_reason}
-                      </p>
-                    )}
-                    {detail.delivered_files.length > 0 && (
-                      <div className="ml-6">
-                        <p className="text-xs font-medium text-amber-700 mb-1">Your previous delivery:</p>
-                        <div className="space-y-2">
-                          {detail.delivered_files.map((file, i) => (
-                            <FileRow key={i} file={file} onDownload={handleDownload} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {/* TIMELINE */}
+                {/* 10. TIMELINE */}
                 <section>
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Timeline</h4>
                   <div className="space-y-2">
@@ -419,12 +589,12 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
               <button
                 onClick={() => setActionModal("deliver")}
                 className={`px-4 py-2 text-sm font-medium text-white rounded-lg ${
-                  isRevision
+                  status === "revision_requested"
                     ? "bg-amber-600 hover:bg-amber-700"
                     : "bg-teal-600 hover:bg-teal-700"
                 }`}
               >
-                {isRevision ? "Deliver Revision" : "Deliver"}
+                {status === "revision_requested" ? "Deliver Revision" : "Deliver"}
               </button>
             )}
           </div>
@@ -447,23 +617,67 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
 
 // --- Sub-components ---
 
-function FileRow({ file, onDownload }: { file: JobDetailFile; onDownload: (f: JobDetailFile) => void }) {
+const TINT_COLORS = {
+  default: { icon: "text-teal-600", hover: "hover:text-teal-700" },
+  blue: { icon: "text-blue-600", hover: "hover:text-blue-700" },
+  green: { icon: "text-green-600", hover: "hover:text-green-700" },
+} as const;
+
+function FileRowWithPreview({
+  file,
+  previewFileId,
+  onTogglePreview,
+  onDownload,
+  tintColor = "default",
+}: {
+  file: JobDetailFile;
+  previewFileId: string | null;
+  onTogglePreview: (id: string) => void;
+  onDownload: (f: JobDetailFile) => void;
+  tintColor?: "default" | "blue" | "green";
+}) {
+  const isPreviewOpen = previewFileId === file.storage_path;
+  const colors = TINT_COLORS[tintColor];
+
   return (
-    <div className="flex items-center justify-between gap-2 text-sm">
-      <div className="flex items-center gap-2 min-w-0">
-        <FileText className="h-4 w-4 text-gray-400 shrink-0" />
-        <span className="text-gray-700 truncate">{file.filename}</span>
-        {file.file_size != null && file.file_size > 0 && (
-          <span className="text-gray-400 shrink-0">({formatFileSize(file.file_size)})</span>
-        )}
+    <div>
+      <div className="flex items-center justify-between gap-2 text-sm py-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="h-4 w-4 text-gray-400 shrink-0" />
+          <span className="text-gray-700 truncate">{file.filename}</span>
+          {file.file_size != null && file.file_size > 0 && (
+            <span className="text-gray-400 shrink-0">({formatFileSize(file.file_size)})</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {isPdf(file) && (
+            <button
+              onClick={() => onTogglePreview(file.storage_path)}
+              className={`inline-flex items-center gap-1 text-xs font-medium ${colors.icon} ${colors.hover}`}
+            >
+              {isPreviewOpen ? (
+                <><EyeOff className="h-3.5 w-3.5" /> Hide</>
+              ) : (
+                <><Eye className="h-3.5 w-3.5" /> Preview</>
+              )}
+            </button>
+          )}
+          <button
+            onClick={() => onDownload(file)}
+            className={`inline-flex items-center gap-1 text-xs font-medium ${colors.icon} ${colors.hover}`}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download
+          </button>
+        </div>
       </div>
-      <button
-        onClick={() => onDownload(file)}
-        className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 font-medium shrink-0"
-      >
-        <Download className="h-3.5 w-3.5" />
-        Download
-      </button>
+      {isPdf(file) && isPreviewOpen && (
+        <iframe
+          src={file.download_url}
+          className="w-full h-96 border border-gray-200 rounded mt-2"
+          title={`Preview: ${file.filename}`}
+        />
+      )}
     </div>
   );
 }

@@ -101,6 +101,7 @@ export interface JobDetailJob {
   requires_file_upload: boolean;
   offer_id: string | null;
   offer_status: string | null;
+  customer_name: string | null;
 }
 
 export interface VolumeDocument {
