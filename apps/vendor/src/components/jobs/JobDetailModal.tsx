@@ -9,6 +9,7 @@ import {
 } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
 import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
+import { NegotiateModal } from "./NegotiateModal";
 import {
   X,
   Clock,
@@ -102,6 +103,7 @@ interface JobDetailModalProps {
 export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps) {
   const { sessionToken } = useVendorAuth();
   const [actionModal, setActionModal] = useState<"accept" | "decline" | "deliver" | null>(null);
+  const [showNegotiate, setShowNegotiate] = useState(false);
   const [detail, setDetail] = useState<JobDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -263,6 +265,12 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                     </div>
                   ) : (
                     <p className="text-sm text-gray-400 italic">Rate to be discussed</p>
+                  )}
+                  {job.negotiation_allowed && (
+                    <div className="text-xs text-teal-600 mt-2">This offer is open to negotiation</div>
+                  )}
+                  {!job.negotiation_allowed && (
+                    <div className="text-xs text-gray-400 mt-2">Fixed terms &mdash; accept or decline</div>
                   )}
                 </section>
 
@@ -576,6 +584,15 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                 >
                   Decline
                 </button>
+                {(job?.negotiation_allowed ?? step.negotiation_allowed) && (
+                  <button
+                    onClick={() => setShowNegotiate(true)}
+                    disabled={(job?.counter_status ?? step.counter_status) === "proposed"}
+                    className="px-4 py-2 text-sm font-medium text-orange-600 border border-orange-400 rounded-lg hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {(job?.counter_status ?? step.counter_status) === "proposed" ? "Counter Pending" : "Negotiate"}
+                  </button>
+                )}
                 <button
                   onClick={() => setActionModal("accept")}
                   disabled={expired}
@@ -610,6 +627,17 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
       )}
       {actionModal === "deliver" && (
         <DeliverModal step={step} onClose={() => setActionModal(null)} onSuccess={handleActionSuccess} />
+      )}
+      {showNegotiate && (
+        <NegotiateModal
+          job={step}
+          onClose={() => setShowNegotiate(false)}
+          onSuccess={(msg) => {
+            setShowNegotiate(false);
+            // Brief display then trigger parent refresh
+            onAction();
+          }}
+        />
       )}
     </>
   );
