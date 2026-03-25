@@ -14,6 +14,31 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Enhanced Job Detail Modal)
+
+### Completed
+- **Job Detail Modal — Full enrichment (Phase 1):**
+  - Modal now fetches from `vendor-get-job-detail` edge function on open with loading spinner
+  - New sections: Order Info (order number, service, rush badge), Language & Rate (LP, rate, total, currency), Deadline & Timing (deadline with relative time, estimated delivery, offer expiry countdown), Volume (doc count, word count, page count + per-file breakdown), Source Files (with individual download buttons via signed URLs), Reference Files (conditional), Instructions (gray box), Revision Context (amber box with reason + previous delivery files), full Timeline (Offered → Approved with dates or dashes)
+  - Expired offers show red "Expired" badge and disabled Accept button
+  - Footer actions vary by status: Accept/Decline for offered, Deliver for active, Deliver Revision for revision_requested
+  - Added `getJobDetail` API function and full TypeScript types (`JobDetailJob`, `JobDetailVolume`, `JobDetailFile`, `JobDetailResponse`)
+  - Added `offer_id`, `expires_at`, `is_rush` fields to `VendorStep` interface
+
+- **Job Board Cards — Enhanced info:**
+  - Cards now clickable (entire card opens detail modal)
+  - Added RUSH badge on cards for rush orders
+  - Added offer expiry countdown badge on offered jobs
+  - Rate and total displayed inline on cards
+  - Action buttons use `stopPropagation` to prevent double-opening modal
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added job detail types and `getJobDetail` function
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Complete rewrite with enhanced layout
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Enhanced cards with rush/expiry badges, clickable cards
+
+---
+
 ## Session — March 24, 2026 (Profile Enhancements + Services & Rates Page)
 
 ### Completed
