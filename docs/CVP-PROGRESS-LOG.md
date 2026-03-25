@@ -14,6 +14,20 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Fix Negotiate Modal)
+
+### Completed
+- **Auto-calculated total:** Removed editable Rate Unit dropdown and Proposed Total input. Units are now derived from the original offer (total / rate). Total auto-calculates as proposed rate × units (read-only display).
+- **Current Offer summary box:** Added a prominent gray box at the top of the modal showing the original rate × units = total and deadline.
+- **Deadline time picker:** Replaced date-only input with date + time picker. Time dropdown shows 30-minute increments (12:00 AM through 11:30 PM). Pre-fills from original offer deadline.
+- **Note field required:** Changed note from optional to required. Submit button disabled until note is provided.
+- **Unit display:** Shows unit label from original offer (e.g., "/ page × 3 pages") as read-only text next to rate input.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — Rewrote modal: removed rate unit dropdown and editable total, added auto-calculation, current offer box, date+time deadline picker
+
+---
+
 ## Session — March 25, 2026 (Vendor Negotiation Policy Awareness)
 
 ### Completed
