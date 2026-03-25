@@ -14,6 +14,17 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Counter-Offer Auto-Assign Handling)
+
+### Completed
+- **Auto-assign toast:** Updated NegotiateModal success handling for backend v3 counter-offer response. When `auto_accepted && auto_assigned` is true, shows "You are now assigned to this job" instead of the old "You can now accept the revised offer" message. Job moves to Active tab on refetch.
+- **Edge case fallback:** Added separate branch for `auto_accepted` without `auto_assigned` (shows generic acceptance message).
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — Updated success toast logic to handle auto-assigned counter-offers
+
+---
+
 ## Session — March 25, 2026 (Fix Negotiate Modal)
 
 ### Completed
