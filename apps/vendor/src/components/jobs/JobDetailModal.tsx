@@ -10,6 +10,7 @@ import {
 import { LANGUAGES } from "../../data/languages";
 import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
 import { NegotiateModal } from "./NegotiateModal";
+import { TermsModal, checkTermsForOffer, type TermsData } from "./TermsModal";
 import {
   X,
   Clock,
@@ -109,6 +110,42 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
   const [fetchError, setFetchError] = useState("");
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [volumeExpanded, setVolumeExpanded] = useState(false);
+  const [termsModal, setTermsModal] = useState<{
+    isOpen: boolean;
+    terms: TermsData;
+    offerId: string;
+    stepId: string;
+    orderId: string;
+    actionType: "accept_offer" | "submit_counter";
+    pendingAction: () => void;
+  } | null>(null);
+
+  const checkTermsAndProceed = async (
+    actionType: "accept_offer" | "submit_counter",
+    onProceed: () => void
+  ) => {
+    if (!sessionToken || !step.offer_id) {
+      onProceed();
+      return;
+    }
+
+    const result = await checkTermsForOffer(sessionToken, step.offer_id);
+
+    if (!result.needsTerms || !result.terms) {
+      onProceed();
+      return;
+    }
+
+    setTermsModal({
+      isOpen: true,
+      terms: result.terms,
+      offerId: step.offer_id,
+      stepId: step.id,
+      orderId: step.order_id ?? "",
+      actionType,
+      pendingAction: onProceed,
+    });
+  };
 
   useEffect(() => {
     if (!sessionToken) return;
@@ -586,7 +623,11 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                 </button>
                 {(job?.negotiation_allowed ?? step.negotiation_allowed) && (
                   <button
-                    onClick={() => setShowNegotiate(true)}
+                    onClick={() =>
+                      checkTermsAndProceed("submit_counter", () =>
+                        setShowNegotiate(true)
+                      )
+                    }
                     disabled={(job?.counter_status ?? step.counter_status) === "proposed"}
                     className="px-4 py-2 text-sm font-medium text-orange-600 border border-orange-400 rounded-lg hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -594,7 +635,11 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   </button>
                 )}
                 <button
-                  onClick={() => setActionModal("accept")}
+                  onClick={() =>
+                    checkTermsAndProceed("accept_offer", () =>
+                      setActionModal("accept")
+                    )
+                  }
                   disabled={expired}
                   className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -636,6 +681,22 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
             setShowNegotiate(false);
             onAction();
           }}
+        />
+      )}
+      {termsModal?.isOpen && (
+        <TermsModal
+          isOpen={true}
+          onClose={() => setTermsModal(null)}
+          onAccept={() => {
+            const action = termsModal.pendingAction;
+            setTermsModal(null);
+            action();
+          }}
+          terms={termsModal.terms}
+          offerId={termsModal.offerId}
+          stepId={termsModal.stepId}
+          orderId={termsModal.orderId}
+          actionType={termsModal.actionType}
         />
       )}
     </>

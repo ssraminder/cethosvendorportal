@@ -6,6 +6,7 @@ import { LANGUAGES } from "../../data/languages";
 import { JobDetailModal } from "./JobDetailModal";
 import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
 import { NegotiateModal } from "./NegotiateModal";
+import { TermsModal, checkTermsForOffer, type TermsData } from "./TermsModal";
 import {
   Briefcase,
   Loader2,
@@ -88,6 +89,43 @@ export function JobBoard() {
   const [selectedStep, setSelectedStep] = useState<VendorStep | null>(null);
   const [actionModal, setActionModal] = useState<{ type: "accept" | "decline" | "deliver"; step: VendorStep } | null>(null);
   const [negotiatingJob, setNegotiatingJob] = useState<VendorStep | null>(null);
+  const [termsModal, setTermsModal] = useState<{
+    isOpen: boolean;
+    terms: TermsData;
+    offerId: string;
+    stepId: string;
+    orderId: string;
+    actionType: "accept_offer" | "submit_counter";
+    pendingAction: () => void;
+  } | null>(null);
+
+  const checkTermsAndProceed = async (
+    step: VendorStep,
+    actionType: "accept_offer" | "submit_counter",
+    onProceed: () => void
+  ) => {
+    if (!sessionToken || !step.offer_id) {
+      onProceed();
+      return;
+    }
+
+    const result = await checkTermsForOffer(sessionToken, step.offer_id);
+
+    if (!result.needsTerms || !result.terms) {
+      onProceed();
+      return;
+    }
+
+    setTermsModal({
+      isOpen: true,
+      terms: result.terms,
+      offerId: step.offer_id,
+      stepId: step.id,
+      orderId: step.order_id ?? "",
+      actionType,
+      pendingAction: onProceed,
+    });
+  };
 
   const fetchTab = useCallback(
     async (t: TabKey) => {
@@ -360,7 +398,12 @@ export function JobBoard() {
                     {step.status === "offered" && (
                       <>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setActionModal({ type: "accept", step }); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            checkTermsAndProceed(step, "accept_offer", () =>
+                              setActionModal({ type: "accept", step })
+                            );
+                          }}
                           className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700"
                         >
                           Accept
@@ -374,7 +417,12 @@ export function JobBoard() {
                         {step.negotiation_allowed && (
                           <button
                             className="inline-flex items-center gap-1 rounded-lg border border-orange-400 px-3 py-1.5 text-xs font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={(e) => { e.stopPropagation(); setNegotiatingJob(step); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              checkTermsAndProceed(step, "submit_counter", () =>
+                                setNegotiatingJob(step)
+                              );
+                            }}
                             disabled={step.counter_status === "proposed"}
                           >
                             {step.counter_status === "proposed" ? "Counter Pending" : "Negotiate"}
@@ -443,6 +491,22 @@ export function JobBoard() {
           job={negotiatingJob}
           onClose={() => setNegotiatingJob(null)}
           onSuccess={(msg) => { setNegotiatingJob(null); handleActionSuccess(msg); }}
+        />
+      )}
+      {termsModal?.isOpen && (
+        <TermsModal
+          isOpen={true}
+          onClose={() => setTermsModal(null)}
+          onAccept={() => {
+            const action = termsModal.pendingAction;
+            setTermsModal(null);
+            action();
+          }}
+          terms={termsModal.terms}
+          offerId={termsModal.offerId}
+          stepId={termsModal.stepId}
+          orderId={termsModal.orderId}
+          actionType={termsModal.actionType}
         />
       )}
     </div>

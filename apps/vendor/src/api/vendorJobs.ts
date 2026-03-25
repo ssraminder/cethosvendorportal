@@ -239,6 +239,7 @@ export interface CounterOfferPayload {
 export interface CounterOfferResponse {
   success: boolean;
   auto_accepted?: boolean;
+  auto_assigned?: boolean;
   error?: string;
 }
 
