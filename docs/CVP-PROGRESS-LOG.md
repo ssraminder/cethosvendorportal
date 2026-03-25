@@ -14,6 +14,23 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Terms & Conditions Gate)
+
+### Completed
+- **TermsModal component:** Created `TermsModal.tsx` with scrollable T&C content, version display, action-specific checkbox text (immediate for Accept, conditional for Negotiate), conditional notice banner, and `accept_terms` API call.
+- **checkTermsForOffer helper:** Exported helper that calls `vendor-accept-terms` with `get_terms` action; returns early (no modal) if no terms configured or already accepted for this offer+version.
+- **JobBoard integration:** Accept and Negotiate buttons on job cards now call `checkTermsAndProceed()` before opening their respective modals. If T&C required, TermsModal opens first; after acceptance the original action proceeds.
+- **JobDetailModal integration:** Same terms gate applied to Accept and Negotiate buttons in the detail modal footer.
+- **Graceful fallback:** On terms-check failure (network error, API error), vendor proceeds without blocking — terms check is non-blocking.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/TermsModal.tsx` — New component + `checkTermsForOffer` helper
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Import TermsModal, add terms state + `checkTermsAndProceed`, gate Accept/Negotiate buttons, render TermsModal
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Import TermsModal, add terms state + `checkTermsAndProceed`, gate Accept/Negotiate buttons, render TermsModal
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
 ## Session — March 25, 2026 (Counter-Offer Auto-Assign Handling)
 
 ### Completed
