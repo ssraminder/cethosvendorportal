@@ -14,6 +14,25 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Vendor Portal Audit Fixes)
+
+### Completed
+- **FIX 1 (Critical):** `acceptStep` now sends `offer_id` in request body alongside `step_id`. AcceptConfirmModal passes `step.offer_id` to the call.
+- **FIX 2 (Critical):** `declineStep` now sends `offer_id` in request body alongside `step_id` and `reason`. DeclineModal passes `step.offer_id` to the call.
+- **FIX 3 (Minor):** Removed dead `getSourceFiles` function and its `SourceFilesResponse` type from `vendorJobs.ts`. No callers existed.
+- **FIX 4 (Minor):** Deleted 4 old stub edge function directories: `vendor-accept-job`, `vendor-decline-job`, `vendor-upload-delivery`, `vendor-get-source-files`.
+- **FIX 5 (Minor):** AcceptConfirmModal now handles HTTP 410 (expired offer) with a specific "This offer has expired" error message and refreshes the job list. `acceptStep` return type changed to `{ status, data }` to expose HTTP status code.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added `offer_id` param to `acceptStep`/`declineStep`, removed `getSourceFiles`, changed `acceptStep` return type for 410 handling
+- `apps/vendor/src/components/jobs/JobActionModals.tsx` — Pass `offer_id` in accept/decline calls, handle 410 expired offer
+- `supabase/functions/vendor-accept-job/` — Deleted (dead stub)
+- `supabase/functions/vendor-decline-job/` — Deleted (dead stub)
+- `supabase/functions/vendor-upload-delivery/` — Deleted (dead stub)
+- `supabase/functions/vendor-get-source-files/` — Deleted (dead stub)
+
+---
+
 ## Session — March 25, 2026 (Job Detail Modal Phase 2 — Rich Detail)
 
 ### Completed

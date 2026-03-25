@@ -34,11 +34,16 @@ export function AcceptConfirmModal({ step, onClose, onSuccess }: AcceptConfirmPr
     setLoading(true);
     setError("");
     try {
-      const result = await acceptStep(sessionToken, step.id);
-      if (result.success) {
+      const { status, data } = await acceptStep(sessionToken, step.id, step.offer_id);
+      if (status === 410) {
+        setError("This offer has expired. Please check for new offers.");
+        onSuccess(); // refresh job list to remove expired card
+        return;
+      }
+      if (data.success) {
         onSuccess();
       } else {
-        setError(result.error || "Failed to accept job");
+        setError(data.error || "Failed to accept job");
       }
     } catch {
       setError("Failed to accept job");
@@ -134,7 +139,7 @@ export function DeclineModal({ step, onClose, onSuccess }: DeclineProps) {
     setLoading(true);
     setError("");
     try {
-      const result = await declineStep(sessionToken, step.id, reason || undefined);
+      const result = await declineStep(sessionToken, step.id, reason || undefined, step.offer_id);
       if (result.success) {
         onSuccess();
       } else {
