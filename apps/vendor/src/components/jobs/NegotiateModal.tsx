@@ -118,9 +118,14 @@ export function NegotiateModal({ job, onClose, onSuccess }: NegotiateModalProps)
         return;
       }
 
-      if (data.auto_accepted) {
-        onSuccess("Your proposal has been accepted! You can now accept the revised offer.");
+      if (data.auto_accepted && data.auto_assigned) {
+        // Vendor is now fully assigned — job moves to Active tab
+        onSuccess("Your proposal has been accepted! You are now assigned to this job.");
+      } else if (data.auto_accepted) {
+        // Fallback for edge case
+        onSuccess("Your proposal has been accepted!");
       } else {
+        // Queued for PM review
         onSuccess("Counter-proposal submitted. The PM will review it.");
       }
       onClose();
