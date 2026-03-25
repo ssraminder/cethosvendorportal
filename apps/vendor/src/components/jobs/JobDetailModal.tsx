@@ -17,7 +17,6 @@ import {
   Loader2,
   Calendar,
   Timer,
-  BookOpen,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
