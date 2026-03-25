@@ -60,12 +60,6 @@ export interface StepActionResponse {
   error?: string;
 }
 
-interface SourceFilesResponse {
-  success?: boolean;
-  signed_urls?: { path: string; url: string }[];
-  error?: string;
-}
-
 // --- Job Detail Types ---
 
 export interface JobDetailJob {
@@ -153,23 +147,26 @@ export const getJobs = (token: string) => getSteps(token, "offered");
 
 export async function acceptStep(
   token: string,
-  stepId: string
-): Promise<StepActionResponse> {
+  stepId: string,
+  offerId?: string | null
+): Promise<{ status: number; data: StepActionResponse }> {
   const res = await fetch(`${BASE}/vendor-accept-step`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ step_id: stepId }),
+    body: JSON.stringify({ step_id: stepId, offer_id: offerId || null }),
   });
-  return res.json();
+  const data: StepActionResponse = await res.json();
+  return { status: res.status, data };
 }
 
 export async function declineStep(
   token: string,
   stepId: string,
-  reason?: string
+  reason?: string,
+  offerId?: string | null
 ): Promise<StepActionResponse> {
   const res = await fetch(`${BASE}/vendor-decline-step`, {
     method: "POST",
@@ -177,7 +174,7 @@ export async function declineStep(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ step_id: stepId, reason: reason || null }),
+    body: JSON.stringify({ step_id: stepId, reason: reason || null, offer_id: offerId || null }),
   });
   return res.json();
 }
@@ -202,21 +199,6 @@ export async function deliverStep(
       // Do NOT set Content-Type — browser sets it with boundary for multipart
     },
     body: formData,
-  });
-  return res.json();
-}
-
-export async function getSourceFiles(
-  token: string,
-  stepId: string
-): Promise<SourceFilesResponse> {
-  const res = await fetch(`${BASE}/vendor-get-source-files`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ step_id: stepId }),
   });
   return res.json();
 }
