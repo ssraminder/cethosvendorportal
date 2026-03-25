@@ -34,6 +34,9 @@ export interface VendorStep {
   revision_count: number;
   requires_file_upload: boolean;
   offer_count: number;
+  offer_id: string | null;
+  expires_at: string | null;
+  is_rush: boolean;
 }
 
 /** @deprecated Use VendorStep instead */
@@ -60,6 +63,75 @@ export interface StepActionResponse {
 interface SourceFilesResponse {
   success?: boolean;
   signed_urls?: { path: string; url: string }[];
+  error?: string;
+}
+
+// --- Job Detail Types ---
+
+export interface JobDetailJob {
+  step_id: string;
+  step_number: number;
+  step_name: string;
+  status: string;
+  actor_type: string;
+  workflow_position: string;
+  workflow_template: string;
+  total_steps: number;
+  order_number: string;
+  is_rush: boolean;
+  estimated_delivery_date: string | null;
+  service_name: string;
+  source_language: string | null;
+  target_language: string | null;
+  vendor_rate: number | null;
+  vendor_rate_unit: string | null;
+  vendor_total: number | null;
+  vendor_currency: string;
+  deadline: string | null;
+  expires_at: string | null;
+  offered_at: string | null;
+  accepted_at: string | null;
+  started_at: string | null;
+  delivered_at: string | null;
+  approved_at: string | null;
+  instructions: string | null;
+  rejection_reason: string | null;
+  notes_from_vendor: string | null;
+  revision_count: number;
+  requires_file_upload: boolean;
+  offer_id: string | null;
+  offer_status: string | null;
+}
+
+export interface VolumeDocument {
+  filename: string;
+  word_count: number;
+  page_count: number;
+}
+
+export interface JobDetailVolume {
+  total_files: number;
+  total_word_count: number;
+  total_page_count: number;
+  documents: VolumeDocument[];
+}
+
+export interface JobDetailFile {
+  filename: string;
+  storage_path: string;
+  file_size?: number;
+  mime_type?: string;
+  download_url: string;
+  source?: string;
+}
+
+export interface JobDetailResponse {
+  success: boolean;
+  job: JobDetailJob;
+  volume: JobDetailVolume | null;
+  source_files: JobDetailFile[];
+  reference_files: JobDetailFile[];
+  delivered_files: JobDetailFile[];
   error?: string;
 }
 
@@ -144,6 +216,22 @@ export async function getSourceFiles(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ step_id: stepId }),
+  });
+  return res.json();
+}
+
+export async function getJobDetail(
+  token: string,
+  stepId: string,
+  offerId: string | null
+): Promise<JobDetailResponse> {
+  const res = await fetch(`${BASE}/vendor-get-job-detail`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ step_id: stepId, offer_id: offerId }),
   });
   return res.json();
 }

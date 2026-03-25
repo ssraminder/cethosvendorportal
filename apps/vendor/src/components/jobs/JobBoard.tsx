@@ -11,6 +11,7 @@ import {
   Clock,
   ChevronRight,
   AlertTriangle,
+  Timer,
 } from "lucide-react";
 
 interface ShellContext {
@@ -49,6 +50,18 @@ function formatDeadline(deadline: string | null): { text: string; fullDate: stri
   if (hours < 24) return { text: `${hours}h remaining`, fullDate, urgent: true };
   if (days < 3) return { text: `in ${days}d ${hours % 24}h`, fullDate, urgent: true };
   return { text: `in ${days} days`, fullDate, urgent: false };
+}
+
+function formatOfferExpiry(expiresAt: string | null): { text: string; expired: boolean } | null {
+  if (!expiresAt) return null;
+  const d = new Date(expiresAt);
+  const now = new Date();
+  const diff = d.getTime() - now.getTime();
+  if (diff < 0) return { text: "Expired", expired: true };
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  if (hours < 24) return { text: `Expires in ${hours}h`, expired: false };
+  return { text: `Expires in ${days}d`, expired: false };
 }
 
 const EMPTY_MESSAGES: Record<TabKey, { title: string; desc: string }> = {
@@ -227,15 +240,17 @@ export function JobBoard() {
           {steps.map((step) => {
             const badge = STATUS_BADGES[step.status] ?? STATUS_BADGES.offered;
             const deadline = formatDeadline(step.deadline);
+            const offerExpiry = step.status === "offered" ? formatOfferExpiry(step.expires_at ?? null) : null;
 
             return (
               <div
                 key={step.id}
-                className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => setSelectedStep(step)}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    {/* Status + step name */}
+                    {/* Status + step name + rush */}
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.bg} ${badge.text}`}>
                         {badge.label}
@@ -243,6 +258,21 @@ export function JobBoard() {
                       <span className="text-sm font-medium text-gray-900">
                         {step.name} — Step {step.step_number}
                       </span>
+                      {step.is_rush && (
+                        <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700">
+                          RUSH
+                        </span>
+                      )}
+                      {offerExpiry && (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          offerExpiry.expired
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}>
+                          <Timer className="h-3 w-3" />
+                          {offerExpiry.text}
+                        </span>
+                      )}
                     </div>
 
                     {/* Order number + language pair */}
@@ -252,7 +282,7 @@ export function JobBoard() {
                       )}
                       {(step.source_language || step.target_language) && (
                         <span className="font-medium">
-                          {getLanguageName(step.source_language)} → {getLanguageName(step.target_language)}
+                          {getLanguageName(step.source_language)} &rarr; {getLanguageName(step.target_language)}
                         </span>
                       )}
                     </div>
@@ -267,14 +297,12 @@ export function JobBoard() {
                             currency: step.vendor_currency || "CAD",
                           }).format(step.vendor_rate)}
                           /{step.vendor_rate_unit.replace("_", " ")}
-                        </span>
-                      )}
-                      {step.vendor_total != null && (
-                        <span className="font-medium text-gray-700">
-                          {new Intl.NumberFormat("en-CA", {
-                            style: "currency",
-                            currency: step.vendor_currency || "CAD",
-                          }).format(step.vendor_total)}
+                          {step.vendor_total != null && (
+                            <> &middot; {new Intl.NumberFormat("en-CA", {
+                              style: "currency",
+                              currency: step.vendor_currency || "CAD",
+                            }).format(step.vendor_total)}</>
+                          )}
                         </span>
                       )}
                       {deadline && (
@@ -310,13 +338,13 @@ export function JobBoard() {
                     {step.status === "offered" && (
                       <>
                         <button
-                          onClick={() => setActionModal({ type: "accept", step })}
+                          onClick={(e) => { e.stopPropagation(); setActionModal({ type: "accept", step }); }}
                           className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700"
                         >
                           Accept
                         </button>
                         <button
-                          onClick={() => setActionModal({ type: "decline", step })}
+                          onClick={(e) => { e.stopPropagation(); setActionModal({ type: "decline", step }); }}
                           className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
                         >
                           Decline
@@ -325,7 +353,7 @@ export function JobBoard() {
                     )}
                     {canDeliver(step.status) && (
                       <button
-                        onClick={() => setActionModal({ type: "deliver", step })}
+                        onClick={(e) => { e.stopPropagation(); setActionModal({ type: "deliver", step }); }}
                         className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
                           step.status === "revision_requested"
                             ? "bg-amber-600 hover:bg-amber-700"
@@ -335,13 +363,7 @@ export function JobBoard() {
                         {step.status === "revision_requested" ? "Deliver Revision" : "Deliver"}
                       </button>
                     )}
-                    <button
-                      onClick={() => setSelectedStep(step)}
-                      className="p-1.5 text-gray-400 hover:text-teal-600"
-                      title="View Details"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
                   </div>
                 </div>
               </div>
