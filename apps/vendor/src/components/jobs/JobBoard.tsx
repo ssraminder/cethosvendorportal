@@ -5,6 +5,7 @@ import { getSteps, type VendorStep, type TabKey } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
 import { JobDetailModal } from "./JobDetailModal";
 import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
+import { NegotiateModal } from "./NegotiateModal";
 import {
   Briefcase,
   Loader2,
@@ -86,6 +87,7 @@ export function JobBoard() {
   // Modal state
   const [selectedStep, setSelectedStep] = useState<VendorStep | null>(null);
   const [actionModal, setActionModal] = useState<{ type: "accept" | "decline" | "deliver"; step: VendorStep } | null>(null);
+  const [negotiatingJob, setNegotiatingJob] = useState<VendorStep | null>(null);
 
   const fetchTab = useCallback(
     async (t: TabKey) => {
@@ -317,6 +319,26 @@ export function JobBoard() {
                       )}
                     </div>
 
+                    {/* Negotiation indicator / counter status */}
+                    {step.status === "offered" && step.negotiation_allowed && step.counter_status === "none" && (
+                      <div className="text-xs text-teal-600 mt-1">Open to negotiation</div>
+                    )}
+                    {step.status === "offered" && step.counter_status === "proposed" && (
+                      <span className="inline-flex items-center mt-1 text-xs text-amber-700 bg-amber-50 rounded-full px-2 py-0.5 font-medium">
+                        Counter pending review
+                      </span>
+                    )}
+                    {step.status === "offered" && step.counter_status === "accepted" && (
+                      <span className="inline-flex items-center mt-1 text-xs text-green-700 bg-green-50 rounded-full px-2 py-0.5 font-medium">
+                        Counter accepted
+                      </span>
+                    )}
+                    {step.status === "offered" && step.counter_status === "rejected" && (
+                      <span className="inline-flex items-center mt-1 text-xs text-red-700 bg-red-50 rounded-full px-2 py-0.5 font-medium">
+                        Counter rejected
+                      </span>
+                    )}
+
                     {/* Rejection reason preview */}
                     {step.status === "revision_requested" && step.rejection_reason && (
                       <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 truncate">
@@ -349,6 +371,15 @@ export function JobBoard() {
                         >
                           Decline
                         </button>
+                        {step.negotiation_allowed && (
+                          <button
+                            className="inline-flex items-center gap-1 rounded-lg border border-orange-400 px-3 py-1.5 text-xs font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={(e) => { e.stopPropagation(); setNegotiatingJob(step); }}
+                            disabled={step.counter_status === "proposed"}
+                          >
+                            {step.counter_status === "proposed" ? "Counter Pending" : "Negotiate"}
+                          </button>
+                        )}
                       </>
                     )}
                     {canDeliver(step.status) && (
@@ -405,6 +436,13 @@ export function JobBoard() {
           step={actionModal.step}
           onClose={() => setActionModal(null)}
           onSuccess={() => handleActionSuccess("Files delivered! The project manager will review.")}
+        />
+      )}
+      {negotiatingJob && (
+        <NegotiateModal
+          job={negotiatingJob}
+          onClose={() => setNegotiatingJob(null)}
+          onSuccess={(msg) => { setNegotiatingJob(null); handleActionSuccess(msg); }}
         />
       )}
     </div>

@@ -14,6 +14,24 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — March 25, 2026 (Vendor Negotiation Policy Awareness)
+
+### Completed
+- **Negotiation types:** Added `negotiation_allowed` and `counter_status` fields to `VendorStep` and `JobDetailJob` interfaces.
+- **Counter-offer API:** Added `submitCounterOffer` function, `CounterOfferPayload` and `CounterOfferResponse` types to `vendorJobs.ts`. Calls `vendor-counter-offer` v2 edge function.
+- **NegotiateModal component:** New modal for submitting counter-proposals. Pre-populates rate/total/deadline from current offer. Handles HTTP 403 (not allowed), 410 (expired), 409 (already pending). Shows different success toast for auto-accepted vs queued proposals.
+- **Conditional Negotiate button (JobBoard):** Only shows on offered jobs when `negotiation_allowed === true`. Disabled when `counter_status === 'proposed'` (pending review). Re-enabled when rejected.
+- **Negotiation indicators (JobBoard cards):** Shows "Open to negotiation" for negotiable offers with no counter. Shows counter status badges (pending/accepted/rejected) when applicable.
+- **Negotiation indicators (JobDetailModal):** Shows "This offer is open to negotiation" or "Fixed terms — accept or decline" in Language & Rate section. Negotiate button in footer actions when allowed.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added negotiation fields to types, added `submitCounterOffer` API function
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — New file: counter-offer modal component
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Added conditional Negotiate button, negotiation indicators, counter status badges, NegotiateModal rendering
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Added negotiation indicators in rate section, Negotiate button in footer, NegotiateModal rendering
+
+---
+
 ## Session — March 25, 2026 (Vendor Portal Audit Fixes)
 
 ### Completed
