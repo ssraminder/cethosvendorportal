@@ -1,5 +1,4 @@
 import { NavLink } from "react-router-dom";
-import { CethosLogo } from "../shared/CethosLogo";
 import {
   LayoutGrid,
   User,
@@ -18,7 +17,7 @@ interface VendorSidebarProps {
   jobOfferedCount?: number;
 }
 
-const navItems = [
+const mainNavItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid },
   { to: "/profile", label: "Profile", icon: User },
   { to: "/languages", label: "Languages", icon: Globe },
@@ -26,10 +25,21 @@ const navItems = [
   { to: "/payment", label: "Payment", icon: CreditCard },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },
+] as const;
+
+const accountNavItems = [
   { to: "/security", label: "Security", icon: Shield },
 ] as const;
 
 export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    isActive
+      ? "flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm font-semibold bg-teal-50 text-teal-700 border-l-[3px] border-teal-600 -ml-[3px] transition-colors"
+      : "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors group";
+
+  const iconClass = (isActive: boolean) =>
+    isActive ? "w-[18px] h-[18px] text-teal-600" : "w-[18px] h-[18px] text-gray-400 group-hover:text-gray-600";
+
   return (
     <>
       {isOpen && (
@@ -40,50 +50,67 @@ export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSideba
       )}
 
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-60 bg-[#111827] transform transition-transform lg:translate-x-0 lg:static lg:z-auto ${
+        className={`fixed top-0 left-0 z-50 h-full w-60 bg-white border-r border-gray-200 shadow-sm transform transition-transform lg:translate-x-0 lg:static lg:z-auto ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between h-16 px-5">
-          <div className="flex items-center gap-2">
-            <CethosLogo size="sm" dark />
-          </div>
+        <div className="flex items-center justify-between h-16 px-5 border-b border-gray-100">
+          <img
+            src="https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png"
+            alt="CETHOS"
+            className="h-8 w-auto object-contain"
+          />
           <button
             onClick={onClose}
-            className="lg:hidden text-gray-500 hover:text-gray-300"
+            className="lg:hidden text-gray-400 hover:text-gray-600"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="h-px bg-gray-700/50 mx-4" />
-
         <nav className="p-3 mt-2 space-y-0.5">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {mainNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
               onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
-                  isActive
-                    ? "bg-white/10 text-white"
-                    : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
-                }`
-              }
+              className={navLinkClass}
             >
-              <Icon className="w-[18px] h-[18px]" />
-              {label}
-              {label === "Jobs" && jobOfferedCount != null && jobOfferedCount > 0 && (
-                <span className="ml-auto rounded-full bg-amber-400/20 text-amber-300 px-1.5 py-0.5 text-[11px] font-semibold leading-none">
-                  {jobOfferedCount}
-                </span>
+              {({ isActive }) => (
+                <>
+                  <Icon className={iconClass(isActive)} />
+                  {label}
+                  {label === "Jobs" && jobOfferedCount != null && jobOfferedCount > 0 && (
+                    <span className="ml-auto rounded-full bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 text-[11px] font-semibold leading-none">
+                      {jobOfferedCount}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          ))}
+
+          <p className="px-4 pt-4 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
+            Account
+          </p>
+
+          {accountNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={onClose}
+              className={navLinkClass}
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon className={iconClass(isActive)} />
+                  {label}
+                </>
               )}
             </NavLink>
           ))}
         </nav>
-
       </aside>
     </>
   );

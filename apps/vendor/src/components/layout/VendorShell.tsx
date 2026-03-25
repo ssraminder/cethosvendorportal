@@ -40,7 +40,7 @@ export function VendorShell() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-[#F8F9FB] flex">
       <VendorSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

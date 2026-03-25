@@ -52,7 +52,7 @@ function formatDeadline(deadline: string | null): { text: string; fullDate: stri
 }
 
 const EMPTY_MESSAGES: Record<TabKey, { title: string; desc: string }> = {
-  offered: { title: "No job offers at the moment", desc: "Check back later!" },
+  offered: { title: "No job offers at the moment", desc: "New job offers will appear here when assigned by your project manager." },
   active: { title: "No active jobs", desc: "Accept an offer to get started." },
   completed: { title: "No completed jobs yet", desc: "" },
 };
@@ -160,7 +160,7 @@ export function JobBoard() {
     <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Jobs</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Jobs</h1>
       </div>
 
       {/* Success toast */}
@@ -185,10 +185,10 @@ export function JobBoard() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2.5 text-sm border-b-[3px] transition-colors ${
               tab === t
-                ? "border-teal-600 text-teal-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                ? "border-teal-600 text-teal-600 font-semibold"
+                : "border-transparent text-gray-600 font-medium hover:text-gray-800"
             }`}
           >
             {t.charAt(0).toUpperCase() + t.slice(1)}
