@@ -2,49 +2,58 @@ const BASE = import.meta.env.VITE_SUPABASE_URL + "/functions/v1";
 
 // --- Types ---
 
-interface JobLanguage {
-  id: string;
-  name: string;
-  code: string;
-}
+export type TabKey = "offered" | "active" | "completed";
 
-export interface VendorJob {
+export interface VendorStep {
   id: string;
-  job_reference: string | null;
-  source_language: JobLanguage | null;
-  target_language: JobLanguage | null;
-  domain: string | null;
-  service_type: string | null;
-  word_count: number | null;
-  deadline: string | null;
-  instructions: string | null;
-  source_file_paths: string[];
-  rate: number | null;
-  rate_unit: string | null;
-  currency: string;
-  estimated_total: number | null;
+  step_number: number;
+  name: string;
+  actor_type: string;
   status: string;
+  service_id: string | null;
+  service_name: string | null;
+  order_id: string | null;
+  order_number: string | null;
+  customer_name: string | null;
+  vendor_rate: number | null;
+  vendor_rate_unit: string | null;
+  vendor_total: number | null;
+  vendor_currency: string;
+  source_language: string | null;
+  target_language: string | null;
   offered_at: string;
   accepted_at: string | null;
+  started_at: string | null;
   delivered_at: string | null;
-  completed_at: string | null;
-  delivery_file_paths: string[];
-  delivery_notes: string | null;
-  reviewer_notes: string | null;
-  quality_score: number | null;
-  created_at: string;
+  approved_at: string | null;
+  deadline: string | null;
+  instructions: string | null;
+  source_file_paths: string[] | null;
+  delivered_file_paths: string[] | null;
+  rejection_reason: string | null;
+  revision_count: number;
+  requires_file_upload: boolean;
+  offer_count: number;
 }
 
-interface JobsResponse {
+/** @deprecated Use VendorStep instead */
+export type VendorJob = VendorStep;
+
+export interface StepJobsResponse {
   success?: boolean;
-  jobs?: VendorJob[];
-  total?: number;
+  jobs: VendorStep[];
+  counts: { offered: number; active: number; completed: number };
   error?: string;
 }
 
-interface JobActionResponse {
+export interface StepActionResponse {
   success?: boolean;
-  job?: VendorJob;
+  step_id?: string;
+  step_name?: string;
+  new_status?: string;
+  message?: string;
+  files_uploaded?: number;
+  upload_errors?: string[];
   error?: string;
 }
 
@@ -54,85 +63,79 @@ interface SourceFilesResponse {
   error?: string;
 }
 
-export type { JobsResponse, JobActionResponse, SourceFilesResponse };
-
 // --- API Functions ---
 
-export async function getJobs(
+export async function getSteps(
   token: string,
-  filter?: { status?: string; page?: number; limit?: number }
-): Promise<JobsResponse> {
-  const params = new URLSearchParams();
-  if (filter?.status) params.set("status", filter.status);
-  if (filter?.page) params.set("page", filter.page.toString());
-  if (filter?.limit) params.set("limit", filter.limit.toString());
-
-  const qs = params.toString();
-  const res = await fetch(`${BASE}/vendor-get-jobs${qs ? `?${qs}` : ""}`, {
+  tab: TabKey
+): Promise<StepJobsResponse> {
+  const res = await fetch(`${BASE}/vendor-get-jobs?tab=${tab}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return res.json();
 }
 
-export async function acceptJob(
+/** @deprecated Use getSteps instead */
+export const getJobs = (token: string) => getSteps(token, "offered");
+
+export async function acceptStep(
   token: string,
-  jobId: string
-): Promise<JobActionResponse> {
-  const res = await fetch(`${BASE}/vendor-accept-job`, {
+  stepId: string
+): Promise<StepActionResponse> {
+  const res = await fetch(`${BASE}/vendor-accept-step`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ job_id: jobId }),
+    body: JSON.stringify({ step_id: stepId }),
   });
   return res.json();
 }
 
-export async function declineJob(
+export async function declineStep(
   token: string,
-  jobId: string,
+  stepId: string,
   reason?: string
-): Promise<JobActionResponse> {
-  const res = await fetch(`${BASE}/vendor-decline-job`, {
+): Promise<StepActionResponse> {
+  const res = await fetch(`${BASE}/vendor-decline-step`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ job_id: jobId, reason }),
+    body: JSON.stringify({ step_id: stepId, reason: reason || null }),
   });
   return res.json();
 }
 
-export async function uploadDelivery(
+export async function deliverStep(
   token: string,
-  jobId: string,
-  fileBase64: string,
-  fileName: string,
-  fileType: string,
+  stepId: string,
+  files: File[],
   notes?: string
-): Promise<JobActionResponse> {
-  const res = await fetch(`${BASE}/vendor-upload-delivery`, {
+): Promise<StepActionResponse> {
+  const formData = new FormData();
+  formData.append("step_id", stepId);
+  if (notes) formData.append("notes", notes);
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const res = await fetch(`${BASE}/vendor-deliver-step`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+      // Do NOT set Content-Type — browser sets it with boundary for multipart
     },
-    body: JSON.stringify({
-      job_id: jobId,
-      file_base64: fileBase64,
-      file_name: fileName,
-      file_type: fileType,
-      notes,
-    }),
+    body: formData,
   });
   return res.json();
 }
 
 export async function getSourceFiles(
   token: string,
-  jobId: string
+  stepId: string
 ): Promise<SourceFilesResponse> {
   const res = await fetch(`${BASE}/vendor-get-source-files`, {
     method: "POST",
@@ -140,7 +143,7 @@ export async function getSourceFiles(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ job_id: jobId }),
+    body: JSON.stringify({ step_id: stepId }),
   });
   return res.json();
 }

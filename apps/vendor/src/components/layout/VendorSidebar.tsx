@@ -15,6 +15,7 @@ import {
 interface VendorSidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  jobOfferedCount?: number;
 }
 
 const navItems = [
@@ -28,7 +29,7 @@ const navItems = [
   { to: "/security", label: "Security", icon: Shield },
 ] as const;
 
-export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
+export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
   return (
     <>
       {isOpen && (
@@ -74,6 +75,11 @@ export function VendorSidebar({ isOpen, onClose }: VendorSidebarProps) {
             >
               <Icon className="w-[18px] h-[18px]" />
               {label}
+              {label === "Jobs" && jobOfferedCount != null && jobOfferedCount > 0 && (
+                <span className="ml-auto rounded-full bg-amber-400/20 text-amber-300 px-1.5 py-0.5 text-[11px] font-semibold leading-none">
+                  {jobOfferedCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

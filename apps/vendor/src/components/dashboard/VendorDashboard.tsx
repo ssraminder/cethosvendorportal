@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getFullProfile, updateAvailability } from "../../api/vendorProfile";
-import { getJobs, type VendorJob } from "../../api/vendorJobs";
+import { getSteps, type VendorStep } from "../../api/vendorJobs";
 import { getInvoices } from "../../api/vendorInvoices";
+import { LANGUAGES } from "../../data/languages";
 import {
   User,
   Shield,
@@ -18,6 +19,11 @@ import {
   FileText,
   ChevronRight,
 } from "lucide-react";
+
+function getLanguageName(code: string | null): string {
+  if (!code) return "—";
+  return LANGUAGES.find((l) => l.code === code)?.name ?? code;
+}
 
 function statusBadge(status: string) {
   const map: Record<string, { bg: string; text: string; dot: string; label: string }> = {
@@ -47,7 +53,7 @@ export function VendorDashboard() {
   const { vendor, sessionToken, needsPassword, setVendor } = useVendorAuth();
   const [languagePairCount, setLanguagePairCount] = useState<number | null>(null);
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
-  const [offeredJobs, setOfferedJobs] = useState<VendorJob[]>([]);
+  const [offeredJobs, setOfferedJobs] = useState<VendorStep[]>([]);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [completedJobCount, setCompletedJobCount] = useState(0);
   const [pendingPayment, setPendingPayment] = useState(0);
@@ -59,25 +65,22 @@ export function VendorDashboard() {
       // Load profile data
       const profileResult = await getFullProfile(sessionToken);
       if (profileResult.language_pairs) {
-        setLanguagePairCount(profileResult.language_pairs.filter((lp) => lp.is_active).length);
+        setLanguagePairCount(profileResult.language_pairs.filter((lp: { is_active: boolean }) => lp.is_active).length);
       }
       if (profileResult.profile_completeness !== undefined) {
         setProfileCompleteness(profileResult.profile_completeness);
       }
 
-      // Load jobs
-      const jobsResult = await getJobs(sessionToken);
-      if (jobsResult.jobs) {
-        setOfferedJobs(jobsResult.jobs.filter((j) => j.status === "offered"));
-        setActiveJobCount(
-          jobsResult.jobs.filter((j) =>
-            ["accepted", "in_progress", "delivered", "under_review", "revision_requested"].includes(j.status)
-          ).length
-        );
-        setCompletedJobCount(
-          jobsResult.jobs.filter((j) => ["approved", "completed"].includes(j.status)).length
-        );
-      }
+      // Load job counts from all tabs
+      const [offeredResult, activeResult, completedResult] = await Promise.all([
+        getSteps(sessionToken, "offered"),
+        getSteps(sessionToken, "active"),
+        getSteps(sessionToken, "completed"),
+      ]);
+
+      if (offeredResult.jobs) setOfferedJobs(offeredResult.jobs);
+      if (activeResult.counts) setActiveJobCount(activeResult.counts.active);
+      if (completedResult.counts) setCompletedJobCount(completedResult.counts.completed);
 
       // Load invoice summary
       const invoiceResult = await getInvoices(sessionToken);
@@ -277,23 +280,23 @@ export function VendorDashboard() {
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
-            {offeredJobs.slice(0, 3).map((job) => (
+            {offeredJobs.slice(0, 3).map((step) => (
               <Link
-                key={job.id}
-                to={`/jobs/${job.id}`}
+                key={step.id}
+                to={`/jobs/${step.id}`}
                 className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50"
               >
                 <div>
                   <div className="text-sm font-medium text-gray-900">
-                    {job.source_language?.name || "—"} → {job.target_language?.name || "—"}
+                    {getLanguageName(step.source_language)} → {getLanguageName(step.target_language)}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
-                    {job.domain && <span className="capitalize">{job.domain}</span>}
-                    {job.word_count && <span>{job.word_count.toLocaleString()} words</span>}
-                    {job.deadline && (
+                    {step.service_name && <span>{step.service_name}</span>}
+                    {step.order_number && <span>#{step.order_number}</span>}
+                    {step.deadline && (
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(job.deadline).toLocaleDateString("en-CA")}
+                        {new Date(step.deadline).toLocaleDateString("en-CA")}
                       </span>
                     )}
                   </div>

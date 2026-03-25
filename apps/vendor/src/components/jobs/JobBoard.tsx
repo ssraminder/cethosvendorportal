@@ -1,141 +1,182 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
-import { getJobs, acceptJob, declineJob, type VendorJob } from "../../api/vendorJobs";
+import { getSteps, type VendorStep, type TabKey } from "../../api/vendorJobs";
+import { LANGUAGES } from "../../data/languages";
+import { JobDetailModal } from "./JobDetailModal";
+import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
 import {
   Briefcase,
   Loader2,
-  Check,
-  X,
   Clock,
-  FileText,
   ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 
-type TabKey = "offered" | "active" | "completed";
+interface ShellContext {
+  setJobOfferedCount: (n: number) => void;
+}
 
-const STATUS_GROUPS: Record<TabKey, string[]> = {
-  offered: ["offered"],
-  active: ["accepted", "in_progress", "delivered", "under_review", "revision_requested"],
-  completed: ["approved", "completed"],
-};
+function getLanguageName(code: string | null): string {
+  if (!code) return "—";
+  return LANGUAGES.find((l) => l.code === code)?.name ?? code;
+}
 
 const STATUS_BADGES: Record<string, { bg: string; text: string; label: string }> = {
   offered: { bg: "bg-amber-100", text: "text-amber-700", label: "Offered" },
   accepted: { bg: "bg-blue-100", text: "text-blue-700", label: "Accepted" },
   in_progress: { bg: "bg-blue-100", text: "text-blue-700", label: "In Progress" },
   delivered: { bg: "bg-purple-100", text: "text-purple-700", label: "Delivered" },
-  under_review: { bg: "bg-indigo-100", text: "text-indigo-700", label: "Under Review" },
   revision_requested: { bg: "bg-orange-100", text: "text-orange-700", label: "Revision Requested" },
   approved: { bg: "bg-green-100", text: "text-green-700", label: "Approved" },
   completed: { bg: "bg-green-100", text: "text-green-700", label: "Completed" },
-  declined: { bg: "bg-gray-100", text: "text-gray-600", label: "Declined" },
   cancelled: { bg: "bg-red-100", text: "text-red-700", label: "Cancelled" },
 };
 
+function formatDeadline(deadline: string | null): { text: string; fullDate: string; urgent: boolean } | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  const now = new Date();
+  const diff = d.getTime() - now.getTime();
+  const hours = Math.floor(Math.abs(diff) / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  const fullDate = d.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
+
+  if (diff < 0) {
+    const label = days > 0 ? `overdue by ${days} days` : `overdue by ${hours}h`;
+    return { text: label, fullDate, urgent: true };
+  }
+  if (hours < 24) return { text: `${hours}h remaining`, fullDate, urgent: true };
+  if (days < 3) return { text: `in ${days}d ${hours % 24}h`, fullDate, urgent: true };
+  return { text: `in ${days} days`, fullDate, urgent: false };
+}
+
+const EMPTY_MESSAGES: Record<TabKey, { title: string; desc: string }> = {
+  offered: { title: "No job offers at the moment", desc: "Check back later!" },
+  active: { title: "No active jobs", desc: "Accept an offer to get started." },
+  completed: { title: "No completed jobs yet", desc: "" },
+};
+
 export function JobBoard() {
+  const { id: paramId } = useParams<{ id?: string }>();
+  const navigate = useNavigate();
   const { sessionToken } = useVendorAuth();
-  const [jobs, setJobs] = useState<VendorJob[]>([]);
+  const shellCtx = useOutletContext<ShellContext | null>();
+
+  const [tab, setTab] = useState<TabKey>("offered");
+  const [steps, setSteps] = useState<VendorStep[]>([]);
+  const [counts, setCounts] = useState({ offered: 0, active: 0, completed: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<TabKey>("offered");
-  const [actionId, setActionId] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState("");
 
-  const loadJobs = useCallback(async () => {
-    if (!sessionToken) return;
-    try {
-      const result = await getJobs(sessionToken);
-      if (result.jobs) {
-        setJobs(result.jobs);
+  // Modal state
+  const [selectedStep, setSelectedStep] = useState<VendorStep | null>(null);
+  const [actionModal, setActionModal] = useState<{ type: "accept" | "decline" | "deliver"; step: VendorStep } | null>(null);
+
+  const fetchTab = useCallback(
+    async (t: TabKey) => {
+      if (!sessionToken) return;
+      setLoading(true);
+      setError("");
+      try {
+        const result = await getSteps(sessionToken, t);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setSteps(result.jobs ?? []);
+          if (result.counts) {
+            setCounts(result.counts);
+            shellCtx?.setJobOfferedCount(result.counts.offered);
+          }
+        }
+      } catch {
+        setError("Failed to load jobs");
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setError("Failed to load jobs");
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionToken]);
-
-  useEffect(() => {
-    loadJobs();
-  }, [loadJobs]);
-
-  const handleAccept = async (jobId: string) => {
-    if (!sessionToken) return;
-    setActionId(jobId);
-    try {
-      const result = await acceptJob(sessionToken, jobId);
-      if (result.success) {
-        await loadJobs();
-      } else {
-        setError(result.error || "Failed to accept job");
-      }
-    } catch {
-      setError("Failed to accept job");
-    } finally {
-      setActionId(null);
-    }
-  };
-
-  const handleDecline = async (jobId: string) => {
-    if (!sessionToken) return;
-    setActionId(jobId);
-    try {
-      const result = await declineJob(sessionToken, jobId);
-      if (result.success) {
-        await loadJobs();
-      } else {
-        setError(result.error || "Failed to decline job");
-      }
-    } catch {
-      setError("Failed to decline job");
-    } finally {
-      setActionId(null);
-    }
-  };
-
-  const filteredJobs = jobs.filter((j) =>
-    STATUS_GROUPS[tab].includes(j.status)
+    },
+    [sessionToken, shellCtx]
   );
 
-  const counts: Record<TabKey, number> = {
-    offered: jobs.filter((j) => STATUS_GROUPS.offered.includes(j.status)).length,
-    active: jobs.filter((j) => STATUS_GROUPS.active.includes(j.status)).length,
-    completed: jobs.filter((j) => STATUS_GROUPS.completed.includes(j.status)).length,
+  // Fetch on tab change
+  useEffect(() => {
+    fetchTab(tab);
+  }, [tab, fetchTab]);
+
+  // Handle direct link /jobs/:id — find the step across tabs
+  useEffect(() => {
+    if (!paramId || !sessionToken) return;
+    let cancelled = false;
+
+    async function findStep() {
+      const tabs: TabKey[] = ["offered", "active", "completed"];
+      for (const t of tabs) {
+        try {
+          const result = await getSteps(sessionToken!, t);
+          if (cancelled) return;
+          const found = result.jobs?.find((s) => s.id === paramId);
+          if (found) {
+            setTab(t);
+            setSteps(result.jobs ?? []);
+            if (result.counts) {
+              setCounts(result.counts);
+              shellCtx?.setJobOfferedCount(result.counts.offered);
+            }
+            setSelectedStep(found);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // continue
+        }
+      }
+      if (!cancelled) setLoading(false);
+    }
+
+    findStep();
+    return () => { cancelled = true; };
+    // Only run on mount when paramId exists
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramId, sessionToken]);
+
+  const handleActionSuccess = (message: string) => {
+    setActionModal(null);
+    setSelectedStep(null);
+    setSuccessMsg(message);
+    fetchTab(tab);
+    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
-  const formatDeadline = (deadline: string | null) => {
-    if (!deadline) return null;
-    const d = new Date(deadline);
-    const now = new Date();
-    const diff = d.getTime() - now.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-
-    if (diff < 0) return { text: "Overdue", urgent: true };
-    if (hours < 24) return { text: `${hours}h remaining`, urgent: true };
-    if (days < 3) return { text: `${days}d ${hours % 24}h remaining`, urgent: true };
-    return { text: d.toLocaleDateString("en-CA"), urgent: false };
+  const handleDetailClose = () => {
+    setSelectedStep(null);
+    if (paramId) navigate("/jobs", { replace: true });
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-      </div>
-    );
-  }
+  const canDeliver = (status: string) =>
+    ["accepted", "in_progress", "revision_requested"].includes(status);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6">
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Jobs</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {jobs.length} total job{jobs.length !== 1 ? "s" : ""}
-        </p>
       </div>
 
+      {/* Success toast */}
+      {successMsg && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          {successMsg}
+        </div>
+      )}
+
+      {/* Error */}
       {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
       )}
 
       {/* Tabs */}
@@ -153,9 +194,9 @@ export function JobBoard() {
             {t.charAt(0).toUpperCase() + t.slice(1)}
             {counts[t] > 0 && (
               <span
-                className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
-                  t === "offered" && counts[t] > 0
-                    ? "bg-amber-100 text-amber-700"
+                className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  t === "offered"
+                    ? "bg-blue-100 text-blue-700"
                     : "bg-gray-100 text-gray-600"
                 }`}
               >
@@ -166,64 +207,74 @@ export function JobBoard() {
         ))}
       </div>
 
-      {/* Job List */}
-      {filteredJobs.length === 0 ? (
+      {/* Loading */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        </div>
+      ) : steps.length === 0 ? (
+        /* Empty state */
         <div className="text-center py-12 text-gray-500">
           <Briefcase className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-          <p className="text-lg font-medium">No {tab} jobs</p>
-          <p className="text-sm">
-            {tab === "offered"
-              ? "New job offers will appear here."
-              : tab === "active"
-              ? "Jobs you accept will appear here."
-              : "Completed jobs will appear here."}
-          </p>
+          <p className="text-lg font-medium">{EMPTY_MESSAGES[tab].title}</p>
+          {EMPTY_MESSAGES[tab].desc && (
+            <p className="text-sm mt-1">{EMPTY_MESSAGES[tab].desc}</p>
+          )}
         </div>
       ) : (
+        /* Job cards */
         <div className="space-y-3">
-          {filteredJobs.map((job) => {
-            const deadline = formatDeadline(job.deadline);
-            const badge = STATUS_BADGES[job.status] || STATUS_BADGES.offered;
+          {steps.map((step) => {
+            const badge = STATUS_BADGES[step.status] ?? STATUS_BADGES.offered;
+            const deadline = formatDeadline(step.deadline);
+
             return (
               <div
-                key={job.id}
+                key={step.id}
                 className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    {/* Status + step name */}
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.bg} ${badge.text}`}>
                         {badge.label}
                       </span>
-                      {job.job_reference && (
-                        <span className="text-xs text-gray-400">
-                          {job.job_reference}
+                      <span className="text-sm font-medium text-gray-900">
+                        {step.name} — Step {step.step_number}
+                      </span>
+                    </div>
+
+                    {/* Order number + language pair */}
+                    <div className="flex items-center gap-3 text-sm text-gray-600 mt-1 flex-wrap">
+                      {step.order_number && (
+                        <span className="text-gray-500">Order #{step.order_number}</span>
+                      )}
+                      {(step.source_language || step.target_language) && (
+                        <span className="font-medium">
+                          {getLanguageName(step.source_language)} → {getLanguageName(step.target_language)}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                      {job.source_language?.name || "—"} → {job.target_language?.name || "—"}
-                      {job.domain && (
-                        <span className="text-xs text-gray-500">({job.domain})</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                      {job.service_type && (
-                        <span className="flex items-center gap-1">
-                          <FileText className="h-3 w-3" />
-                          {job.service_type.replace(/_/g, " ")}
-                        </span>
-                      )}
-                      {job.word_count && (
-                        <span>{job.word_count.toLocaleString()} words</span>
-                      )}
-                      {job.rate && job.rate_unit && (
+
+                    {/* Rate + deadline row */}
+                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 flex-wrap">
+                      {step.service_name && <span>{step.service_name}</span>}
+                      {step.vendor_rate != null && step.vendor_rate_unit && (
                         <span>
                           {new Intl.NumberFormat("en-CA", {
                             style: "currency",
-                            currency: job.currency || "CAD",
-                          }).format(job.rate)}{" "}
-                          / {job.rate_unit.replace("_", " ")}
+                            currency: step.vendor_currency || "CAD",
+                          }).format(step.vendor_rate)}
+                          /{step.vendor_rate_unit.replace("_", " ")}
+                        </span>
+                      )}
+                      {step.vendor_total != null && (
+                        <span className="font-medium text-gray-700">
+                          {new Intl.NumberFormat("en-CA", {
+                            style: "currency",
+                            currency: step.vendor_currency || "CAD",
+                          }).format(step.vendor_total)}
                         </span>
                       )}
                       {deadline && (
@@ -233,49 +284,106 @@ export function JobBoard() {
                           }`}
                         >
                           <Clock className="h-3 w-3" />
-                          {deadline.text}
+                          {deadline.fullDate} ({deadline.text})
                         </span>
                       )}
                     </div>
+
+                    {/* Rejection reason preview */}
+                    {step.status === "revision_requested" && step.rejection_reason && (
+                      <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 truncate">
+                        Feedback: {step.rejection_reason}
+                      </p>
+                    )}
+
+                    {/* Awaiting review badge */}
+                    {step.status === "delivered" && (
+                      <span className="inline-flex items-center gap-1 mt-2 text-xs text-purple-700 bg-purple-50 rounded-full px-2 py-0.5 font-medium">
+                        <Clock className="h-3 w-3" />
+                        Awaiting review
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2 ml-4">
-                    {job.status === "offered" && (
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {step.status === "offered" && (
                       <>
                         <button
-                          onClick={() => handleAccept(job.id)}
-                          disabled={actionId === job.id}
-                          className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+                          onClick={() => setActionModal({ type: "accept", step })}
+                          className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700"
                         >
-                          {actionId === job.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Check className="h-3 w-3" />
-                          )}
                           Accept
                         </button>
                         <button
-                          onClick={() => handleDecline(job.id)}
-                          disabled={actionId === job.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          onClick={() => setActionModal({ type: "decline", step })}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
                         >
-                          <X className="h-3 w-3" />
                           Decline
                         </button>
                       </>
                     )}
-                    <Link
-                      to={`/jobs/${job.id}`}
+                    {canDeliver(step.status) && (
+                      <button
+                        onClick={() => setActionModal({ type: "deliver", step })}
+                        className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
+                          step.status === "revision_requested"
+                            ? "bg-amber-600 hover:bg-amber-700"
+                            : "bg-teal-600 hover:bg-teal-700"
+                        }`}
+                      >
+                        {step.status === "revision_requested" ? "Deliver Revision" : "Deliver"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedStep(step)}
                       className="p-1.5 text-gray-400 hover:text-teal-600"
+                      title="View Details"
                     >
                       <ChevronRight className="h-4 w-4" />
-                    </Link>
+                    </button>
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* Detail modal */}
+      {selectedStep && (
+        <JobDetailModal
+          step={selectedStep}
+          onClose={handleDetailClose}
+          onAction={() => {
+            setSelectedStep(null);
+            if (paramId) navigate("/jobs", { replace: true });
+            handleActionSuccess("Action completed successfully!");
+          }}
+        />
+      )}
+
+      {/* Action modals from card buttons */}
+      {actionModal?.type === "accept" && (
+        <AcceptConfirmModal
+          step={actionModal.step}
+          onClose={() => setActionModal(null)}
+          onSuccess={() => handleActionSuccess("Job accepted!")}
+        />
+      )}
+      {actionModal?.type === "decline" && (
+        <DeclineModal
+          step={actionModal.step}
+          onClose={() => setActionModal(null)}
+          onSuccess={() => handleActionSuccess("Job declined. The project manager will reassign.")}
+        />
+      )}
+      {actionModal?.type === "deliver" && (
+        <DeliverModal
+          step={actionModal.step}
+          onClose={() => setActionModal(null)}
+          onSuccess={() => handleActionSuccess("Files delivered! The project manager will review.")}
+        />
       )}
     </div>
   );
