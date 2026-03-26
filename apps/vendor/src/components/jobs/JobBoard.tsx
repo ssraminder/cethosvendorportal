@@ -490,7 +490,11 @@ export function JobBoard() {
         <DeliverModal
           step={actionModal.step}
           onClose={() => setActionModal(null)}
-          onSuccess={() => handleActionSuccess("Files delivered! The project manager will review.")}
+          onSuccess={(revisionVersion) => handleActionSuccess(
+            revisionVersion
+              ? `Revised delivery v${revisionVersion} submitted`
+              : "Files delivered! The project manager will review."
+          )}
         />
       )}
       {negotiatingJob && (
