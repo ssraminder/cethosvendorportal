@@ -232,7 +232,7 @@ function isValidFileType(file: File): boolean {
 interface DeliverProps {
   step: VendorStep;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (revisionVersion?: number) => void;
 }
 
 export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
@@ -291,7 +291,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
     try {
       const result = await deliverStep(sessionToken, step.id, files, notes || undefined);
       if (result.success) {
-        onSuccess();
+        onSuccess(isRevision ? (step.revision_count ?? 0) + 1 : undefined);
       } else {
         const msg = result.upload_errors?.join(". ") || result.error || "Failed to upload delivery";
         setError(msg);
@@ -397,7 +397,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any comments about this delivery..."
+              placeholder={isRevision ? "Describe what you changed..." : "Any comments about this delivery..."}
               rows={3}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
             />

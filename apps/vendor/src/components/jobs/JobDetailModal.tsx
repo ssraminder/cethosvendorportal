@@ -175,9 +175,13 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
     return () => { cancelled = true; };
   }, [sessionToken, step.id, step.offer_id]);
 
-  const handleActionSuccess = () => {
+  const handleActionSuccess = (revisionVersion?: number) => {
     setActionModal(null);
-    onAction();
+    if (revisionVersion) {
+      onAction(`Revised delivery v${revisionVersion} submitted`);
+    } else {
+      onAction();
+    }
   };
 
   const handleDownload = (file: JobDetailFile) => {
