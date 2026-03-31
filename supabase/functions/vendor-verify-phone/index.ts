@@ -48,11 +48,13 @@ serve(async (req: Request) => {
     const action = body.action as string;
 
     if (action === "send") {
-      const phone = (body.phone as string)?.trim();
+      // Normalize: strip spaces, dashes, parens — keep + and digits only
+      const rawPhone = (body.phone as string)?.trim() || "";
+      const phone = rawPhone.replace(/[\s\-().]/g, "");
 
-      if (!phone || phone.length < 7) {
+      if (!phone || phone.length < 8 || !phone.startsWith("+")) {
         return new Response(
-          JSON.stringify({ error: "Please enter a valid phone number" }),
+          JSON.stringify({ error: "Enter phone with country code, e.g. +14165551234" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -110,38 +112,44 @@ serve(async (req: Request) => {
         );
       }
 
-      // Send SMS via Brevo
-      const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-      if (!brevoApiKey) {
-        console.error("BREVO_API_KEY not configured");
+      // Send SMS via ClickSend
+      const clicksendUsername = Deno.env.get("CLICKSEND_USERNAME");
+      const clicksendApiKey = Deno.env.get("CLICKSEND_API_KEY");
+      if (!clicksendUsername || !clicksendApiKey) {
+        console.error("CLICKSEND credentials missing — username:", !!clicksendUsername, "apiKey:", !!clicksendApiKey);
         return new Response(
-          JSON.stringify({ error: "SMS service not configured" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "SMS service not configured. CLICKSEND credentials missing." }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       const smsContent = `Your CETHOS verification code is: ${otpCode}. Expires in 10 minutes.`;
+      const basicAuth = btoa(`${clicksendUsername}:${clicksendApiKey}`);
 
       const smsRes = await fetch(
-        "https://api.brevo.com/v3/transactionalSMS/sms",
+        "https://rest.clicksend.com/v3/sms/send",
         {
           method: "POST",
           headers: {
-            "api-key": brevoApiKey,
+            "Authorization": `Basic ${basicAuth}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            sender: "CETHOS",
-            recipient: phone,
-            content: smsContent,
-            type: "transactional",
+            messages: [
+              {
+                to: phone,
+                body: smsContent,
+                from: "CETHOS",
+                source: "sdk",
+              },
+            ],
           }),
         }
       );
 
       if (!smsRes.ok) {
         const errBody = await smsRes.text();
-        console.error("Brevo SMS send failed:", smsRes.status, errBody);
+        console.error("ClickSend SMS failed:", smsRes.status, errBody);
         let detail: unknown;
         try { detail = JSON.parse(errBody); } catch { detail = errBody; }
         return new Response(
@@ -163,7 +171,7 @@ serve(async (req: Request) => {
 
     if (action === "verify") {
       const otpCode = (body.otp_code as string)?.trim();
-      const phone = (body.phone as string)?.trim();
+      const phone = ((body.phone as string)?.trim() || "").replace(/[\s\-().]/g, "");
 
       if (!otpCode || !phone) {
         return new Response(
