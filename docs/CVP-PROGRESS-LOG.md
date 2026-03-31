@@ -14,6 +14,7 @@ Format: newest sessions at the top.
 
 ---
 
+<<<<<<< claude/setup-supabase-mcp-LY7z9
 ## Session — March 24, 2026 (Login SMS switched to ClickSend)
 
 ### Completed
@@ -24,6 +25,391 @@ Format: newest sessions at the top.
 
 ### Files Modified
 - `supabase/functions/vendor-auth-otp-send/index.ts` — replaced Brevo transactional SMS with ClickSend REST API
+=======
+## Session — March 25, 2026 (Auto-Accept Tab Switch + T&C service_id Fix)
+
+### Completed
+- **Fix 1 — Auto-Accept Tab Switch (V4):** NegotiateModal now passes `autoAssigned` flag through `onSuccess` callback. JobBoard's `handleActionSuccess` detects it and calls `setTab("active")` + `fetchTab("active")` so vendor sees their new assignment immediately. Also threaded through JobDetailModal's `onAction` prop.
+- **Fix 2 — T&C service_id (V5):** `checkTermsForOffer()` now accepts and forwards `service_id` to the `get_terms` request. TermsModal accepts `serviceId` prop and includes it in the `accept_terms` request. Both JobBoard and JobDetailModal pass `step.service_id` through the terms flow.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — `onSuccess` callback now includes optional `autoAssigned` boolean
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — `handleActionSuccess` supports `switchToActive`, termsModal state includes `serviceId`, passes `service_id` to `checkTermsForOffer` and TermsModal
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — `onAction` prop updated to pass message+switchToActive, termsModal state includes `serviceId`, passes `service_id` through terms flow
+- `apps/vendor/src/components/jobs/TermsModal.tsx` — `checkTermsForOffer` accepts `serviceId` param, TermsModal accepts `serviceId` prop, both `get_terms` and `accept_terms` include `service_id`
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
+## Session — March 25, 2026 (Vendor Portal Pending Features Audit)
+
+### Completed
+- **Investigative audit** of 5 vendor portal features (V1–V5): Negotiate button + modal, conditional negotiate + auto-accept, modal fix (units/picker), auto-assign response handling, T&C gate modal.
+- **V1 Negotiate Button + Modal:** ✅ Fully implemented — button on cards + detail modal, NegotiateModal with counter rate/total/deadline/note, calls vendor-counter-offer API.
+- **V2 Conditional + Auto-Accept:** ✅ Fully implemented — button gated by negotiation_allowed, disabled when counter_status=proposed, distinct messages for auto-accept vs queued.
+- **V3 Modal Fix (units/picker):** ✅ Fully implemented — original offer summary box, rate unit inherited, date+time picker with 30-min increments, deadline pre-filled.
+- **V4 Auto-Assign Handling:** ⚠️ Partial — toast + refetch work, but tab does NOT auto-switch to "active" after auto-accept. Vendor must manually navigate.
+- **V5 T&C Gate Modal:** ⚠️ Partial — gates both Accept and Negotiate flows, distinguishes immediate/conditional, but service_id not passed in get_terms call. Both vendor-counter-offer and vendor-accept-terms edge functions not yet deployed.
+
+### Gaps Identified
+- V4: `handleActionSuccess` in JobBoard.tsx needs to detect auto-accept and call `setTab("active")` (small fix)
+- V5: `checkTermsForOffer` in TermsModal.tsx needs `service_id` parameter (small fix)
+- V5: `vendor-accept-terms` edge function needs to be built (medium complexity)
+- V5: `vendor-counter-offer` edge function needs to be built (medium complexity)
+
+### Files Reviewed (no code changes)
+- `apps/vendor/src/components/jobs/JobBoard.tsx`
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx`
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx`
+- `apps/vendor/src/components/jobs/TermsModal.tsx`
+- `apps/vendor/src/components/jobs/JobActionModals.tsx`
+- `apps/vendor/src/api/vendorJobs.ts`
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
+## Session — March 25, 2026 (Terms & Conditions Gate)
+
+### Completed
+- **TermsModal component:** Created `TermsModal.tsx` with scrollable T&C content, version display, action-specific checkbox text (immediate for Accept, conditional for Negotiate), conditional notice banner, and `accept_terms` API call.
+- **checkTermsForOffer helper:** Exported helper that calls `vendor-accept-terms` with `get_terms` action; returns early (no modal) if no terms configured or already accepted for this offer+version.
+- **JobBoard integration:** Accept and Negotiate buttons on job cards now call `checkTermsAndProceed()` before opening their respective modals. If T&C required, TermsModal opens first; after acceptance the original action proceeds.
+- **JobDetailModal integration:** Same terms gate applied to Accept and Negotiate buttons in the detail modal footer.
+- **Graceful fallback:** On terms-check failure (network error, API error), vendor proceeds without blocking — terms check is non-blocking.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/TermsModal.tsx` — New component + `checkTermsForOffer` helper
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Import TermsModal, add terms state + `checkTermsAndProceed`, gate Accept/Negotiate buttons, render TermsModal
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Import TermsModal, add terms state + `checkTermsAndProceed`, gate Accept/Negotiate buttons, render TermsModal
+- `docs/CVP-PROGRESS-LOG.md` — This entry
+
+---
+
+## Session — March 25, 2026 (Counter-Offer Auto-Assign Handling)
+
+### Completed
+- **Auto-assign toast:** Updated NegotiateModal success handling for backend v3 counter-offer response. When `auto_accepted && auto_assigned` is true, shows "You are now assigned to this job" instead of the old "You can now accept the revised offer" message. Job moves to Active tab on refetch.
+- **Edge case fallback:** Added separate branch for `auto_accepted` without `auto_assigned` (shows generic acceptance message).
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — Updated success toast logic to handle auto-assigned counter-offers
+
+---
+
+## Session — March 25, 2026 (Fix Negotiate Modal)
+
+### Completed
+- **Auto-calculated total:** Removed editable Rate Unit dropdown and Proposed Total input. Units are now derived from the original offer (total / rate). Total auto-calculates as proposed rate × units (read-only display).
+- **Current Offer summary box:** Added a prominent gray box at the top of the modal showing the original rate × units = total and deadline.
+- **Deadline time picker:** Replaced date-only input with date + time picker. Time dropdown shows 30-minute increments (12:00 AM through 11:30 PM). Pre-fills from original offer deadline.
+- **Note field required:** Changed note from optional to required. Submit button disabled until note is provided.
+- **Unit display:** Shows unit label from original offer (e.g., "/ page × 3 pages") as read-only text next to rate input.
+
+### Files Changed
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — Rewrote modal: removed rate unit dropdown and editable total, added auto-calculation, current offer box, date+time deadline picker
+
+---
+
+## Session — March 25, 2026 (Vendor Negotiation Policy Awareness)
+
+### Completed
+- **Negotiation types:** Added `negotiation_allowed` and `counter_status` fields to `VendorStep` and `JobDetailJob` interfaces.
+- **Counter-offer API:** Added `submitCounterOffer` function, `CounterOfferPayload` and `CounterOfferResponse` types to `vendorJobs.ts`. Calls `vendor-counter-offer` v2 edge function.
+- **NegotiateModal component:** New modal for submitting counter-proposals. Pre-populates rate/total/deadline from current offer. Handles HTTP 403 (not allowed), 410 (expired), 409 (already pending). Shows different success toast for auto-accepted vs queued proposals.
+- **Conditional Negotiate button (JobBoard):** Only shows on offered jobs when `negotiation_allowed === true`. Disabled when `counter_status === 'proposed'` (pending review). Re-enabled when rejected.
+- **Negotiation indicators (JobBoard cards):** Shows "Open to negotiation" for negotiable offers with no counter. Shows counter status badges (pending/accepted/rejected) when applicable.
+- **Negotiation indicators (JobDetailModal):** Shows "This offer is open to negotiation" or "Fixed terms — accept or decline" in Language & Rate section. Negotiate button in footer actions when allowed.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added negotiation fields to types, added `submitCounterOffer` API function
+- `apps/vendor/src/components/jobs/NegotiateModal.tsx` — New file: counter-offer modal component
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Added conditional Negotiate button, negotiation indicators, counter status badges, NegotiateModal rendering
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Added negotiation indicators in rate section, Negotiate button in footer, NegotiateModal rendering
+
+---
+
+## Session — March 25, 2026 (Vendor Portal Audit Fixes)
+
+### Completed
+- **FIX 1 (Critical):** `acceptStep` now sends `offer_id` in request body alongside `step_id`. AcceptConfirmModal passes `step.offer_id` to the call.
+- **FIX 2 (Critical):** `declineStep` now sends `offer_id` in request body alongside `step_id` and `reason`. DeclineModal passes `step.offer_id` to the call.
+- **FIX 3 (Minor):** Removed dead `getSourceFiles` function and its `SourceFilesResponse` type from `vendorJobs.ts`. No callers existed.
+- **FIX 4 (Minor):** Deleted 4 old stub edge function directories: `vendor-accept-job`, `vendor-decline-job`, `vendor-upload-delivery`, `vendor-get-source-files`.
+- **FIX 5 (Minor):** AcceptConfirmModal now handles HTTP 410 (expired offer) with a specific "This offer has expired" error message and refreshes the job list. `acceptStep` return type changed to `{ status, data }` to expose HTTP status code.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added `offer_id` param to `acceptStep`/`declineStep`, removed `getSourceFiles`, changed `acceptStep` return type for 410 handling
+- `apps/vendor/src/components/jobs/JobActionModals.tsx` — Pass `offer_id` in accept/decline calls, handle 410 expired offer
+- `supabase/functions/vendor-accept-job/` — Deleted (dead stub)
+- `supabase/functions/vendor-decline-job/` — Deleted (dead stub)
+- `supabase/functions/vendor-upload-delivery/` — Deleted (dead stub)
+- `supabase/functions/vendor-get-source-files/` — Deleted (dead stub)
+
+---
+
+## Session — March 25, 2026 (Job Detail Modal Phase 2 — Rich Detail)
+
+### Completed
+- **Inline PDF Preview:** Source, reference, and delivered PDF files can be previewed inline via iframe toggle (Preview/Hide button). Non-PDF files show Download only.
+- **Per-File Document Details (Expandable):** Volume section shows collapsed summary ("3 documents · 2,450 words · 8 pages") with click-to-expand per-file details showing word count, page count, file type, file size, and Preview/Download buttons. Documents matched to source files by filename.
+- **Previous Step Deliverables:** Step 2+ jobs show a distinct blue-tinted section ("Files from Previous Step") with explanatory text, filtering source_files by `source === "previous_step"`. Step 1 jobs show "Source Files" only.
+- **Reference Files Section:** Green-tinted section with reference materials, shown only when reference_files exist. Same preview/download behavior.
+- **Enhanced Revision Context:** Amber section with revision number, PM feedback in highlighted block, previous delivery files, original source files, compare guidance text, and "Deliver Revision" CTA. Positioned prominently after Deadline section.
+- **Customer First Name Display:** Shows customer first name in Order Info section (extracted from `customer_name` field). Hidden when null.
+- **FileRowWithPreview component:** New reusable component replacing FileRow, supports PDF preview toggle and color tinting for different sections (default/blue/green).
+- Added `customer_name` to `JobDetailJob` interface.
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added `customer_name` to `JobDetailJob`
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Complete rewrite with Phase 2 features
+
+---
+
+## Session — March 25, 2026 (Enhanced Job Detail Modal)
+
+### Completed
+- **Job Detail Modal — Full enrichment (Phase 1):**
+  - Modal now fetches from `vendor-get-job-detail` edge function on open with loading spinner
+  - New sections: Order Info (order number, service, rush badge), Language & Rate (LP, rate, total, currency), Deadline & Timing (deadline with relative time, estimated delivery, offer expiry countdown), Volume (doc count, word count, page count + per-file breakdown), Source Files (with individual download buttons via signed URLs), Reference Files (conditional), Instructions (gray box), Revision Context (amber box with reason + previous delivery files), full Timeline (Offered → Approved with dates or dashes)
+  - Expired offers show red "Expired" badge and disabled Accept button
+  - Footer actions vary by status: Accept/Decline for offered, Deliver for active, Deliver Revision for revision_requested
+  - Added `getJobDetail` API function and full TypeScript types (`JobDetailJob`, `JobDetailVolume`, `JobDetailFile`, `JobDetailResponse`)
+  - Added `offer_id`, `expires_at`, `is_rush` fields to `VendorStep` interface
+
+- **Job Board Cards — Enhanced info:**
+  - Cards now clickable (entire card opens detail modal)
+  - Added RUSH badge on cards for rush orders
+  - Added offer expiry countdown badge on offered jobs
+  - Rate and total displayed inline on cards
+  - Action buttons use `stopPropagation` to prevent double-opening modal
+
+### Files Changed
+- `apps/vendor/src/api/vendorJobs.ts` — Added job detail types and `getJobDetail` function
+- `apps/vendor/src/components/jobs/JobDetailModal.tsx` — Complete rewrite with enhanced layout
+- `apps/vendor/src/components/jobs/JobBoard.tsx` — Enhanced cards with rush/expiry badges, clickable cards
+
+---
+
+## Session — March 24, 2026 (Profile Enhancements + Services & Rates Page)
+
+### Completed
+- **Profile page — Province & Tax auto-lookup:**
+  - Added province dropdown (visible only when country = Canada), sourced from `tax_rates` DB table
+  - Province selection auto-populates `tax_name` and `tax_rate` (both READ-ONLY)
+  - Tax ID label changes dynamically based on tax type (HST Number / GST Number / GST/QST Number / etc.)
+  - When country != Canada: province hidden, tax_name = "N/A", tax_rate = 0%
+  - Created `lookup-tax-rate` edge function (GET, public, returns provinces list or single province tax info)
+
+- **Services & Rates page (NEW — replaces old read-only rates view):**
+  - Full rate card management: add, edit, remove service rates
+  - Services grouped by category (Translation, Review & QA, Interpretation, Multimedia, Technology, Other)
+  - Add Service modal: searchable service dropdown (grouped by category), rate, unit, currency, minimum charge, notes
+  - Edit Rate modal: pre-filled, service/unit locked, editable rate/min charge/notes
+  - Remove Rate: confirmation dialog, soft-deactivate (is_active = false)
+  - Duplicate detection: 409 error when adding same service+unit combo
+  - Created `vendor-manage-rates` edge function (POST with actions: get/add/update/remove)
+
+- **Edge function updates:**
+  - `vendor-update-profile`: added province_state, tax_name handling; auto-clears tax when country changes from Canada
+  - `vendor-get-profile`: added tax_name to vendor select query
+
+- **API layer:**
+  - Added `lookupProvinces()`, `lookupTaxRate()`, `manageRates()` functions
+  - Added types: Province, ManagedRate, ServiceOption, ManageRatesResponse
+  - Updated VendorProfile and VendorFullProfile types with tax_name field
+
+- **Navigation:** Renamed sidebar "Rates" to "Services & Rates"
+
+### Files Changed
+- `supabase/functions/lookup-tax-rate/index.ts` (NEW)
+- `supabase/functions/vendor-manage-rates/index.ts` (NEW)
+- `supabase/functions/vendor-update-profile/index.ts` (modified)
+- `supabase/functions/vendor-get-profile/index.ts` (modified)
+- `apps/vendor/src/api/vendorProfile.ts` (modified)
+- `apps/vendor/src/api/vendorAuth.ts` (modified)
+- `apps/vendor/src/components/profile/VendorProfile.tsx` (modified)
+- `apps/vendor/src/components/profile/VendorRates.tsx` (rewritten)
+- `apps/vendor/src/components/layout/VendorSidebar.tsx` (modified)
+
+### Edge Functions to Deploy
+```
+supabase functions deploy lookup-tax-rate
+supabase functions deploy vendor-manage-rates
+supabase functions deploy vendor-update-profile
+supabase functions deploy vendor-get-profile
+```
+
+---
+
+## Session — March 24, 2026 (Vendor Portal Audit & Fixes)
+
+### Completed
+- **Full audit** of vendor portal (vendor.cethos.com) against feature checklist — identified 17 gaps
+- **Database migration 010**: Move tax_id and tax_rate from vendor_payment_info to vendors table, add preferred_rate_currency, rename preferred_currency to payment_currency
+- **Profile page overhaul** (`VendorProfile.tsx`):
+  - Added editable Full Name field
+  - Added editable City field
+  - Added editable Country field (searchable dropdown with 100+ countries)
+  - Added Preferred Rate Currency field (searchable dropdown with 76 currencies)
+  - Added Tax ID (GST/HST/VAT) field — moved from Payment page
+  - Added Tax Rate (%) field — moved from Payment page
+  - New "Financial Details" section on profile page
+- **Payment page fixes** (`PaymentInfo.tsx`):
+  - Removed tax_id and tax_rate fields (moved to profile)
+  - Added **Wise** payment method (6th option)
+  - Added cheque **mailing address** fields
+  - Added wire transfer **SWIFT/routing code** and **bank address** fields
+  - Replaced hardcoded 4-currency dropdown with full **76-currency searchable dropdown**
+  - Renamed "Preferred Currency" to "Payment Currency" with explanation
+- **Language Pairs page** (`LanguagePairs.tsx`):
+  - Replaced free-text inputs with **searchable dropdowns** (type-ahead, grouped by base language)
+  - Added comprehensive **ISO 639-1 + BCP 47 language list** (~170 entries with regional variants)
+  - Added **same-language validation** — blocks identical source/target (EN-US → EN-US)
+  - Allows **locale variants** (EN-US → EN-CA is valid)
+  - Display both language name and code
+- **Dashboard** (`VendorDashboard.tsx`):
+  - Added interactive **availability toggle** (dropdown: Available/Busy/Unavailable/Vacation/On Leave)
+- **Shared components** created:
+  - `SearchableSelect` — reusable combobox with type-ahead search, grouped options, clear button
+  - `CurrencySelect` — currency-specific dropdown using SearchableSelect, format "CAD - Canadian Dollar (C$)"
+- **Data files** created:
+  - `data/languages.ts` — 170+ languages with ISO codes and regional variants
+  - `data/currencies.ts` — 76 currencies with codes, names, symbols
+  - `data/countries.ts` — 100+ countries matching recruitment app
+- **Edge function updates**:
+  - `vendor-update-profile` — now handles full_name, city, country, tax_id, tax_rate, preferred_rate_currency
+  - `vendor-get-profile` — returns new vendor fields, updated payment_info select
+  - `vendor-update-payment-info` — removed tax fields, added Wise method, renamed to payment_currency
+- **New notification edge functions**:
+  - `notify-vendor-job-offer` — email vendor when a job is assigned
+  - `notify-vendor-deadline-reminder` — cron-compatible: finds jobs due in 24hrs, sends reminders
+  - `notify-vendor-job-approved` — email vendor when delivery is approved
+- **API type updates**:
+  - `vendorProfile.ts` — PaymentInfo uses payment_currency, VendorFullProfile has tax_id/tax_rate/preferred_rate_currency
+  - `vendorAuth.ts` — updateProfile accepts full_name, city, country, tax_id, tax_rate, preferred_rate_currency
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `supabase/migrations/010_vendor_schema_updates.sql`
+- `apps/vendor/src/components/shared/SearchableSelect.tsx`
+- `apps/vendor/src/components/shared/CurrencySelect.tsx`
+- `apps/vendor/src/data/languages.ts`
+- `apps/vendor/src/data/currencies.ts`
+- `apps/vendor/src/data/countries.ts`
+- `supabase/functions/notify-vendor-job-offer/index.ts`
+- `supabase/functions/notify-vendor-deadline-reminder/index.ts`
+- `supabase/functions/notify-vendor-job-approved/index.ts`
+
+### Files Modified
+- `apps/vendor/src/components/profile/VendorProfile.tsx` — full rewrite with new fields
+- `apps/vendor/src/components/profile/PaymentInfo.tsx` — tax removal, Wise, cheque/wire fixes, CurrencySelect
+- `apps/vendor/src/components/profile/LanguagePairs.tsx` — searchable dropdowns, validation
+- `apps/vendor/src/components/dashboard/VendorDashboard.tsx` — availability toggle
+- `apps/vendor/src/api/vendorProfile.ts` — updated types
+- `apps/vendor/src/api/vendorAuth.ts` — expanded updateProfile params
+- `supabase/functions/vendor-update-profile/index.ts` — new fields
+- `supabase/functions/vendor-get-profile/index.ts` — new fields, renamed payment column
+- `supabase/functions/vendor-update-payment-info/index.ts` — removed tax, added Wise, renamed column
+
+### Remaining Gaps (Not in Scope for This Session)
+- Certification upload UI on profile page (edge function exists, no frontend)
+- Vendor registration/application form (by design — handled at join.cethos.com)
+- pg_cron setup for deadline-reminder-checker (SQL cron job needs to be registered in Supabase dashboard)
+- Brevo email templates for new notification functions (IDs 20, 21, 22 are placeholders)
+
+---
+
+## Session — March 24, 2026 (Phase 2 — Full Vendor Portal Build)
+
+### Completed
+- Audited entire vendor portal codebase — mapped all built vs missing features
+- Built 13 new Supabase edge functions for vendor portal:
+  - `vendor-get-profile` — full profile with language pairs, rates, payment info, profile completeness
+  - `vendor-update-availability` — toggle availability status (available/busy/vacation/unavailable)
+  - `vendor-update-payment-info` — upsert payment method, bank details, tax info
+  - `vendor-update-language-pairs` — add/remove/toggle language pairs with dedup
+  - `vendor-update-rates` — submit rate change requests (flagged for admin review)
+  - `vendor-upload-certification` — upload cert documents to Supabase Storage
+  - `vendor-get-jobs` — list jobs with language name enrichment, pagination, status filter
+  - `vendor-accept-job` — accept offered job (validates status)
+  - `vendor-decline-job` — decline offered job with optional reason
+  - `vendor-upload-delivery` — upload translated files to vendor-deliveries bucket
+  - `vendor-get-source-files` — signed URLs for source documents (1hr expiry)
+  - `vendor-get-invoices` — list invoices with job references and summary stats
+  - `vendor-get-invoice-pdf` — signed URL for invoice PDF download
+- Created 2 new database tables via migration:
+  - `cvp_jobs` — job assignments with full lifecycle (offered → accepted → delivered → completed)
+  - `cvp_payments` — invoice and payment tracking
+- Created 2 Supabase Storage buckets: `vendor-deliveries`, `vendor-certifications`
+- Built complete frontend for all missing vendor portal features:
+  - **Language Pairs page** (`/languages`) — list active/inactive pairs, add new, toggle, remove
+  - **Rates page** (`/rates`) — table view with service names, request rate change with inline form
+  - **Payment Info page** (`/payment`) — method selector, dynamic bank/PayPal/e-Transfer fields, tax info
+  - **Job Board page** (`/jobs`) — three-tab view (Offered/Active/Completed), accept/decline actions, deadline countdown
+  - **Job Detail page** (`/jobs/:id`) — full job info, instructions, source file download, delivery upload, reviewer feedback
+  - **Invoices page** (`/invoices`) — summary cards (total earned, pending, count), filterable table
+  - **Invoice Detail page** (`/invoices/:id`) — full invoice breakdown, PDF download
+- Enhanced **Dashboard** with:
+  - Quick stats: language pairs count, active jobs, completed jobs, pending payments
+  - Profile completeness progress bar
+  - Offered jobs section (shows up to 3 pending offers)
+  - Quick action cards for Profile, Security, Jobs
+- Updated **Sidebar navigation** with 8 nav items: Dashboard, Profile, Languages, Rates, Payment, Jobs, Invoices, Security
+- Created 3 new API modules:
+  - `vendorProfile.ts` — getFullProfile, updateAvailability, updatePaymentInfo, updateLanguagePairs, updateRates, uploadCertification
+  - `vendorJobs.ts` — getJobs, acceptJob, declineJob, uploadDelivery, getSourceFiles
+  - `vendorInvoices.ts` — getInvoices, getInvoicePdf
+- All edge functions deployed to Supabase via MCP
+- Created `docs/CVP-VENDOR-PORTAL-ADMIN-PROMPT.md` — self-contained prompt for building admin-side vendor management in the CETHOS portal, covering:
+  - Vendor management dashboard + detail page
+  - Job assignment + delivery review workflow
+  - Invoice/payment management
+  - Rate change review queue
+  - Profile health dashboard
+  - Application review completion (Phase 1C)
+- TypeScript strict mode passes with zero errors
+- Vite production build succeeds
+
+### Files Created
+- `supabase/functions/vendor-get-profile/index.ts`
+- `supabase/functions/vendor-update-availability/index.ts`
+- `supabase/functions/vendor-update-payment-info/index.ts`
+- `supabase/functions/vendor-update-language-pairs/index.ts`
+- `supabase/functions/vendor-update-rates/index.ts`
+- `supabase/functions/vendor-upload-certification/index.ts`
+- `supabase/functions/vendor-get-jobs/index.ts`
+- `supabase/functions/vendor-accept-job/index.ts`
+- `supabase/functions/vendor-decline-job/index.ts`
+- `supabase/functions/vendor-upload-delivery/index.ts`
+- `supabase/functions/vendor-get-source-files/index.ts`
+- `supabase/functions/vendor-get-invoices/index.ts`
+- `supabase/functions/vendor-get-invoice-pdf/index.ts`
+- `supabase/migrations/009_cvp_jobs_and_payments.sql`
+- `apps/vendor/src/api/vendorProfile.ts`
+- `apps/vendor/src/api/vendorJobs.ts`
+- `apps/vendor/src/api/vendorInvoices.ts`
+- `apps/vendor/src/components/profile/LanguagePairs.tsx`
+- `apps/vendor/src/components/profile/VendorRates.tsx`
+- `apps/vendor/src/components/profile/PaymentInfo.tsx`
+- `apps/vendor/src/components/jobs/JobBoard.tsx`
+- `apps/vendor/src/components/jobs/JobDetail.tsx`
+- `apps/vendor/src/components/invoices/InvoiceList.tsx`
+- `apps/vendor/src/components/invoices/InvoiceDetail.tsx`
+- `docs/CVP-VENDOR-PORTAL-ADMIN-PROMPT.md`
+
+### Files Modified
+- `apps/vendor/src/App.tsx` — added 7 new routes (languages, rates, payment, jobs, jobs/:id, invoices, invoices/:id)
+- `apps/vendor/src/components/layout/VendorSidebar.tsx` — added 5 new nav items
+- `apps/vendor/src/components/dashboard/VendorDashboard.tsx` — enhanced with stats, completeness, offered jobs
+
+### Next Steps
+- Use `CVP-VENDOR-PORTAL-ADMIN-PROMPT.md` to build admin pages in the CETHOS portal repo
+- Build Phase 1C edge functions (approve, reject, negotiate, waitlist) — see admin prompt
+- Build Phase 1D edge functions (profile health cron jobs)
+- Set up Netlify deployment for vendor.cethos.com
+- End-to-end testing: login → dashboard → accept job → upload delivery → view invoice
+>>>>>>> main
 
 ---
 
@@ -404,7 +790,7 @@ All tasks in Phase 1A are pending.
 | 1B | Testing pipeline | ✅ Complete (edge functions + frontend + cron) |
 | 1C | Review, negotiation, approval | ⬜ Not started |
 | 1D | Profile health system | ⬜ Not started |
-| 2 | Vendor working portal | 🟡 In progress — auth system + core shell built |
+| 2 | Vendor working portal | 🟡 In progress — auth + core shell + profile + jobs + invoices built |
 
 ---
 

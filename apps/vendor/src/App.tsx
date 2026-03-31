@@ -7,6 +7,13 @@ import { VendorShell } from "./components/layout/VendorShell";
 import { VendorDashboard } from "./components/dashboard/VendorDashboard";
 import { VendorProfile } from "./components/profile/VendorProfile";
 import { SetPasswordForm } from "./components/profile/SetPasswordForm";
+import { LanguagePairs } from "./components/profile/LanguagePairs";
+import { VendorRates } from "./components/profile/VendorRates";
+import { PaymentInfo } from "./components/profile/PaymentInfo";
+import { JobBoard } from "./components/jobs/JobBoard";
+import { JobDetail } from "./components/jobs/JobDetail";
+import { InvoiceList } from "./components/invoices/InvoiceList";
+import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
 
 function App() {
   return (
@@ -20,6 +27,13 @@ function App() {
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />
             <Route path="security" element={<SetPasswordForm />} />
+            <Route path="languages" element={<LanguagePairs />} />
+            <Route path="rates" element={<VendorRates />} />
+            <Route path="payment" element={<PaymentInfo />} />
+            <Route path="jobs" element={<JobBoard />} />
+            <Route path="jobs/:id" element={<JobDetail />} />
+            <Route path="invoices" element={<InvoiceList />} />
+            <Route path="invoices/:id" element={<InvoiceDetail />} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

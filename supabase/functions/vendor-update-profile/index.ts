@@ -11,6 +11,14 @@ const corsHeaders: Record<string, string> = {
 interface UpdateRequest {
   email?: string;
   phone?: string;
+  full_name?: string;
+  city?: string;
+  country?: string;
+  province_state?: string;
+  tax_id?: string;
+  tax_name?: string;
+  tax_rate?: string;
+  preferred_rate_currency?: string;
 }
 
 serve(async (req: Request) => {
@@ -49,7 +57,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const { email, phone } = (await req.json()) as UpdateRequest;
+    const { email, phone, full_name, city, country, province_state, tax_id, tax_name, tax_rate, preferred_rate_currency } = (await req.json()) as UpdateRequest;
 
     // Validate email format if provided
     if (email !== undefined) {
@@ -78,9 +86,34 @@ serve(async (req: Request) => {
     }
 
     // Build update payload
-    const updates: Record<string, string> = {};
+    const updates: Record<string, unknown> = {};
     if (email !== undefined) updates.email = email.trim().toLowerCase();
-    if (phone !== undefined) updates.phone = phone.trim() || null as unknown as string;
+    if (phone !== undefined) updates.phone = phone.trim() || null;
+    if (full_name !== undefined) updates.full_name = full_name.trim();
+    if (city !== undefined) updates.city = city.trim() || null;
+    if (country !== undefined) {
+      updates.country = country.trim() || null;
+      // When country changes away from Canada, clear province and reset tax fields
+      if (country.trim() !== "Canada") {
+        updates.province_state = null;
+        updates.tax_name = "N/A";
+        updates.tax_rate = 0;
+      }
+    }
+    if (province_state !== undefined) updates.province_state = province_state.trim() || null;
+    if (tax_name !== undefined) updates.tax_name = tax_name.trim() || null;
+    if (tax_id !== undefined) updates.tax_id = tax_id.trim() || null;
+    if (tax_rate !== undefined) {
+      const rate = tax_rate ? parseFloat(tax_rate) : null;
+      if (rate !== null && (rate < 0 || rate > 100)) {
+        return new Response(
+          JSON.stringify({ error: "Tax rate must be between 0 and 100" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      updates.tax_rate = rate;
+    }
+    if (preferred_rate_currency !== undefined) updates.preferred_rate_currency = preferred_rate_currency.trim() || "CAD";
 
     if (Object.keys(updates).length === 0) {
       return new Response(
@@ -110,9 +143,10 @@ serve(async (req: Request) => {
       .single();
 
     if (vendor) {
-      const translatorUpdates: Record<string, string> = {};
+      const translatorUpdates: Record<string, unknown> = {};
       if (email !== undefined) translatorUpdates.email = updates.email;
       if (phone !== undefined) translatorUpdates.phone = updates.phone;
+      if (full_name !== undefined) translatorUpdates.full_name = updates.full_name;
 
       await supabase
         .from("cvp_translators")
@@ -123,7 +157,7 @@ serve(async (req: Request) => {
     // Fetch updated vendor profile
     const { data: updatedVendor } = await supabase
       .from("vendors")
-      .select("id, full_name, email, phone, status, vendor_type, country, availability_status")
+      .select("id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, tax_id, tax_name, tax_rate, preferred_rate_currency")
       .eq("id", session.vendor_id)
       .single();
 
