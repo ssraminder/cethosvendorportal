@@ -107,15 +107,18 @@ serve(async (req: Request) => {
       .eq("email", vendor.email)
       .single();
 
-    // Calculate profile completeness
+    // Calculate profile completeness based on the 5 dashboard steps (20% each)
     let completeness = 0;
-    if (translatorProfile?.profile_photo_url) completeness += 10;
-    if (translatorProfile?.bio) completeness += 10;
-    if ((translatorProfile?.approved_combinations as unknown[])?.length > 0) completeness += 20;
-    if ((vendor.certifications as unknown[])?.length > 0) completeness += 15;
-    if ((translatorProfile?.cat_tools as unknown[])?.length > 0) completeness += 10;
-    if (paymentInfo?.payment_method) completeness += 20;
-    if (vendor.years_experience) completeness += 15;
+    const completedSteps: Record<string, boolean> = {
+      photo: !!translatorProfile?.profile_photo_url,
+      availability: !!vendor.availability_status && vendor.availability_status !== "available",
+      languages: (languagePairs || []).some((lp: Record<string, unknown>) => lp.is_active),
+      rates: (rates || []).length > 0,
+      payment: !!paymentInfo?.payment_method,
+    };
+    for (const done of Object.values(completedSteps)) {
+      if (done) completeness += 20;
+    }
 
     return new Response(
       JSON.stringify({
@@ -125,6 +128,7 @@ serve(async (req: Request) => {
         payment_info: paymentInfo || null,
         translator_profile: translatorProfile || null,
         profile_completeness: completeness,
+        completed_steps: completedSteps,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

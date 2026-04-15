@@ -67,6 +67,7 @@ export function VendorDashboard() {
   const { vendor, sessionToken, needsPassword, setVendor } = useVendorAuth();
   const [languagePairCount, setLanguagePairCount] = useState<number | null>(null);
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
   const [offeredJobs, setOfferedJobs] = useState<VendorStep[]>([]);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [completedJobCount, setCompletedJobCount] = useState(0);
@@ -82,6 +83,9 @@ export function VendorDashboard() {
       }
       if (profileResult.profile_completeness !== undefined) {
         setProfileCompleteness(profileResult.profile_completeness);
+      }
+      if (profileResult.completed_steps) {
+        setCompletedSteps(profileResult.completed_steps);
       }
 
       const [offeredResult, activeResult, completedResult] = await Promise.all([
@@ -227,7 +231,7 @@ export function VendorDashboard() {
           </div>
           <div className="space-y-2">
             {PROFILE_STEPS.map(({ key, label, icon: StepIcon }) => {
-              const done = key === "languages" && languagePairCount != null && languagePairCount > 0;
+              const done = !!completedSteps[key];
               return (
                 <div key={key} className="flex items-center gap-2.5 text-sm text-gray-500">
                   {done ? (

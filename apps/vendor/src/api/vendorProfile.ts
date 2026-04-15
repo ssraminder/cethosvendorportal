@@ -96,6 +96,7 @@ interface FullProfileResponse {
   payment_info: PaymentInfo | null;
   translator_profile: TranslatorProfile | null;
   profile_completeness: number;
+  completed_steps?: Record<string, boolean>;
   error?: string;
 }
 
