@@ -1,40 +1,18 @@
+const LOGO_URL =
+  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
+
 interface CethosLogoProps {
   size?: "sm" | "md" | "lg";
-  showText?: boolean;
-  dark?: boolean;
 }
 
-export function CethosLogo({ size = "md", showText = true, dark }: CethosLogoProps) {
-  const iconSize = size === "sm" ? 26 : size === "lg" ? 48 : 36;
-  const fontSize =
-    size === "sm"
-      ? "text-base"
-      : size === "lg"
-        ? "text-3xl"
-        : "text-xl";
-  const textColor = dark ? "text-white" : "text-gray-900";
+export function CethosLogo({ size = "md" }: CethosLogoProps) {
+  const height = size === "sm" ? "h-7" : size === "lg" ? "h-14" : "h-9";
 
   return (
-    <div className="flex items-center gap-2">
-      <svg
-        width={iconSize}
-        height={iconSize}
-        viewBox="0 0 48 48"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
-        <circle cx="24" cy="24" r="24" fill="#0F9DA0" />
-        <path
-          d="M26.5 14C20.15 14 15 19.15 15 25.5C15 31.85 20.15 37 26.5 37C29.5 37 32.2 35.8 34.2 33.8L31.4 31C30.1 32.3 28.4 33 26.5 33C22.36 33 19 29.64 19 25.5C19 21.36 22.36 18 26.5 18C28.4 18 30.1 18.7 31.4 20L34.2 17.2C32.2 15.2 29.5 14 26.5 14Z"
-          fill="white"
-        />
-      </svg>
-      {showText && (
-        <span className={`${fontSize} font-bold ${textColor} tracking-tight`}>
-          CETHOS
-        </span>
-      )}
-    </div>
+    <img
+      src={LOGO_URL}
+      alt="CETHOS Translation Services"
+      className={`${height} w-auto object-contain mx-auto mb-4`}
+    />
   );
 }

@@ -19,6 +19,7 @@ interface UpdateRequest {
   tax_name?: string;
   tax_rate?: string;
   preferred_rate_currency?: string;
+  native_languages?: string[];
 }
 
 serve(async (req: Request) => {
@@ -57,7 +58,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const { email, phone, full_name, city, country, province_state, tax_id, tax_name, tax_rate, preferred_rate_currency } = (await req.json()) as UpdateRequest;
+    const { email, phone, full_name, city, country, province_state, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages } = (await req.json()) as UpdateRequest;
 
     // Validate email format if provided
     if (email !== undefined) {
@@ -114,6 +115,7 @@ serve(async (req: Request) => {
       updates.tax_rate = rate;
     }
     if (preferred_rate_currency !== undefined) updates.preferred_rate_currency = preferred_rate_currency.trim() || "CAD";
+    if (native_languages !== undefined) updates.native_languages = native_languages;
 
     if (Object.keys(updates).length === 0) {
       return new Response(
@@ -157,7 +159,7 @@ serve(async (req: Request) => {
     // Fetch updated vendor profile
     const { data: updatedVendor } = await supabase
       .from("vendors")
-      .select("id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, tax_id, tax_name, tax_rate, preferred_rate_currency")
+      .select("id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages")
       .eq("id", session.vendor_id)
       .single();
 

@@ -398,8 +398,7 @@ export function LoginPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
           <div className="text-center mb-8">
             <CethosLogo size="md" />
-            <div className="mt-3 h-0.5 w-16 bg-[#0F9DA0] mx-auto rounded-full" />
-            <p className="text-gray-500 mt-3">Vendor Portal</p>
+            <p className="text-gray-500 mt-1">Vendor Portal</p>
           </div>
 
           {renderContent()}
