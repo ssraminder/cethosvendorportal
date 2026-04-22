@@ -8,6 +8,7 @@ import { Layout } from '../components/Layout'
 import { FormSection } from '../components/FormSection'
 import { FormField } from '../components/FormField'
 import { LanguagePairRow } from '../components/LanguagePairRow'
+import { MultiSelect } from '../components/MultiSelect'
 import { useLanguages } from '../hooks/useLanguages'
 import { translatorSchema, cognitiveDebriefingSchema } from '../lib/schemas'
 import type { TranslatorFormData, CognitiveDebriefingFormData } from '../lib/schemas'
@@ -36,6 +37,7 @@ export function Apply() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [workSampleFiles, setWorkSampleFiles] = useState<File[]>([])
+  const [cvFile, setCvFile] = useState<File | null>(null)
   const [cogSampleFile, setCogSampleFile] = useState<File | null>(null)
   const { languages, loading: languagesLoading, error: languagesError } = useLanguages()
   const navigate = useNavigate()
@@ -110,6 +112,13 @@ export function Apply() {
     const files = Array.from(e.target.files ?? [])
     const validFiles = files.filter(f => f.size <= 10 * 1024 * 1024)
     setWorkSampleFiles(prev => [...prev, ...validFiles].slice(0, 3))
+  }
+
+  const handleCvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) return
+    setCvFile(file)
   }
 
   const onTranslatorSubmit = async (data: TranslatorFormData) => {
@@ -390,29 +399,16 @@ export function Apply() {
               description="Select every domain you can work in. Your selections apply across all language pairs you add below."
             >
               <FormField label="Domains" required error={translatorForm.formState.errors.domainsOffered?.message}>
-                <div className="flex flex-wrap gap-2">
-                  {DOMAIN_OPTIONS.map((domain) => {
-                    const selected = (translatorForm.watch('domainsOffered') ?? []).includes(domain.value)
-                    return (
-                      <label
-                        key={domain.value}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
-                          selected
-                            ? 'bg-blue-50 border-blue-300 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          checked={selected}
-                          onChange={() => handleToggleDomainOffered(domain.value)}
-                        />
-                        {domain.label}
-                      </label>
-                    )
-                  })}
-                </div>
+                <MultiSelect
+                  options={DOMAIN_OPTIONS as unknown as { value: string; label: string }[]}
+                  value={(translatorForm.watch('domainsOffered') ?? []) as string[]}
+                  onChange={(next) => translatorForm.setValue(
+                    'domainsOffered',
+                    next as DomainValue[],
+                    { shouldValidate: true }
+                  )}
+                  placeholder="Select one or more domains…"
+                />
               </FormField>
 
               <FormField
@@ -463,7 +459,39 @@ export function Apply() {
               )}
             </FormSection>
 
-            {/* Section 5: Work Samples (optional) */}
+            {/* Section 5a: Resume / CV */}
+            <FormSection
+              title="Resume / CV"
+              description="Upload your most recent CV (PDF or DOCX, max 10MB). This helps us contextualize your experience."
+            >
+              <div className="space-y-3">
+                {!cvFile ? (
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-blue-400 transition-colors">
+                    <Upload className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm text-gray-500">Click to upload your CV</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.doc"
+                      className="sr-only"
+                      onChange={handleCvUpload}
+                    />
+                  </label>
+                ) : (
+                  <div className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
+                    <span className="text-sm text-gray-700 truncate">{cvFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCvFile(null)}
+                      className="text-gray-400 hover:text-red-500 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            </FormSection>
+
+            {/* Section 5b: Work Samples (optional) */}
             <FormSection
               title="Work Samples"
               description="Optional. If you have recent samples of your work (PDF or DOCX, max 10MB each), sharing them can strengthen your application. You can skip this and submit tests only."
