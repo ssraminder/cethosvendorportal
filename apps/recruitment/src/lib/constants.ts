@@ -59,7 +59,8 @@ export const DOMAIN_OPTIONS = [
 ] as const
 
 export const SERVICE_OPTIONS = [
-  { value: 'translation', label: 'Translation', description: 'Source \u2192 target translation' },
+  { value: 'certified_translation', label: 'Certified Translation', description: 'Certified translation of official documents (immigration, legal, academic)' },
+  { value: 'translation', label: 'Translation', description: 'General source \u2192 target translation' },
   { value: 'translation_review', label: 'Translation + Review', description: 'Translate then self-review' },
   { value: 'lqa_review', label: 'LQA Review', description: "Review someone else's translation using MQM Core" },
 ] as const

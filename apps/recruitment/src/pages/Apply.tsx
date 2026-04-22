@@ -17,13 +17,15 @@ import {
   EDUCATION_OPTIONS,
   CERTIFICATION_OPTIONS,
   CAT_TOOL_OPTIONS,
-  SERVICE_OPTIONS,
   REFERRAL_OPTIONS,
   COG_INSTRUMENT_OPTIONS,
   COG_THERAPY_OPTIONS,
   FAMILIARITY_OPTIONS,
   AVAILABILITY_OPTIONS,
 } from '../lib/constants'
+import { DOMAIN_OPTIONS } from '../lib/domains'
+import type { DomainValue } from '../lib/domains'
+import { RATE_CURRENCIES } from '../lib/currencies'
 import type { RoleType } from '../types/application'
 
 const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
@@ -45,8 +47,9 @@ export function Apply() {
       roleType: 'translator',
       certifications: [],
       catTools: [],
-      languagePairs: [{ sourceLanguageId: '', targetLanguageId: '', domains: [] }],
-      servicesOffered: [],
+      languagePairs: [{ sourceLanguageId: '', targetLanguageId: '', services: [] }],
+      domainsOffered: [],
+      rateCurrency: 'CAD',
       privacyPolicy: false as unknown as true,
       consentTest: false as unknown as true,
       consentUnpaid: false as unknown as true,
@@ -83,16 +86,12 @@ export function Apply() {
     setSubmitError(null)
   }
 
-  const handleToggleDomain = useCallback((pairIndex: number, domain: string) => {
-    const current = translatorForm.getValues(`languagePairs.${pairIndex}.domains`) ?? []
-    const updated = current.includes(domain as typeof current[number])
+  const handleToggleDomainOffered = useCallback((domain: DomainValue) => {
+    const current = translatorForm.getValues('domainsOffered') ?? []
+    const updated = current.includes(domain)
       ? current.filter((d) => d !== domain)
-      : [...current, domain as typeof current[number]]
-    translatorForm.setValue(
-      `languagePairs.${pairIndex}.domains`,
-      updated,
-      { shouldValidate: true }
-    )
+      : [...current, domain]
+    translatorForm.setValue('domainsOffered', updated, { shouldValidate: true })
   }, [translatorForm])
 
   const handleToggleCheckbox = useCallback((
@@ -385,8 +384,56 @@ export function Apply() {
               </FormField>
             </FormSection>
 
-            {/* Section 3: Language Pairs & Domains */}
-            <FormSection title="Language Pairs & Domains" description="Add each language pair you can work with, and select the domains you specialize in for each.">
+            {/* Section 3: Domains & Rate Currency (applicant-wide) */}
+            <FormSection
+              title="Domains & Rate Currency"
+              description="Select every domain you can work in. Your selections apply across all language pairs you add below."
+            >
+              <FormField label="Domains" required error={translatorForm.formState.errors.domainsOffered?.message}>
+                <div className="flex flex-wrap gap-2">
+                  {DOMAIN_OPTIONS.map((domain) => {
+                    const selected = (translatorForm.watch('domainsOffered') ?? []).includes(domain.value)
+                    return (
+                      <label
+                        key={domain.value}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
+                          selected
+                            ? 'bg-blue-50 border-blue-300 text-blue-700'
+                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={selected}
+                          onChange={() => handleToggleDomainOffered(domain.value)}
+                        />
+                        {domain.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </FormField>
+
+              <FormField
+                label="Currency for all rates"
+                required
+                error={translatorForm.formState.errors.rateCurrency?.message}
+                hint="Applies to every rate you enter on language pairs below."
+              >
+                <select {...translatorForm.register('rateCurrency')} className={`${selectClasses} max-w-xs`}>
+                  {RATE_CURRENCIES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.label}</option>
+                  ))}
+                </select>
+              </FormField>
+            </FormSection>
+
+            {/* Section 4: Language Pairs & Rates */}
+            <FormSection
+              title="Language Pairs & Rates"
+              description="Add each language pair you can work with. For each pair, list the services you offer and your rate."
+            >
               <div className="space-y-4">
                 {languagePairFields.map((field, index) => (
                   <LanguagePairRow
@@ -394,16 +441,17 @@ export function Apply() {
                     index={index}
                     languages={languages}
                     register={translatorForm.register}
+                    setValue={translatorForm.setValue}
+                    watch={translatorForm.watch}
                     errors={translatorForm.formState.errors}
                     onRemove={() => removeLanguagePair(index)}
                     canRemove={languagePairFields.length > 1}
-                    selectedDomains={translatorForm.watch(`languagePairs.${index}.domains`) ?? []}
-                    onToggleDomain={(domain) => handleToggleDomain(index, domain)}
+                    currencyCode={translatorForm.watch('rateCurrency') ?? 'CAD'}
                   />
                 ))}
                 <button
                   type="button"
-                  onClick={() => addLanguagePair({ sourceLanguageId: '', targetLanguageId: '', domains: [] })}
+                  onClick={() => addLanguagePair({ sourceLanguageId: '', targetLanguageId: '', services: [] })}
                   className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
                 >
                   <Plus className="w-4 h-4" />
@@ -415,49 +463,15 @@ export function Apply() {
               )}
             </FormSection>
 
-            {/* Section 4: Services Offered */}
-            <FormSection title="Services Offered" description="Select all services you can provide.">
-              <div className="space-y-3">
-                {SERVICE_OPTIONS.map((service) => {
-                  const selected = (translatorForm.watch('servicesOffered') ?? []).includes(service.value)
-                  return (
-                    <label
-                      key={service.value}
-                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        selected
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 text-blue-600 focus:ring-blue-500"
-                        checked={selected}
-                        onChange={() => handleToggleCheckbox(
-                          translatorForm as unknown as { getValues: (field: string) => string[]; setValue: (field: string, value: string[], options?: { shouldValidate?: boolean }) => void },
-                          'servicesOffered',
-                          service.value
-                        )}
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-gray-900">{service.label}</span>
-                        <p className="text-xs text-gray-500">{service.description}</p>
-                      </div>
-                    </label>
-                  )
-                })}
-              </div>
-              {translatorForm.formState.errors.servicesOffered?.message && (
-                <p className="text-sm text-red-600">{translatorForm.formState.errors.servicesOffered.message}</p>
-              )}
-            </FormSection>
-
-            {/* Section 5: Work Samples */}
-            <FormSection title="Work Samples" description="Upload 1-3 samples of your work (PDF or DOCX, max 10MB each). Samples improve your pre-screening score.">
+            {/* Section 5: Work Samples (optional) */}
+            <FormSection
+              title="Work Samples"
+              description="Optional. If you have recent samples of your work (PDF or DOCX, max 10MB each), sharing them can strengthen your application. You can skip this and submit tests only."
+            >
               <div className="space-y-3">
                 <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-blue-400 transition-colors">
                   <Upload className="w-5 h-5 text-gray-400" />
-                  <span className="text-sm text-gray-500">Click to upload files</span>
+                  <span className="text-sm text-gray-500">Click to upload (optional)</span>
                   <input
                     type="file"
                     accept=".pdf,.docx,.doc"
@@ -479,20 +493,6 @@ export function Apply() {
                   </div>
                 ))}
               </div>
-            </FormSection>
-
-            {/* Section 6: Rate Expectations */}
-            <FormSection title="Rate Expectations">
-              <FormField label="Expected rate per page (CAD)" hint="This is used for initial matching and may be subject to discussion.">
-                <input
-                  {...translatorForm.register('rateExpectation')}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className={`${inputClasses} max-w-xs`}
-                  placeholder="e.g. 15.00"
-                />
-              </FormField>
             </FormSection>
 
             {/* Section 7: Additional Information */}
@@ -844,16 +844,6 @@ export function Apply() {
                   </select>
                 </FormField>
 
-                <FormField label="Expected day/project rate (CAD)" hint="This is used for initial matching and may be subject to discussion.">
-                  <input
-                    {...cogForm.register('cogRateExpectation')}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className={inputClasses}
-                    placeholder="e.g. 500.00"
-                  />
-                </FormField>
               </div>
             </FormSection>
 

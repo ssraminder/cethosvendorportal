@@ -2,7 +2,7 @@ export type RoleType = 'translator' | 'cognitive_debriefing'
 
 export type Domain = 'legal' | 'medical' | 'immigration' | 'financial' | 'technical' | 'general'
 
-export type ServiceType = 'translation' | 'translation_review' | 'lqa_review'
+export type ServiceType = 'certified_translation' | 'translation' | 'translation_review' | 'lqa_review'
 
 export type ExperienceBracket = '0' | '1' | '3' | '5' | '7' | '10'
 

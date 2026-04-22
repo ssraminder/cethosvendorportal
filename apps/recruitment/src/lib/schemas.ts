@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DOMAIN_VALUES } from './domains'
 
 // -- Shared fields --
 
@@ -31,11 +32,21 @@ const certificationSchema = z.object({
   expiryDate: z.string().optional(),
 })
 
+// Per-pair per-service rate capture.
+// serviceCode references `services.code`; unit is one of the service's
+// default_calculation_units; rate is optional unless the submit handler
+// decides it's required (translation services enforce, others don't).
+const pairServiceRateSchema = z.object({
+  serviceCode: z.string().min(1),
+  unit: z.string().min(1),
+  rate: z.string().optional(),
+  minimumCharge: z.string().optional(),
+})
+
 const languagePairSchema = z.object({
   sourceLanguageId: z.string().min(1, 'Source language is required'),
   targetLanguageId: z.string().min(1, 'Target language is required'),
-  domains: z.array(z.enum(['legal', 'medical', 'immigration', 'financial', 'technical', 'general']))
-    .min(1, 'Select at least one domain'),
+  services: z.array(pairServiceRateSchema).min(1, 'Select at least one service for this language pair'),
 }).refine(
   (data) => data.sourceLanguageId !== data.targetLanguageId,
   { message: 'Source and target language must be different', path: ['targetLanguageId'] }
@@ -49,9 +60,8 @@ export const translatorSchema = z.object({
   certifications: z.array(certificationSchema).default([]),
   catTools: z.array(z.string()).default([]),
   languagePairs: z.array(languagePairSchema).min(1, 'At least one language pair is required'),
-  servicesOffered: z.array(z.enum(['translation', 'translation_review', 'lqa_review']))
-    .min(1, 'Select at least one service'),
-  rateExpectation: z.string().optional(),
+  domainsOffered: z.array(z.enum(DOMAIN_VALUES)).min(1, 'Select at least one domain'),
+  rateCurrency: z.string().min(3, 'Select a currency for your rates'),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
   ...consentSchema.shape,
@@ -84,7 +94,6 @@ export const cognitiveDebriefingSchema = z.object({
   cogAvailability: z.enum(['full_time', 'part_time', 'project_based'], {
     error: 'Availability is required',
   }),
-  cogRateExpectation: z.string().optional(),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
   ...consentSchema.shape,
@@ -93,3 +102,4 @@ export const cognitiveDebriefingSchema = z.object({
 export type TranslatorFormData = z.infer<typeof translatorSchema>
 export type CognitiveDebriefingFormData = z.infer<typeof cognitiveDebriefingSchema>
 export type ApplicationFormData = TranslatorFormData | CognitiveDebriefingFormData
+export type PairServiceRate = z.infer<typeof pairServiceRateSchema>

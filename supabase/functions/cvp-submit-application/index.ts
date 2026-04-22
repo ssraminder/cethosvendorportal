@@ -1,11 +1,19 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { BREVO_TEMPLATES, sendBrevoEmail } from "../_shared/brevo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+interface PairServiceRate {
+  serviceCode: string;
+  unit: string;
+  rate?: string;
+  minimumCharge?: string;
+}
 
 interface TranslatorPayload {
   roleType: "translator";
@@ -22,10 +30,10 @@ interface TranslatorPayload {
   languagePairs: {
     sourceLanguageId: string;
     targetLanguageId: string;
-    domains: string[];
+    services: PairServiceRate[];
   }[];
-  servicesOffered: string[];
-  rateExpectation?: string;
+  domainsOffered: string[];
+  rateCurrency: string;
   referralSource?: string;
   notes?: string;
 }
@@ -51,7 +59,6 @@ interface CognitiveDebriefingPayload {
   cogFdaFamiliarity: string;
   cogPriorDebriefReports: boolean;
   cogAvailability: string;
-  cogRateExpectation?: string;
   referralSource?: string;
   notes?: string;
 }
@@ -98,7 +105,6 @@ serve(async (req: Request) => {
 
     const payload: ApplicationPayload = await req.json();
 
-    // Basic validation
     if (!payload.fullName || !payload.email || !payload.country) {
       return jsonResponse(
         { success: false, error: "Missing required fields: fullName, email, country" },
@@ -107,13 +113,10 @@ serve(async (req: Request) => {
     }
 
     if (!payload.roleType || !["translator", "cognitive_debriefing"].includes(payload.roleType)) {
-      return jsonResponse(
-        { success: false, error: "Invalid role type" },
-        400
-      );
+      return jsonResponse({ success: false, error: "Invalid role type" }, 400);
     }
 
-    // Check reapplication cooldown
+    // Reapplication cooldown
     const { data: existingApps } = await supabase
       .from("cvp_applications")
       .select("can_reapply_after, status")
@@ -123,7 +126,7 @@ serve(async (req: Request) => {
       .limit(1);
 
     if (existingApps && existingApps.length > 0) {
-      const cooldownDate = new Date(existingApps[0].can_reapply_after);
+      const cooldownDate = new Date(existingApps[0].can_reapply_after as string);
       if (cooldownDate > new Date()) {
         return jsonResponse(
           {
@@ -135,15 +138,12 @@ serve(async (req: Request) => {
       }
     }
 
-    // Generate application number
     const applicationNumber = await generateApplicationNumber(supabase);
 
-    // Extract IP and user agent
     const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       req.headers.get("cf-connecting-ip") ?? "";
     const userAgent = req.headers.get("user-agent") ?? "";
 
-    // Build application row
     const applicationRow: Record<string, unknown> = {
       application_number: applicationNumber,
       role_type: payload.roleType,
@@ -166,10 +166,19 @@ serve(async (req: Request) => {
       applicationRow.education_level = tp.educationLevel;
       applicationRow.certifications = tp.certifications ?? [];
       applicationRow.cat_tools = tp.catTools ?? [];
-      applicationRow.services_offered = tp.servicesOffered;
-      applicationRow.rate_expectation = tp.rateExpectation
-        ? parseFloat(tp.rateExpectation)
-        : null;
+      applicationRow.domains_offered = tp.domainsOffered ?? [];
+      applicationRow.rate_currency = tp.rateCurrency ?? null;
+      // services_offered column kept populated with aggregated service codes
+      // across all pairs for simple queryability; full detail is in rate_card.
+      const aggregatedServiceCodes = Array.from(
+        new Set(
+          (tp.languagePairs ?? []).flatMap((p) =>
+            (p.services ?? []).map((s) => s.serviceCode)
+          )
+        )
+      );
+      applicationRow.services_offered = aggregatedServiceCodes;
+      applicationRow.rate_card = tp.languagePairs ?? [];
     } else {
       const cp = payload as CognitiveDebriefingPayload;
       applicationRow.cog_years_experience = parseInt(cp.cogYearsExperience, 10);
@@ -183,12 +192,8 @@ serve(async (req: Request) => {
       applicationRow.cog_fda_familiarity = cp.cogFdaFamiliarity;
       applicationRow.cog_prior_debrief_reports = cp.cogPriorDebriefReports;
       applicationRow.cog_availability = cp.cogAvailability;
-      applicationRow.cog_rate_expectation = cp.cogRateExpectation
-        ? parseFloat(cp.cogRateExpectation)
-        : null;
     }
 
-    // Insert application
     const { data: application, error: insertError } = await supabase
       .from("cvp_applications")
       .insert(applicationRow)
@@ -203,23 +208,28 @@ serve(async (req: Request) => {
       );
     }
 
-    // Create test combinations for translators
+    // Create test combinations for translators.
+    // One combo per (language pair × service). Domain is applicant-wide —
+    // seed it with the first selected domain; staff can adjust per-combo
+    // during review.
     if (payload.roleType === "translator") {
       const tp = payload as TranslatorPayload;
+      const primaryDomain = (tp.domainsOffered && tp.domainsOffered.length > 0)
+        ? tp.domainsOffered[0]
+        : "general";
       const combinationRows: Record<string, unknown>[] = [];
 
-      for (const pair of tp.languagePairs) {
-        for (const domain of pair.domains) {
-          for (const serviceType of tp.servicesOffered) {
-            combinationRows.push({
-              application_id: application.id,
-              source_language_id: pair.sourceLanguageId,
-              target_language_id: pair.targetLanguageId,
-              domain,
-              service_type: serviceType,
-              status: "pending",
-            });
-          }
+      for (const pair of tp.languagePairs ?? []) {
+        for (const svc of pair.services ?? []) {
+          combinationRows.push({
+            application_id: application.id,
+            source_language_id: pair.sourceLanguageId,
+            target_language_id: pair.targetLanguageId,
+            domain: primaryDomain,
+            service_type: svc.serviceCode,
+            status: "pending",
+            approved_rate: svc.rate ? parseFloat(svc.rate) : null,
+          });
         }
       }
 
@@ -235,35 +245,24 @@ serve(async (req: Request) => {
       }
     }
 
-    // Send confirmation email (V1) via Brevo
+    // Send V1 confirmation email via Brevo (real template ID from brevo.ts).
     try {
-      const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-      if (brevoApiKey) {
-        await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: {
-            "api-key": brevoApiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            to: [{ email: payload.email, name: payload.fullName }],
-            templateId: 1, // V1 — Application Received (update when Brevo template created)
-            params: {
-              fullName: payload.fullName,
-              applicationNumber,
-              roleType: payload.roleType === "translator"
-                ? "Translator / Reviewer"
-                : "Cognitive Debriefing Consultant",
-            },
-          }),
-        });
-      }
+      await sendBrevoEmail({
+        to: { email: payload.email, name: payload.fullName },
+        templateId: BREVO_TEMPLATES.V1_APPLICATION_RECEIVED,
+        params: {
+          fullName: payload.fullName,
+          applicationNumber,
+          roleType: payload.roleType === "translator"
+            ? "Translator / Reviewer"
+            : "Cognitive Debriefing Consultant",
+        },
+      });
     } catch (emailError) {
-      // Non-fatal — log but don't fail the submission
-      console.error("Error sending confirmation email:", emailError);
+      console.error("Error sending V1 confirmation email:", emailError);
     }
 
-    // Trigger pre-screening (fire and forget — calls the prescreen edge function)
+    // Fire and forget: trigger pre-screening.
     try {
       const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
