@@ -445,6 +445,7 @@ export function Apply() {
                     onRemove={() => removeLanguagePair(index)}
                     canRemove={languagePairFields.length > 1}
                     currencyCode={translatorForm.watch('rateCurrency') ?? 'CAD'}
+                    submitAttempted={translatorForm.formState.submitCount > 0}
                   />
                 ))}
                 <button

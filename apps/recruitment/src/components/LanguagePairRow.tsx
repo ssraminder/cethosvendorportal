@@ -15,6 +15,7 @@ interface LanguagePairRowProps {
   onRemove: () => void
   canRemove: boolean
   currencyCode: string
+  submitAttempted?: boolean
 }
 
 export function LanguagePairRow({
@@ -27,11 +28,13 @@ export function LanguagePairRow({
   onRemove,
   canRemove,
   currencyCode,
+  submitAttempted = false,
 }: LanguagePairRowProps) {
   const pairErrors = errors.languagePairs?.[index]
   const { services, loading: servicesLoading } = useServices()
   const [addingService, setAddingService] = useState(false)
   const [selectedNewCode, setSelectedNewCode] = useState('')
+  const [rateTouched, setRateTouched] = useState<Record<string, boolean>>({})
 
   const pairServices: PairServiceRate[] = watch(`languagePairs.${index}.services`) ?? []
 
@@ -91,7 +94,8 @@ export function LanguagePairRow({
     if (!svc) return null
     const units = svc.default_calculation_units
     const required = serviceIsRateRequired(svc.code)
-    const rateFieldError = required && !row.rate ? 'Rate required' : null
+    const showRateError = (submitAttempted || rateTouched[svc.code]) && required && !row.rate
+    const rateFieldError = showRateError ? 'Rate required' : null
 
     return (
       <div
@@ -129,6 +133,7 @@ export function LanguagePairRow({
                 min="0"
                 value={row.rate ?? ''}
                 onChange={(e) => updatePairServiceField(svc.code, 'rate', e.target.value)}
+                onBlur={() => setRateTouched((s) => ({ ...s, [svc.code]: true }))}
                 className="w-full rounded-r-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
                 placeholder={required ? '0.18' : '—'}
               />
