@@ -14,7 +14,71 @@ Format: newest sessions at the top.
 
 ---
 
-<<<<<<< claude/setup-supabase-mcp-LY7z9
+## Session — April 22, 2026 (Go-Live push: form restructure + approval/rejection plumbing)
+
+### Form / applicant-facing work
+- Restyled recruitment app to match the main CETHOS website: Plus Jakarta Sans, cethos-navy/cethos-teal tokens, remote-hosted SVG logo, #F8FAFC canvas
+- Replaced hardcoded `SERVICE_OPTIONS` with a live fetch from the portal's `services` table (48 vendor-facing services minus Rush/Urgent Handling)
+- Rates moved from a vague applicant-wide field to per-language-pair × service capture with unit pickers constrained to each service's `default_calculation_units`; translation rates are required, everything else optional
+- Applicant-wide Domains multi-select (22 options) via a searchable dropdown — replaces per-pair pills
+- Applicant-wide Currency selector (14 currencies) drives all rate inputs
+- Removed the dedicated "Rate expectation" section (translator and cog paths) — vague rates are unprofessional in this industry
+- Removed the Work Samples upload section; Resume / CV remains and now actually uploads to the new `cvp-applicant-cvs` Supabase Storage bucket; path persisted as `cvp_applications.cv_storage_path`
+- Cog debriefing "Native language" single-select → `RankedMultiSelect` (searchable, max 3, ranked 1st/2nd/3rd with up/down reorder). Persists to new `cog_native_languages UUID[]` column
+- "Additional fluent languages" pills → existing `MultiSelect` dropdown with search
+- Source/Target language pickers → `SearchableSelect` for smooth filtering across 130+ languages
+- Mobile fix on Certifications row (stacks vertically, full-width inputs, floating remove button)
+- Rate-required error no longer fires eagerly — only after field blur or form submit attempt
+- Brevo templates V1–V17 uploaded (template IDs 21–37 wired into `_shared/brevo.ts`); Mustache `{{#var}}` sections rewritten to Brevo-compatible output; all 17 templates active
+- New Privacy Policy page at `/privacy` with PIPEDA/GDPR/CCPA sections + sub-processor list; consent checkbox now links to it
+
+### Backend work
+- Migration: `cvp_applications.domains_offered TEXT[]`, `rate_currency TEXT`, `rate_card JSONB`, `cog_native_languages UUID[]`, `cv_storage_path TEXT`
+- Migration: extended domain CHECK constraint to 22 values on both `cvp_test_combinations` and `cvp_test_library`; dropped `service_type` CHECK (codes now owned by the `services` table)
+- Renamed `services.mtpe` label to "Neural Translation Post-Editing" (code `mtpe` unchanged)
+- Added "Certified Translation" to the services-offered flow
+- `cvp-submit-application` (v20): accepts new payload shape, generates test combinations per (pair × service), seeds with applicant's primary domain, persists CV path, sends V1
+- `cvp-approve-application` (v1): creates `vendors` + `cvp_translators`, issues `vendor_auth.password_setup_token` with 72hr expiry, sends V11
+- `cvp-send-queued-rejections` (v1): sweeps queued rejections past 48hr window, sends V12 — wired to pg_cron (hourly @:07)
+- `cvp-request-info` (v1): stores request details, sends V17
+- `cvp-check-test-followups`: now triggered by pg_cron hourly (@:17)
+- Supabase Storage bucket `cvp-applicant-cvs` (private, 10MB, PDF/DOC/DOCX) with anon-insert + service-role-read policies
+- `vendor_auth` schema: `password_hash` + `password_set_at` nullable; added `password_setup_token UUID UNIQUE`, `password_setup_expires_at TIMESTAMPTZ`
+- Seeded 2 placeholder tests in `cvp_test_library` (is_active=false) for FA→EN Immigration and EN→ES Medical
+
+### Admin-side (portal repo: cethos_app_figma_design_v1)
+- `RecruitmentDetail.tsx` staff decision handler rewritten:
+  - Approve → POST `cvp-approve-application` (creates vendor, sends V11)
+  - Reject → queue rejection, cron delivers V12
+  - Info Requested → prompt for details, POST `cvp-request-info` (sends V17)
+  - Waitlist → status update
+
+### Files Created
+- `apps/recruitment/src/components/MultiSelect.tsx`
+- `apps/recruitment/src/components/SearchableSelect.tsx`
+- `apps/recruitment/src/components/RankedMultiSelect.tsx`
+- `apps/recruitment/src/hooks/useServices.ts`
+- `apps/recruitment/src/lib/domains.ts`
+- `apps/recruitment/src/lib/currencies.ts`
+- `apps/recruitment/src/pages/PrivacyPolicy.tsx`
+- `supabase/email-templates/*.html` + `*.txt` (17 templates + manifest)
+- `supabase/functions/cvp-approve-application/index.ts`
+- `supabase/functions/cvp-send-queued-rejections/index.ts`
+- `supabase/functions/cvp-request-info/index.ts`
+- `scripts/bootstrap-brevo-templates.mjs`, `scripts/fix-brevo-mustache.mjs`, `scripts/upload-brevo-templates.sh`
+- `docs/CVP-EMAIL-TEMPLATES-DESIGN-PROMPT.md`
+- `docs/CVP-GO-LIVE-CHECKLIST.md`
+- `.gitignore`
+
+### Deferred to next session
+- 5-role expansion (Interpreter, Transcriber, Clinician Reviewer forms + schemas + CHECK constraint extension)
+- Twilio SMS swap (vendor portal login only)
+- Per-combination approval UI
+- Negotiate (V9/V10) staff UI
+- Vendor portal `setup-password` page (currently V11 link goes nowhere)
+
+---
+
 ## Session — March 24, 2026 (Login SMS switched to ClickSend)
 
 ### Completed
@@ -25,7 +89,11 @@ Format: newest sessions at the top.
 
 ### Files Modified
 - `supabase/functions/vendor-auth-otp-send/index.ts` — replaced Brevo transactional SMS with ClickSend REST API
-=======
+
+**Note (2026-04-22):** ClickSend has since been superseded — Twilio is now the canonical SMS provider for CVP. See entry further up.
+
+---
+
 ## Session — March 25, 2026 (Auto-Accept Tab Switch + T&C service_id Fix)
 
 ### Completed
@@ -409,7 +477,6 @@ supabase functions deploy vendor-get-profile
 - Build Phase 1D edge functions (profile health cron jobs)
 - Set up Netlify deployment for vendor.cethos.com
 - End-to-end testing: login → dashboard → accept job → upload delivery → view invoice
->>>>>>> main
 
 ---
 

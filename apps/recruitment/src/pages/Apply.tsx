@@ -11,6 +11,7 @@ import { LanguagePairRow } from '../components/LanguagePairRow'
 import { MultiSelect } from '../components/MultiSelect'
 import { RankedMultiSelect } from '../components/RankedMultiSelect'
 import { useLanguages } from '../hooks/useLanguages'
+import { supabase } from '../lib/supabase'
 import { translatorSchema, cognitiveDebriefingSchema } from '../lib/schemas'
 import type { TranslatorFormData, CognitiveDebriefingFormData } from '../lib/schemas'
 import {
@@ -116,14 +117,31 @@ export function Apply() {
     setCvFile(file)
   }
 
+  // Uploads the applicant's CV to the cvp-applicant-cvs bucket.
+  // Path: {clientUuid}/{filename}. Returns the path for server-side persistence.
+  const uploadCvIfPresent = async (): Promise<string | null> => {
+    if (!cvFile) return null
+    const clientUuid = crypto.randomUUID()
+    const sanitized = cvFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+    const path = `${clientUuid}/${sanitized}`
+    const { error } = await supabase.storage
+      .from('cvp-applicant-cvs')
+      .upload(path, cvFile, { cacheControl: '3600', upsert: false })
+    if (error) {
+      // Non-fatal: applicant can still submit without CV attached.
+      console.error('CV upload failed:', error.message)
+      return null
+    }
+    return path
+  }
+
   const onTranslatorSubmit = async (data: TranslatorFormData) => {
     setSubmitting(true)
     setSubmitError(null)
 
     try {
-      const payload = {
-        ...data,
-      }
+      const cvPath = await uploadCvIfPresent()
+      const payload = { ...data, cvStoragePath: cvPath }
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cvp-submit-application`,
@@ -153,9 +171,11 @@ export function Apply() {
     setSubmitError(null)
 
     try {
+      const cvPath = await uploadCvIfPresent()
       const payload = {
         ...data,
         cogSampleFile: cogSampleFile ?? undefined,
+        cvStoragePath: cvPath,
       }
 
       const response = await fetch(
