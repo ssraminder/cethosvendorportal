@@ -1,0 +1,23 @@
+CETHOS VENDOR PORTAL
+Your application is under review
+
+===========================================================
+
+YOUR APPLICATION IS UNDER REVIEW
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Your application{{#params.roleType}} for the {{params.roleType}} role{{/params.roleType}} is being reviewed by a member of our recruiting team rather than by our standard automated path.
+
+This is normal for your role type and doesn't signal a problem — cognitive debriefing roles and borderline cases are always reviewed by a person.
+
+Expect a decision within 5–7 business days. If we need anything else, we'll reach out directly.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

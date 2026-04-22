@@ -1,0 +1,29 @@
+CETHOS VENDOR PORTAL
+Your CETHOS application is on our waitlist
+
+===========================================================
+
+YOU'RE ON OUR WAITLIST
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Your application is strong — but we don't currently have sufficient client demand for the language pair(s) and service(s) you applied for.
+
+WAITLISTED COMBINATIONS
+-----------------------
+{{params.languagePairsWaitlisted}}
+
+WHAT OUR TEAM NOTED
+-------------------
+{{params.reason}}
+
+We'll revisit the waitlist in approximately {{params.estimatedReviewMonths}} months, or sooner if demand changes. No action required — we'll reach out when the timing is right.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

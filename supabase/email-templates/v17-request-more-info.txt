@@ -1,0 +1,35 @@
+CETHOS VENDOR PORTAL
+Quick follow-up on your CETHOS application
+
+===========================================================
+
+QUICK FOLLOW-UP
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Our recruiting team has been reviewing your application and needs a small amount of additional information from you to move forward.
+
+WHAT WE NEED
+------------
+{{params.requestDetails}}
+
+You can reply directly to this email, or send your response to {{params.replyEmail}}.
+
+Soft deadline: {{params.deadlineDate}}. If we don't hear back by then, we'll pause your application until we do.
+
+Thanks for your patience.
+
+-----------------------------------------------------------
+REPLY TO CETHOS RECRUITING
+-----------------------------------------------------------
+mailto:{{params.replyEmail}}?subject=Re:%20Application%20{{params.applicationNumber}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

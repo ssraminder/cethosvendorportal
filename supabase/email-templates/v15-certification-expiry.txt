@@ -1,0 +1,29 @@
+CETHOS VENDOR PORTAL
+{{params.certificationName}} — action needed
+
+===========================================================
+
+{{params.certificationName}} — ACTION NEEDED
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Your {{params.certificationName}} {{#params.daysUntilExpiry}}is set to expire on {{params.expiryDate}} — that's in {{params.daysUntilExpiry}} days.{{/params.daysUntilExpiry}}{{^params.daysUntilExpiry}}expired on {{params.expiryDate}}.{{/params.daysUntilExpiry}}
+
+Why this matters: expired certifications mean we can't route you to clients who require certified vendors.
+
+Please upload a renewed certificate in the portal, or reply to this email if you don't plan to renew and we'll update your profile.
+
+-----------------------------------------------------------
+UPLOAD RENEWED CERTIFICATE
+-----------------------------------------------------------
+{{params.portalCertificationsUrl}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this as a member of the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

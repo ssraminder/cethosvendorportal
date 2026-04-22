@@ -1,0 +1,41 @@
+CETHOS VENDOR PORTAL
+Rate proposal from CETHOS — please review
+
+===========================================================
+
+RATE PROPOSAL
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+We've completed review of your test for {{params.languagePair}} — {{params.serviceType}} and would like to propose the following.
+
+PROPOSED TERMS
+--------------
+  Tier:          {{params.proposedTier}}
+  Rate:          {{params.proposedRate}} {{params.currency}}
+  Unit:          {{params.rateUnit}}
+  Language pair: {{params.languagePair}}
+  Service type:  {{params.serviceType}}
+
+WHY WE'RE PROPOSING THIS
+------------------------
+{{params.rationale}}
+
+You have one opportunity to counter. Counters must be submitted within {{#params.expiryHours}}{{params.expiryHours}}{{/params.expiryHours}}{{^params.expiryHours}}72{{/params.expiryHours}} hours.
+
+Accepting finalizes engagement terms for this combination only. Declining ends the application for this combination — other combinations continue independently.
+
+-----------------------------------------------------------
+REVIEW AND RESPOND
+-----------------------------------------------------------
+{{params.respondLink}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

@@ -1,0 +1,23 @@
+CETHOS VENDOR PORTAL
+Your CETHOS test window has closed
+
+===========================================================
+
+YOUR TEST WINDOW HAS CLOSED
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+The 48-hour window on your CETHOS test ended without a submission.
+
+We understand timing doesn't always work. You have one final chance to request a reissued link. Reply to this email within the next few days and we'll send a fresh 48-hour test window.
+
+If we don't hear back, your application will be archived in 7 days. You'll always be welcome to reapply in the future.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

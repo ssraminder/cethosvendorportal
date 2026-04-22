@@ -1,0 +1,29 @@
+CETHOS VENDOR PORTAL
+Last chance to complete your CETHOS application
+
+===========================================================
+
+ONE LAST CHANCE
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Life happens and timelines slip. We want to give you one more clean shot at this.
+
+Reply to this email within 3 days and we'll reissue a fresh test link with a new 48-hour window. No explanation required.
+
+If we don't hear back, your application will be archived. You're always welcome to reapply after 6 months.
+
+-----------------------------------------------------------
+REPLY TO REQUEST A NEW LINK
+-----------------------------------------------------------
+mailto:recruiting@cethos.com?subject=Request%20new%20test%20link%20-%20{{params.applicationNumber}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

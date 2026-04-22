@@ -1,0 +1,29 @@
+CETHOS VENDOR PORTAL
+Update on your CETHOS application
+
+===========================================================
+
+AN UPDATE ON YOUR APPLICATION
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Thank you for the time and care you put into applying to CETHOS, and for going through our testing process.
+
+After careful review, we're unable to move forward with your application at this time.
+
+WHY
+---
+{{params.reasonSummary}}
+
+You're welcome to reapply on or after {{params.reapplyAfterDate}}. Our network keeps growing and roles open up regularly.
+
+We genuinely appreciate your interest, and we wish you well with your work.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

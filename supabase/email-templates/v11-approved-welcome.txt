@@ -1,0 +1,38 @@
+CETHOS VENDOR PORTAL
+Welcome to CETHOS — your vendor account is ready
+
+===========================================================
+
+WELCOME TO CETHOS
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Your application is approved, and your vendor account is ready to go.
+
+YOUR APPROVED ENGAGEMENTS
+-------------------------
+{{params.approvedCombinationsList}}
+
+GETTING STARTED
+---------------
+1. Set your password using the link below (valid for {{#params.passwordSetupExpiryHours}}{{params.passwordSetupExpiryHours}}{{/params.passwordSetupExpiryHours}}{{^params.passwordSetupExpiryHours}}72{{/params.passwordSetupExpiryHours}} hours)
+2. Complete your vendor profile — payment details, tax info, availability
+3. Watch for your first job offer in the portal
+
+Where to log in: {{params.vendorPortalUrl}}
+Support: {{params.supportEmail}}
+
+-----------------------------------------------------------
+SET YOUR PASSWORD
+-----------------------------------------------------------
+{{params.passwordSetupLink}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this as a member of the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

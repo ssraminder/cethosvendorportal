@@ -1,0 +1,29 @@
+CETHOS VENDOR PORTAL
+Your CETHOS test expires soon
+
+===========================================================
+
+YOUR TEST EXPIRES IN {{params.hoursRemaining}} HOURS
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+A quick reminder: the test link we sent earlier expires in {{#params.hoursRemaining}}{{params.hoursRemaining}}{{/params.hoursRemaining}}{{^params.hoursRemaining}}24{{/params.hoursRemaining}} hours.
+
+Your auto-saved draft is safe on our server — you'll pick up right where you left off.
+
+If you need more time, reply to this email before the link expires and we can extend it once.
+
+-----------------------------------------------------------
+RESUME YOUR TEST
+-----------------------------------------------------------
+{{params.testLink}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

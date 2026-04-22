@@ -1,0 +1,29 @@
+# Claude Code local settings
+.claude/
+
+# Environment files with real secrets (never commit)
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Supabase CLI temp
+supabase/.temp/
+
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Local raw extract from email template design delivery (kept out of repo)
+email-templates-raw/

@@ -1,0 +1,32 @@
+CETHOS VENDOR PORTAL
+Your CETHOS skills test(s)
+
+===========================================================
+
+YOUR SKILLS TEST(S) — 48-HOUR WINDOW
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+You've been assigned {{#params.testCount}}{{params.testCount}} skills test(s){{/params.testCount}}. Each is a standalone, one-shot assessment.
+
+YOUR TEST LINKS
+---------------
+{{#params.testLinks}}{{params.testLinks}}{{/params.testLinks}}
+
+BEFORE YOU BEGIN
+----------------
+- Each link opens a single-session test — no login required
+- Auto-save runs every 60 seconds
+- Links expire in {{#params.expiryHours}}{{params.expiryHours}}{{/params.expiryHours}}{{^params.expiryHours}}48{{/params.expiryHours}} hours
+- Submissions are one-shot — you cannot resubmit
+
+All tests are assessed by our AI plus human reviewers against MQM Core criteria.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

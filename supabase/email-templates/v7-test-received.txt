@@ -1,0 +1,27 @@
+CETHOS VENDOR PORTAL
+We've received your test submission
+
+===========================================================
+
+YOUR SUBMISSION REACHED US
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Great — your test is in.
+
+WHAT HAPPENS NOW
+----------------
+1. AI assessment — runs within minutes
+2. Human review — where needed
+3. Decision — within 3–5 business days
+
+If you were assigned multiple tests and haven't completed all of them, those remaining test links are still open.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

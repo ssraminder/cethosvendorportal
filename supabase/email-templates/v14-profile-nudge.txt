@@ -1,0 +1,30 @@
+CETHOS VENDOR PORTAL
+Quick check-in
+
+===========================================================
+
+QUICK CHECK-IN
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+We want to make sure your vendor profile stays active and accurate.
+
+{{params.nudgeHeadline}}
+{{params.nudgeDetails}}
+
+It should take under a minute.
+
+-----------------------------------------------------------
+{{PARAMS.PORTALACTIONLABEL}}
+-----------------------------------------------------------
+{{params.portalActionUrl}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this as a member of the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

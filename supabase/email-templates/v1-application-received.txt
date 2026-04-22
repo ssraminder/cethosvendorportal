@@ -1,0 +1,29 @@
+CETHOS VENDOR PORTAL
+We've received your application
+
+===========================================================
+
+WE'VE GOT YOUR APPLICATION
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Thanks for applying to join the CETHOS vendor network. We've received your application{{#params.roleType}} for the {{params.roleType}} role{{/params.roleType}} and it's now in our queue.
+
+WHAT HAPPENS NEXT
+-----------------
+1. AI pre-screening — within 24 hours
+2. Skills test invitation — if pre-screening passes, a separate email will arrive
+3. Staff review & decision — our recruiting team finalizes
+
+Typical turnaround: 3–7 business days end-to-end.
+
+You don't need to do anything right now — we'll reach out at each step. If something changes on your end, just reply to this email.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

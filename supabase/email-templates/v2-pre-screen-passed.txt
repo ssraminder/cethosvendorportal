@@ -1,0 +1,27 @@
+CETHOS VENDOR PORTAL
+You've cleared pre-screening
+
+===========================================================
+
+YOU'VE CLEARED PRE-SCREENING
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Great news — your application{{#params.roleType}} for the {{params.roleType}} role{{/params.roleType}} passed our pre-screening review.
+
+A separate email will arrive in the next few minutes with your skills test(s). Keep an eye on your inbox — and check spam just in case.
+
+BEFORE YOUR TEST ARRIVES
+------------------------
+- Tests are timed: 48 hours from receipt to submit
+- Plan for one sitting where possible — auto-save runs every 60s
+- NO AI, MT, or colleague assistance. Any outside help will disqualify your submission.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

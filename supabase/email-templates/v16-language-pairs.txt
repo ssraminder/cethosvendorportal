@@ -1,0 +1,38 @@
+CETHOS VENDOR PORTAL
+Confirm your language pairs on CETHOS
+
+===========================================================
+
+CONFIRM YOUR LANGUAGE PAIRS
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+Client matching relies on accurate language-pair records. We'd like a quick confirmation.
+
+WHAT WE HAVE ON FILE
+--------------------
+{{params.currentLanguagePairsList}}
+
+Last confirmed: {{params.lastConfirmedDate}}
+
+YOUR OPTIONS
+------------
+- Confirm as-is if the list is still accurate
+- Log into the portal to add or remove pairs as needed
+
+If you want to add a new pair we haven't tested you on, we'll send a short skills test for that new pair before activating it.
+
+-----------------------------------------------------------
+REVIEW MY LANGUAGE PAIRS
+-----------------------------------------------------------
+{{params.portalLanguagesUrl}}
+
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this as a member of the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

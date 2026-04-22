@@ -1,0 +1,31 @@
+CETHOS VENDOR PORTAL
+Terms confirmed
+
+===========================================================
+
+TERMS CONFIRMED
+
+{{#params.applicationNumber}}Application #{{params.applicationNumber}}
+{{/params.applicationNumber}}{{#params.fullName}}Hi {{params.fullName}},{{/params.fullName}}{{^params.fullName}}Hi there,{{/params.fullName}}
+
+We've both agreed — here's what's on file for this engagement:
+
+AGREED TERMS
+------------
+  Tier:          {{params.agreedTier}}
+  Rate:          {{params.agreedRate}} {{params.currency}}
+  Unit:          {{params.rateUnit}}
+  Language pair: {{params.languagePair}}
+  Service type:  {{params.serviceType}}
+
+Your approval will be finalized shortly. Look out for a separate welcome email with your portal access and password-setup link.
+
+These terms apply to this language pair + service combination only. Additional combinations are finalized separately.
+
+— The CETHOS Team
+
+===========================================================
+
+You're receiving this because you applied to join the CETHOS vendor network.
+Questions? Reply to this email or write to recruiting@cethos.com.
+CETHOS Translation Services · Calgary, Canada

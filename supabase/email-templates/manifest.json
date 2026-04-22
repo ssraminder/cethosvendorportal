@@ -1,0 +1,155 @@
+[
+  {
+    "id": "v1-application-received",
+    "label": "V1 · Application Received",
+    "subject": "We've received your application — {{ params.applicationNumber }}",
+    "group": "Intake",
+    "activeVendor": false,
+    "html": "templates/v1-application-received.html",
+    "txt": "templates/v1-application-received.txt"
+  },
+  {
+    "id": "v2-pre-screen-passed",
+    "label": "V2 · Pre-Screen Passed",
+    "subject": "Good news — you've cleared pre-screening",
+    "group": "Intake",
+    "activeVendor": false,
+    "html": "templates/v2-pre-screen-passed.html",
+    "txt": "templates/v2-pre-screen-passed.txt"
+  },
+  {
+    "id": "v3-test-invitation",
+    "label": "V3 · Test Invitation",
+    "subject": "Your CETHOS skills test(s) — complete within 48 hours",
+    "group": "Testing",
+    "activeVendor": false,
+    "html": "templates/v3-test-invitation.html",
+    "txt": "templates/v3-test-invitation.txt"
+  },
+  {
+    "id": "v4-test-reminder",
+    "label": "V4 · Test Reminder",
+    "subject": "Reminder: your CETHOS test expires in {{ params.hoursRemaining }} hours",
+    "group": "Testing",
+    "activeVendor": false,
+    "html": "templates/v4-test-reminder.html",
+    "txt": "templates/v4-test-reminder.txt"
+  },
+  {
+    "id": "v5-test-expired",
+    "label": "V5 · Test Expired",
+    "subject": "Your CETHOS test window has closed",
+    "group": "Testing",
+    "activeVendor": false,
+    "html": "templates/v5-test-expired.html",
+    "txt": "templates/v5-test-expired.txt"
+  },
+  {
+    "id": "v6-final-chance",
+    "label": "V6 · Final Chance",
+    "subject": "Last chance to complete your CETHOS application",
+    "group": "Testing",
+    "activeVendor": false,
+    "html": "templates/v6-final-chance.html",
+    "txt": "templates/v6-final-chance.txt"
+  },
+  {
+    "id": "v7-test-received",
+    "label": "V7 · Test Received",
+    "subject": "We've received your test submission",
+    "group": "Testing",
+    "activeVendor": false,
+    "html": "templates/v7-test-received.html",
+    "txt": "templates/v7-test-received.txt"
+  },
+  {
+    "id": "v8-manual-review",
+    "label": "V8 · Manual Review",
+    "subject": "Your application is under review",
+    "group": "Review",
+    "activeVendor": false,
+    "html": "templates/v8-manual-review.html",
+    "txt": "templates/v8-manual-review.txt"
+  },
+  {
+    "id": "v9-negotiation-offer",
+    "label": "V9 · Negotiation Offer",
+    "subject": "Rate proposal from CETHOS — please review",
+    "group": "Offer",
+    "activeVendor": false,
+    "html": "templates/v9-negotiation-offer.html",
+    "txt": "templates/v9-negotiation-offer.txt"
+  },
+  {
+    "id": "v10-rate-agreed",
+    "label": "V10 · Rate Agreed",
+    "subject": "Terms confirmed — welcome to the next step",
+    "group": "Offer",
+    "activeVendor": false,
+    "html": "templates/v10-rate-agreed.html",
+    "txt": "templates/v10-rate-agreed.txt"
+  },
+  {
+    "id": "v11-approved-welcome",
+    "label": "V11 · Approved Welcome",
+    "subject": "Welcome to CETHOS — your vendor account is ready",
+    "group": "Onboarding",
+    "activeVendor": true,
+    "html": "templates/v11-approved-welcome.html",
+    "txt": "templates/v11-approved-welcome.txt"
+  },
+  {
+    "id": "v12-rejected",
+    "label": "V12 · Rejected",
+    "subject": "Update on your CETHOS application",
+    "group": "Review",
+    "activeVendor": false,
+    "html": "templates/v12-rejected.html",
+    "txt": "templates/v12-rejected.txt"
+  },
+  {
+    "id": "v13-waitlisted",
+    "label": "V13 · Waitlisted",
+    "subject": "Your CETHOS application is on our waitlist",
+    "group": "Review",
+    "activeVendor": false,
+    "html": "templates/v13-waitlisted.html",
+    "txt": "templates/v13-waitlisted.txt"
+  },
+  {
+    "id": "v14-profile-nudge",
+    "label": "V14 · Profile Nudge",
+    "subject": "Quick check-in — {{ params.nudgeHeadline }}",
+    "group": "Active Vendor",
+    "activeVendor": true,
+    "html": "templates/v14-profile-nudge.html",
+    "txt": "templates/v14-profile-nudge.txt"
+  },
+  {
+    "id": "v15-certification-expiry",
+    "label": "V15 · Certification Expiry",
+    "subject": "{{ params.certificationName }} — action needed",
+    "group": "Active Vendor",
+    "activeVendor": true,
+    "html": "templates/v15-certification-expiry.html",
+    "txt": "templates/v15-certification-expiry.txt"
+  },
+  {
+    "id": "v16-language-pairs",
+    "label": "V16 · Language Pairs Check",
+    "subject": "Confirm your language pairs on CETHOS",
+    "group": "Active Vendor",
+    "activeVendor": true,
+    "html": "templates/v16-language-pairs.html",
+    "txt": "templates/v16-language-pairs.txt"
+  },
+  {
+    "id": "v17-request-more-info",
+    "label": "V17 · Request More Info",
+    "subject": "Quick follow-up on your CETHOS application",
+    "group": "Review",
+    "activeVendor": false,
+    "html": "templates/v17-request-more-info.html",
+    "txt": "templates/v17-request-more-info.txt"
+  }
+]
