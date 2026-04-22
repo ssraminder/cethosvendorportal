@@ -129,7 +129,7 @@ export function LanguagePairRow({
                 min="0"
                 value={row.rate ?? ''}
                 onChange={(e) => updatePairServiceField(svc.code, 'rate', e.target.value)}
-                className="w-full rounded-r-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-r-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
                 placeholder={required ? '0.18' : '—'}
               />
             </div>
@@ -142,7 +142,7 @@ export function LanguagePairRow({
             <select
               value={row.unit}
               onChange={(e) => updatePairServiceField(svc.code, 'unit', e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
             >
               {units.map((u) => (
                 <option key={u} value={u}>{UNIT_LABELS[u] ?? u}</option>
@@ -157,7 +157,7 @@ export function LanguagePairRow({
               min="0"
               value={row.minimumCharge ?? ''}
               onChange={(e) => updatePairServiceField(svc.code, 'minimumCharge', e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
               placeholder="—"
             />
           </div>
@@ -169,7 +169,7 @@ export function LanguagePairRow({
   return (
     <div className="border border-gray-200 rounded-lg p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-700">
+        <span className="text-sm font-medium text-cethos-navy">
           Language Pair {index + 1}
         </span>
         {canRemove && (
@@ -189,7 +189,7 @@ export function LanguagePairRow({
           <label className="block text-xs text-gray-500 mb-1">Source language *</label>
           <select
             {...register(`languagePairs.${index}.sourceLanguageId`)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
           >
             <option value="">Select...</option>
             {languages.map((lang) => (
@@ -205,7 +205,7 @@ export function LanguagePairRow({
           <label className="block text-xs text-gray-500 mb-1">Target language *</label>
           <select
             {...register(`languagePairs.${index}.targetLanguageId`)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
           >
             <option value="">Select...</option>
             {languages.map((lang) => (
@@ -225,7 +225,7 @@ export function LanguagePairRow({
             <button
               type="button"
               onClick={() => setAddingService(true)}
-              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+              className="inline-flex items-center gap-1 text-xs text-cethos-teal hover:text-cethos-teal"
             >
               <Plus className="w-3.5 h-3.5" /> Add service
             </button>
@@ -233,11 +233,11 @@ export function LanguagePairRow({
         </div>
 
         {addingService && (
-          <div className="flex items-center gap-2 mb-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex items-center gap-2 mb-3 p-2 bg-cethos-bg-blue border border-cethos-teal rounded-md">
             <select
               value={selectedNewCode}
               onChange={(e) => setSelectedNewCode(e.target.value)}
-              className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal"
             >
               <option value="">Select a service...</option>
               {Object.entries(servicesByCategory).map(([cat, list]) => {
@@ -258,7 +258,7 @@ export function LanguagePairRow({
               type="button"
               onClick={addService}
               disabled={!selectedNewCode}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="rounded-md bg-cethos-teal px-3 py-1.5 text-xs text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               Add
             </button>
@@ -268,7 +268,7 @@ export function LanguagePairRow({
                 setAddingService(false)
                 setSelectedNewCode('')
               }}
-              className="rounded-md bg-white px-3 py-1.5 text-xs text-gray-700 border border-gray-300"
+              className="rounded-md bg-white px-3 py-1.5 text-xs text-cethos-navy border border-gray-300"
             >
               Cancel
             </button>

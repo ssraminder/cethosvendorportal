@@ -56,7 +56,7 @@ export function MultiSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full min-h-[42px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-left text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between gap-2"
+        className="w-full min-h-[42px] rounded-md border border-gray-300 bg-white px-3 py-1.5 text-left text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal flex items-center justify-between gap-2"
       >
         <div className="flex flex-wrap gap-1.5 flex-1">
           {value.length === 0 ? (
@@ -67,7 +67,7 @@ export function MultiSelect({
               return (
                 <span
                   key={v}
-                  className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800"
+                  className="inline-flex items-center gap-1 rounded-full bg-cethos-bg-blue px-2 py-0.5 text-xs text-cethos-teal"
                 >
                   {opt?.label ?? v}
                   <X
@@ -91,7 +91,7 @@ export function MultiSelect({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search…"
-                className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-cethos-teal"
               />
             </div>
           )}
@@ -107,17 +107,17 @@ export function MultiSelect({
                     key={opt.value}
                     onClick={() => toggle(opt.value)}
                     className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-50 ${
-                      selected ? 'bg-blue-50' : ''
+                      selected ? 'bg-cethos-bg-blue' : ''
                     }`}
                   >
                     <span
                       className={`w-4 h-4 flex items-center justify-center rounded border ${
-                        selected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                        selected ? 'bg-cethos-teal border-cethos-teal' : 'border-gray-300'
                       }`}
                     >
                       {selected && <Check className="w-3 h-3 text-white" />}
                     </span>
-                    <span className={selected ? 'font-medium text-gray-900' : 'text-gray-700'}>
+                    <span className={selected ? 'font-medium text-cethos-navy' : 'text-cethos-navy'}>
                       {opt.label}
                     </span>
                   </button>

@@ -29,7 +29,7 @@ import type { DomainValue } from '../lib/domains'
 import { RATE_CURRENCIES } from '../lib/currencies'
 import type { RoleType } from '../types/application'
 
-const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal'
 const selectClasses = inputClasses
 
 export function Apply() {
@@ -205,7 +205,7 @@ export function Apply() {
       <div className="space-y-6">
         {/* Page header */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Apply to Join CETHOS</h1>
+          <h1 className="text-2xl font-bold text-cethos-navy">Apply to Join CETHOS</h1>
           <p className="mt-2 text-gray-600">
             We're looking for talented translators and cognitive debriefing consultants.
             Complete the form below to start the application process.
@@ -217,7 +217,7 @@ export function Apply() {
           <div className="flex gap-4">
             <label className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-3 transition-colors ${
               roleType === 'translator'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal'
                 : 'border-gray-200 hover:bg-gray-50'
             }`}>
               <input
@@ -226,13 +226,13 @@ export function Apply() {
                 value="translator"
                 checked={roleType === 'translator'}
                 onChange={() => handleRoleChange('translator')}
-                className="text-blue-600 focus:ring-blue-500"
+                className="text-cethos-teal focus:ring-cethos-teal"
               />
               <span className="text-sm font-medium">Translator / Reviewer</span>
             </label>
             <label className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-3 transition-colors ${
               roleType === 'cognitive_debriefing'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal'
                 : 'border-gray-200 hover:bg-gray-50'
             }`}>
               <input
@@ -241,7 +241,7 @@ export function Apply() {
                 value="cognitive_debriefing"
                 checked={roleType === 'cognitive_debriefing'}
                 onChange={() => handleRoleChange('cognitive_debriefing')}
-                className="text-blue-600 focus:ring-blue-500"
+                className="text-cethos-teal focus:ring-cethos-teal"
               />
               <span className="text-sm font-medium">Cognitive Debriefing Consultant</span>
             </label>
@@ -310,45 +310,55 @@ export function Apply() {
               {/* Certifications */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-700">Certifications</label>
+                  <label className="text-sm font-medium text-cethos-navy">Certifications</label>
                   <button
                     type="button"
                     onClick={() => addCert({ name: 'ATA', customName: '', expiryDate: '' })}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-sm text-cethos-teal hover:text-cethos-teal font-medium"
                   >
                     + Add certification
                   </button>
                 </div>
                 {certFields.map((field, index) => (
-                  <div key={field.id} className="flex gap-3 items-start">
-                    <select
-                      {...translatorForm.register(`certifications.${index}.name`)}
-                      className={`${selectClasses} flex-1`}
-                    >
-                      {CERTIFICATION_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    {translatorForm.watch(`certifications.${index}.name`) === 'Other' && (
-                      <input
-                        {...translatorForm.register(`certifications.${index}.customName`)}
-                        className={`${inputClasses} flex-1`}
-                        placeholder="Certification name"
-                      />
-                    )}
-                    <input
-                      {...translatorForm.register(`certifications.${index}.expiryDate`)}
-                      type="date"
-                      className={`${inputClasses} w-40`}
-                      placeholder="Expiry date"
-                    />
+                  <div
+                    key={field.id}
+                    className="relative rounded-lg border border-cethos-border bg-white p-3 sm:p-0 sm:border-0 sm:bg-transparent"
+                  >
                     <button
                       type="button"
                       onClick={() => removeCert(index)}
-                      className="text-gray-400 hover:text-red-500 p-2"
+                      className="absolute top-2 right-2 text-gray-400 hover:text-red-500 p-1 sm:static sm:self-center"
+                      aria-label="Remove certification"
                     >
                       <span className="sr-only">Remove</span>&times;
                     </button>
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 sm:pr-2">
+                      <div className="flex-1 space-y-2 sm:space-y-0 sm:flex sm:gap-3">
+                        <select
+                          {...translatorForm.register(`certifications.${index}.name`)}
+                          className={`${selectClasses} w-full sm:flex-1`}
+                        >
+                          {CERTIFICATION_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                        {translatorForm.watch(`certifications.${index}.name`) === 'Other' && (
+                          <input
+                            {...translatorForm.register(`certifications.${index}.customName`)}
+                            className={`${inputClasses} w-full sm:flex-1`}
+                            placeholder="Certification name"
+                          />
+                        )}
+                        <div className="sm:w-48">
+                          <label className="sm:hidden block text-xs text-cethos-gray-light mb-1">Expiry date</label>
+                          <input
+                            {...translatorForm.register(`certifications.${index}.expiryDate`)}
+                            type="date"
+                            className={`${inputClasses} w-full`}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -363,7 +373,7 @@ export function Apply() {
                         key={tool}
                         className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
                           selected
-                            ? 'bg-blue-50 border-blue-300 text-blue-700'
+                            ? 'bg-cethos-bg-blue border-cethos-teal text-cethos-teal'
                             : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                         }`}
                       >
@@ -440,7 +450,7 @@ export function Apply() {
                 <button
                   type="button"
                   onClick={() => addLanguagePair({ sourceLanguageId: '', targetLanguageId: '', services: [] })}
-                  className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className="flex items-center gap-1.5 text-sm text-cethos-teal hover:text-cethos-teal font-medium"
                 >
                   <Plus className="w-4 h-4" />
                   Add another language pair
@@ -458,7 +468,7 @@ export function Apply() {
             >
               <div className="space-y-3">
                 {!cvFile ? (
-                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-blue-400 transition-colors">
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-cethos-teal transition-colors">
                     <Upload className="w-5 h-5 text-gray-400" />
                     <span className="text-sm text-gray-500">Click to upload your CV</span>
                     <input
@@ -470,7 +480,7 @@ export function Apply() {
                   </label>
                 ) : (
                   <div className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
-                    <span className="text-sm text-gray-700 truncate">{cvFile.name}</span>
+                    <span className="text-sm text-cethos-navy truncate">{cvFile.name}</span>
                     <button
                       type="button"
                       onClick={() => setCvFile(null)}
@@ -511,15 +521,15 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...translatorForm.register('privacyPolicy')}
-                    className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-cethos-navy">
                     I agree to the{' '}
                     <a
                       href="/privacy"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 underline"
+                      className="text-cethos-teal hover:text-cethos-teal underline"
                     >
                       Privacy Policy
                     </a>{' '}
@@ -534,9 +544,9 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...translatorForm.register('consentTest')}
-                    className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-cethos-navy">
                     I consent to receiving a translation test as part of this application <span className="text-red-500">*</span>
                   </span>
                 </label>
@@ -548,9 +558,9 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...translatorForm.register('consentUnpaid')}
-                    className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-cethos-navy">
                     I understand the test is unpaid <span className="text-red-500">*</span>
                   </span>
                 </label>
@@ -570,7 +580,7 @@ export function Apply() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full sm:w-auto px-8 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}
@@ -667,7 +677,7 @@ export function Apply() {
                           key={lang.id}
                           className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
                             selected
-                              ? 'bg-blue-50 border-blue-300 text-blue-700'
+                              ? 'bg-cethos-bg-blue border-cethos-teal text-cethos-teal'
                               : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                           }`}
                         >
@@ -701,7 +711,7 @@ export function Apply() {
                         key={opt.value}
                         className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
                           selected
-                            ? 'bg-blue-50 border-blue-300 text-blue-700'
+                            ? 'bg-cethos-bg-blue border-cethos-teal text-cethos-teal'
                             : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                         }`}
                       >
@@ -731,7 +741,7 @@ export function Apply() {
                         key={opt.value}
                         className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
                           selected
-                            ? 'bg-blue-50 border-blue-300 text-blue-700'
+                            ? 'bg-cethos-bg-blue border-cethos-teal text-cethos-teal'
                             : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                         }`}
                       >
@@ -770,9 +780,9 @@ export function Apply() {
                           type="radio"
                           {...cogForm.register('cogIsporFamiliarity')}
                           value={opt.value}
-                          className="text-blue-600 focus:ring-blue-500"
+                          className="text-cethos-teal focus:ring-cethos-teal"
                         />
-                        <span className="text-sm text-gray-700">{opt.label}</span>
+                        <span className="text-sm text-cethos-navy">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -786,9 +796,9 @@ export function Apply() {
                           type="radio"
                           {...cogForm.register('cogFdaFamiliarity')}
                           value={opt.value}
-                          className="text-blue-600 focus:ring-blue-500"
+                          className="text-cethos-teal focus:ring-cethos-teal"
                         />
-                        <span className="text-sm text-gray-700">{opt.label}</span>
+                        <span className="text-sm text-cethos-navy">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -800,14 +810,14 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...cogForm.register('cogPriorDebriefReports')}
-                    className="text-blue-600 focus:ring-blue-500"
+                    className="text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">I have prior debrief report writing experience</span>
+                  <span className="text-sm text-cethos-navy">I have prior debrief report writing experience</span>
                 </label>
 
                 {cogForm.watch('cogPriorDebriefReports') && (
                   <FormField label="Upload sample debrief report">
-                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-blue-400 transition-colors">
+                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-cethos-teal transition-colors">
                       <Upload className="w-5 h-5 text-gray-400" />
                       <span className="text-sm text-gray-500">
                         {cogSampleFile ? cogSampleFile.name : 'Click to upload'}
@@ -872,15 +882,15 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...cogForm.register('privacyPolicy')}
-                    className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-cethos-navy">
                     I agree to the{' '}
                     <a
                       href="/privacy"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 underline"
+                      className="text-cethos-teal hover:text-cethos-teal underline"
                     >
                       Privacy Policy
                     </a>{' '}
@@ -895,9 +905,9 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...cogForm.register('consentTest')}
-                    className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-cethos-navy">
                     I consent to receiving an assessment as part of this application <span className="text-red-500">*</span>
                   </span>
                 </label>
@@ -909,9 +919,9 @@ export function Apply() {
                   <input
                     type="checkbox"
                     {...cogForm.register('consentUnpaid')}
-                    className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-cethos-navy">
                     I understand the assessment is unpaid <span className="text-red-500">*</span>
                   </span>
                 </label>
@@ -931,7 +941,7 @@ export function Apply() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full sm:w-auto px-8 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}

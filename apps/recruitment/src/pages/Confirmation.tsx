@@ -18,7 +18,7 @@ export function Confirmation() {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-gray-900">Application Received</h1>
+          <h1 className="text-2xl font-bold text-cethos-navy">Application Received</h1>
           <p className="text-gray-600">
             Thank you for applying to join CETHOS. Your application has been submitted successfully.
           </p>
@@ -26,12 +26,12 @@ export function Confirmation() {
 
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
           <p className="text-sm text-gray-500 mb-1">Your application number</p>
-          <p className="text-lg font-mono font-semibold text-gray-900">{applicationNumber}</p>
+          <p className="text-lg font-mono font-semibold text-cethos-navy">{applicationNumber}</p>
         </div>
 
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 text-left space-y-2">
+        <div className="bg-cethos-bg-blue rounded-lg border border-cethos-teal p-4 text-left space-y-2">
           <h3 className="text-sm font-semibold text-blue-900">What happens next?</h3>
-          <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+          <ol className="text-sm text-cethos-teal space-y-1 list-decimal list-inside">
             <li>Your application will be reviewed by our screening system</li>
             <li>You'll receive a confirmation email shortly</li>
             <li>If selected, you'll receive a test assignment within 1-2 business days</li>
