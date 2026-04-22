@@ -9,6 +9,7 @@ import { FormSection } from '../components/FormSection'
 import { FormField } from '../components/FormField'
 import { LanguagePairRow } from '../components/LanguagePairRow'
 import { MultiSelect } from '../components/MultiSelect'
+import { RankedMultiSelect } from '../components/RankedMultiSelect'
 import { useLanguages } from '../hooks/useLanguages'
 import { translatorSchema, cognitiveDebriefingSchema } from '../lib/schemas'
 import type { TranslatorFormData, CognitiveDebriefingFormData } from '../lib/schemas'
@@ -72,6 +73,7 @@ export function Apply() {
     resolver: zodResolver(cognitiveDebriefingSchema) as Resolver<CognitiveDebriefingFormData>,
     defaultValues: {
       roleType: 'cognitive_debriefing',
+      cogNativeLanguages: [],
       cogInstrumentTypes: [],
       cogTherapyAreas: [],
       cogAdditionalLanguages: [],
@@ -659,13 +661,23 @@ export function Apply() {
             {/* Section 3: Languages */}
             <FormSection title="Languages">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label="Native language" required error={cogForm.formState.errors.cogNativeLanguageId?.message}>
-                  <select {...cogForm.register('cogNativeLanguageId')} className={selectClasses}>
-                    <option value="">Select...</option>
-                    {languages.map((lang) => (
-                      <option key={lang.id} value={lang.id}>{lang.name}</option>
-                    ))}
-                  </select>
+                <FormField
+                  label="Native languages (up to 3, ranked by preference)"
+                  required
+                  error={cogForm.formState.errors.cogNativeLanguages?.message as string | undefined}
+                  hint="Pick your strongest native languages, most native first."
+                >
+                  <RankedMultiSelect
+                    options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                    value={(cogForm.watch('cogNativeLanguages') ?? []) as string[]}
+                    onChange={(next) => cogForm.setValue(
+                      'cogNativeLanguages',
+                      next,
+                      { shouldValidate: true, shouldDirty: true }
+                    )}
+                    maxSelections={3}
+                    placeholder="Select native language(s)…"
+                  />
                 </FormField>
 
                 <FormField label="Additional fluent languages">

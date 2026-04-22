@@ -76,7 +76,9 @@ export const cognitiveDebriefingSchema = z.object({
   educationLevel: z.string().min(1, 'Education level is required'),
   cogDegreeField: z.string().min(1, 'Degree field is required'),
   cogCredentials: z.string().optional(),
-  cogNativeLanguageId: z.string().min(1, 'Native language is required'),
+  cogNativeLanguages: z.array(z.string().min(1))
+    .min(1, 'Select at least one native language')
+    .max(3, 'Select up to 3 native languages'),
   cogAdditionalLanguages: z.array(z.string()).default([]),
   cogInstrumentTypes: z.array(z.enum(['pro', 'clinro', 'obro', 'interview_guide', 'survey']))
     .min(1, 'Select at least one instrument type'),

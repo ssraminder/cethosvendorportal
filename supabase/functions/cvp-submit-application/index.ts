@@ -50,7 +50,7 @@ interface CognitiveDebriefingPayload {
   educationLevel: string;
   cogDegreeField: string;
   cogCredentials?: string;
-  cogNativeLanguageId: string;
+  cogNativeLanguages: string[];
   cogAdditionalLanguages?: string[];
   cogInstrumentTypes: string[];
   cogTherapyAreas: string[];
@@ -185,6 +185,7 @@ serve(async (req: Request) => {
       applicationRow.education_level = cp.educationLevel;
       applicationRow.cog_degree_field = cp.cogDegreeField;
       applicationRow.cog_credentials = cp.cogCredentials ?? null;
+      applicationRow.cog_native_languages = cp.cogNativeLanguages ?? [];
       applicationRow.cog_instrument_types = cp.cogInstrumentTypes;
       applicationRow.cog_therapy_areas = cp.cogTherapyAreas;
       applicationRow.cog_pharma_clients = cp.cogPharmaClients ?? null;
