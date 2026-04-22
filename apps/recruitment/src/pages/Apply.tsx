@@ -36,7 +36,6 @@ export function Apply() {
   const [roleType, setRoleType] = useState<RoleType>('translator')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [workSampleFiles, setWorkSampleFiles] = useState<File[]>([])
   const [cvFile, setCvFile] = useState<File | null>(null)
   const [cogSampleFile, setCogSampleFile] = useState<File | null>(null)
   const { languages, loading: languagesLoading, error: languagesError } = useLanguages()
@@ -108,12 +107,6 @@ export function Apply() {
     form.setValue(field, updated, { shouldValidate: true })
   }, [])
 
-  const handleWorkSampleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    const validFiles = files.filter(f => f.size <= 10 * 1024 * 1024)
-    setWorkSampleFiles(prev => [...prev, ...validFiles].slice(0, 3))
-  }
-
   const handleCvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -128,7 +121,6 @@ export function Apply() {
     try {
       const payload = {
         ...data,
-        workSampleFiles: workSampleFiles.length > 0 ? workSampleFiles : undefined,
       }
 
       const response = await fetch(
@@ -491,38 +483,6 @@ export function Apply() {
               </div>
             </FormSection>
 
-            {/* Section 5b: Work Samples (optional) */}
-            <FormSection
-              title="Work Samples"
-              description="Optional. If you have recent samples of your work (PDF or DOCX, max 10MB each), sharing them can strengthen your application. You can skip this and submit tests only."
-            >
-              <div className="space-y-3">
-                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-blue-400 transition-colors">
-                  <Upload className="w-5 h-5 text-gray-400" />
-                  <span className="text-sm text-gray-500">Click to upload (optional)</span>
-                  <input
-                    type="file"
-                    accept=".pdf,.docx,.doc"
-                    multiple
-                    className="sr-only"
-                    onChange={handleWorkSampleUpload}
-                  />
-                </label>
-                {workSampleFiles.map((file, i) => (
-                  <div key={i} className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
-                    <span className="text-sm text-gray-700 truncate">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setWorkSampleFiles(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-gray-400 hover:text-red-500 text-sm"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </FormSection>
-
             {/* Section 7: Additional Information */}
             <FormSection title="Additional Information">
               <FormField label="How did you hear about us?">
@@ -554,7 +514,16 @@ export function Apply() {
                     className="mt-0.5 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700">
-                    I agree to the Privacy Policy <span className="text-red-500">*</span>
+                    I agree to the{' '}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Privacy Policy
+                    </a>{' '}
+                    <span className="text-red-500">*</span>
                   </span>
                 </label>
                 {translatorForm.formState.errors.privacyPolicy && (
@@ -906,7 +875,16 @@ export function Apply() {
                     className="mt-0.5 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700">
-                    I agree to the Privacy Policy <span className="text-red-500">*</span>
+                    I agree to the{' '}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Privacy Policy
+                    </a>{' '}
+                    <span className="text-red-500">*</span>
                   </span>
                 </label>
                 {cogForm.formState.errors.privacyPolicy && (
