@@ -168,12 +168,13 @@ serve(async (req: Request) => {
 
       maskedContact = maskEmail(vendor.email);
     } else {
-      // SMS channel via ClickSend
-      const clicksendUsername = Deno.env.get("CLICKSEND_USERNAME");
-      const clicksendApiKey = Deno.env.get("CLICKSEND_API_KEY");
+      // SMS channel via Twilio
+      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+      const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+      const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER");
 
-      if (!clicksendUsername || !clicksendApiKey) {
-        console.error("CLICKSEND credentials missing — username:", !!clicksendUsername, "apiKey:", !!clicksendApiKey);
+      if (!twilioSid || !twilioToken || !twilioFrom) {
+        console.error("TWILIO credentials missing — sid:", !!twilioSid, "token:", !!twilioToken, "from:", !!twilioFrom);
         return new Response(
           JSON.stringify({ error: "SMS service not configured" }),
           { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -181,32 +182,29 @@ serve(async (req: Request) => {
       }
 
       const smsContent = `Your CETHOS login code is: ${otpCode}. Expires in 10 minutes.`;
-      const basicAuth = btoa(`${clicksendUsername}:${clicksendApiKey}`);
+      const basicAuth = btoa(`${twilioSid}:${twilioToken}`);
+
+      const formBody = new URLSearchParams({
+        To: vendor.phone,
+        From: twilioFrom,
+        Body: smsContent,
+      });
 
       const smsRes = await fetch(
-        "https://rest.clicksend.com/v3/sms/send",
+        `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
         {
           method: "POST",
           headers: {
             "Authorization": `Basic ${basicAuth}`,
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: JSON.stringify({
-            messages: [
-              {
-                to: vendor.phone,
-                body: smsContent,
-                from: "CETHOS",
-                source: "sdk",
-              },
-            ],
-          }),
+          body: formBody.toString(),
         }
       );
 
       if (!smsRes.ok) {
         const errBody = await smsRes.text();
-        console.error("ClickSend SMS failed:", smsRes.status, errBody);
+        console.error("Twilio SMS failed:", smsRes.status, errBody);
         let detail: unknown;
         try {
           detail = JSON.parse(errBody);
