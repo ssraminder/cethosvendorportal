@@ -438,7 +438,6 @@ export function Apply() {
                     key={field.id}
                     index={index}
                     languages={languages}
-                    register={translatorForm.register}
                     setValue={translatorForm.setValue}
                     watch={translatorForm.watch}
                     errors={translatorForm.formState.errors}
@@ -670,33 +669,16 @@ export function Apply() {
                 </FormField>
 
                 <FormField label="Additional fluent languages">
-                  <div className="flex flex-wrap gap-2">
-                    {languages.map((lang) => {
-                      const selected = (cogForm.watch('cogAdditionalLanguages') ?? []).includes(lang.id)
-                      return (
-                        <label
-                          key={lang.id}
-                          className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm border cursor-pointer transition-colors ${
-                            selected
-                              ? 'bg-cethos-bg-blue border-cethos-teal text-cethos-teal'
-                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="sr-only"
-                            checked={selected}
-                            onChange={() => handleToggleCheckbox(
-                              cogForm as unknown as { getValues: (field: string) => string[]; setValue: (field: string, value: string[], options?: { shouldValidate?: boolean }) => void },
-                              'cogAdditionalLanguages',
-                              lang.id
-                            )}
-                          />
-                          {lang.name}
-                        </label>
-                      )
-                    })}
-                  </div>
+                  <MultiSelect
+                    options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                    value={(cogForm.watch('cogAdditionalLanguages') ?? []) as string[]}
+                    onChange={(next) => cogForm.setValue(
+                      'cogAdditionalLanguages',
+                      next,
+                      { shouldValidate: true, shouldDirty: true }
+                    )}
+                    placeholder="Select additional languages…"
+                  />
                 </FormField>
               </div>
             </FormSection>

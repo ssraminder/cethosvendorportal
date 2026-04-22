@@ -1,14 +1,14 @@
 import { X, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
-import type { UseFormRegister, UseFormSetValue, FieldErrors, UseFormWatch } from 'react-hook-form'
+import { useState, useMemo } from 'react'
+import type { UseFormSetValue, FieldErrors, UseFormWatch } from 'react-hook-form'
 import type { Language } from '../types/application'
 import type { TranslatorFormData, PairServiceRate } from '../lib/schemas'
 import { useServices, CATEGORY_LABELS, UNIT_LABELS, serviceIsRateRequired, type ServiceOption } from '../hooks/useServices'
+import { SearchableSelect } from './SearchableSelect'
 
 interface LanguagePairRowProps {
   index: number
   languages: Language[]
-  register: UseFormRegister<TranslatorFormData>
   setValue: UseFormSetValue<TranslatorFormData>
   watch: UseFormWatch<TranslatorFormData>
   errors: FieldErrors<TranslatorFormData>
@@ -21,7 +21,6 @@ interface LanguagePairRowProps {
 export function LanguagePairRow({
   index,
   languages,
-  register,
   setValue,
   watch,
   errors,
@@ -35,6 +34,11 @@ export function LanguagePairRow({
   const [addingService, setAddingService] = useState(false)
   const [selectedNewCode, setSelectedNewCode] = useState('')
   const [rateTouched, setRateTouched] = useState<Record<string, boolean>>({})
+
+  const languageOptions = useMemo(
+    () => languages.map((l) => ({ value: l.id, label: l.name })),
+    [languages]
+  )
 
   const pairServices: PairServiceRate[] = watch(`languagePairs.${index}.services`) ?? []
 
@@ -192,15 +196,17 @@ export function LanguagePairRow({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Source language *</label>
-          <select
-            {...register(`languagePairs.${index}.sourceLanguageId`)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
-          >
-            <option value="">Select...</option>
-            {languages.map((lang) => (
-              <option key={lang.id} value={lang.id}>{lang.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            options={languageOptions}
+            value={watch(`languagePairs.${index}.sourceLanguageId`) ?? ''}
+            onChange={(v) => setValue(
+              `languagePairs.${index}.sourceLanguageId`,
+              v,
+              { shouldValidate: true, shouldDirty: true }
+            )}
+            placeholder="Select source…"
+            clearable
+          />
           {pairErrors?.sourceLanguageId && (
             <p className="mt-1 text-xs text-red-600">{pairErrors.sourceLanguageId.message}</p>
           )}
@@ -208,15 +214,17 @@ export function LanguagePairRow({
 
         <div>
           <label className="block text-xs text-gray-500 mb-1">Target language *</label>
-          <select
-            {...register(`languagePairs.${index}.targetLanguageId`)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal"
-          >
-            <option value="">Select...</option>
-            {languages.map((lang) => (
-              <option key={lang.id} value={lang.id}>{lang.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            options={languageOptions}
+            value={watch(`languagePairs.${index}.targetLanguageId`) ?? ''}
+            onChange={(v) => setValue(
+              `languagePairs.${index}.targetLanguageId`,
+              v,
+              { shouldValidate: true, shouldDirty: true }
+            )}
+            placeholder="Select target…"
+            clearable
+          />
           {pairErrors?.targetLanguageId && (
             <p className="mt-1 text-xs text-red-600">{pairErrors.targetLanguageId.message}</p>
           )}
