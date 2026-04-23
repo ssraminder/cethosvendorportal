@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Upload, Loader2 } from 'lucide-react'
 import { Layout } from '../components/Layout'
 import { FormSection } from '../components/FormSection'
@@ -58,8 +58,15 @@ import type { RoleType } from '../types/application'
 const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal'
 const selectClasses = inputClasses
 
+const VALID_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber', 'clinician_reviewer', 'cognitive_debriefing']
+
 export function Apply() {
-  const [roleType, setRoleType] = useState<RoleType>('translator')
+  const [searchParams] = useSearchParams()
+  const initialRole = (() => {
+    const r = searchParams.get('role')
+    return (r && VALID_ROLES.includes(r as RoleType)) ? (r as RoleType) : 'translator'
+  })()
+  const [roleType, setRoleType] = useState<RoleType>(initialRole)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [cvFile, setCvFile] = useState<File | null>(null)
