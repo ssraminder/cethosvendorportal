@@ -58,6 +58,8 @@ import type { RoleType } from '../types/application'
 const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal'
 const selectClasses = inputClasses
 
+const CV_MISSING_ERROR = 'Please upload your CV before submitting (PDF or DOCX, max 10MB).'
+
 const VALID_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber', 'clinician_reviewer', 'cognitive_debriefing']
 
 export function Apply() {
@@ -194,7 +196,10 @@ export function Apply() {
   // Uploads the applicant's CV to the cvp-applicant-cvs bucket.
   // Path: {clientUuid}/{filename}. Returns the path for server-side persistence.
   const uploadCvIfPresent = async (): Promise<string | null> => {
-    if (!cvFile) return null
+    if (!cvFile) {
+      setSubmitError(CV_MISSING_ERROR)
+      return null
+    }
     const clientUuid = crypto.randomUUID()
     const sanitized = cvFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
     const path = `${clientUuid}/${sanitized}`
@@ -215,6 +220,7 @@ export function Apply() {
 
     try {
       const cvPath = await uploadCvIfPresent()
+      if (!cvPath) { setSubmitting(false); return }
       const payload = { ...data, cvStoragePath: cvPath }
 
       const response = await fetch(
@@ -246,6 +252,7 @@ export function Apply() {
     setSubmitError(null)
     try {
       const cvPath = await uploadCvIfPresent()
+      if (!cvPath) { setSubmitting(false); return }
       const payload = { ...data, cvStoragePath: cvPath }
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cvp-submit-application`,
@@ -275,6 +282,7 @@ export function Apply() {
 
     try {
       const cvPath = await uploadCvIfPresent()
+      if (!cvPath) { setSubmitting(false); return }
       const payload = {
         ...data,
         cogSampleFile: cogSampleFile ?? undefined,
@@ -579,37 +587,13 @@ export function Apply() {
               )}
             </FormSection>
 
-            {/* Section 5a: Resume / CV */}
-            <FormSection
-              title="Resume / CV"
-              description="Upload your most recent CV (PDF or DOCX, max 10MB). This helps us contextualize your experience."
-            >
-              <div className="space-y-3">
-                {!cvFile ? (
-                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-cethos-teal transition-colors">
-                    <Upload className="w-5 h-5 text-gray-400" />
-                    <span className="text-sm text-gray-500">Click to upload your CV</span>
-                    <input
-                      type="file"
-                      accept=".pdf,.docx,.doc"
-                      className="sr-only"
-                      onChange={handleCvUpload}
-                    />
-                  </label>
-                ) : (
-                  <div className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
-                    <span className="text-sm text-cethos-navy truncate">{cvFile.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setCvFile(null)}
-                      className="text-gray-400 hover:text-red-500 text-sm"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </FormSection>
+            {/* Section 5a: Resume / CV (required) */}
+            <CvSection
+              cvFile={cvFile}
+              setCvFile={setCvFile}
+              handleCvUpload={handleCvUpload}
+              showMissingError={submitError === CV_MISSING_ERROR}
+            />
 
             {/* Section 7: Additional Information */}
             <FormSection title="Additional Information">
@@ -1188,7 +1172,7 @@ export function Apply() {
               </div>
             </FormSection>
 
-            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} />
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} showMissingError={submitError === CV_MISSING_ERROR} />
 
             <FormSection title="Additional Information">
               <FormField label="How did you hear about us?">
@@ -1311,7 +1295,7 @@ export function Apply() {
               </div>
             </FormSection>
 
-            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} />
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} showMissingError={submitError === CV_MISSING_ERROR} />
 
             <FormSection title="Additional Information">
               <FormField label="How did you hear about us?">
@@ -1433,7 +1417,7 @@ export function Apply() {
               </FormField>
             </FormSection>
 
-            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} />
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} showMissingError={submitError === CV_MISSING_ERROR} />
 
             <FormSection title="Additional Information">
               <FormField label="How did you hear about us?">

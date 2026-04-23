@@ -6,19 +6,29 @@ interface CvSectionProps {
   cvFile: File | null
   setCvFile: (f: File | null) => void
   handleCvUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  /** Render a red missing-CV error under the drop zone. */
+  showMissingError?: boolean
 }
 
-export function CvSection({ cvFile, setCvFile, handleCvUpload }: CvSectionProps) {
+export function CvSection({ cvFile, setCvFile, handleCvUpload, showMissingError }: CvSectionProps) {
   return (
     <FormSection
-      title="Resume / CV"
-      description="Upload your most recent CV (PDF or DOCX, max 10MB). This helps us contextualize your experience."
+      title="Resume / CV *"
+      description="Upload your most recent CV (PDF or DOCX, max 10MB). Required."
     >
-      <div className="space-y-3">
+      <div className="space-y-2">
         {!cvFile ? (
-          <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-cethos-teal transition-colors">
-            <Upload className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-500">Click to upload your CV</span>
+          <label
+            className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors ${
+              showMissingError
+                ? 'border-red-400 bg-red-50 hover:border-red-500'
+                : 'border-gray-300 hover:border-cethos-teal'
+            }`}
+          >
+            <Upload className={`w-5 h-5 ${showMissingError ? 'text-red-500' : 'text-gray-400'}`} />
+            <span className={`text-sm ${showMissingError ? 'text-red-700 font-medium' : 'text-gray-500'}`}>
+              Click to upload your CV (PDF or DOCX)
+            </span>
             <input
               type="file"
               accept=".pdf,.docx,.doc"
@@ -27,16 +37,19 @@ export function CvSection({ cvFile, setCvFile, handleCvUpload }: CvSectionProps)
             />
           </label>
         ) : (
-          <div className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2">
-            <span className="text-sm text-gray-700 truncate">{cvFile.name}</span>
+          <div className="flex items-center justify-between bg-cethos-bg-blue rounded-md px-3 py-2 border border-cethos-teal/30">
+            <span className="text-sm text-cethos-navy truncate">{cvFile.name}</span>
             <button
               type="button"
               onClick={() => setCvFile(null)}
-              className="text-gray-400 hover:text-red-500 text-sm"
+              className="text-gray-500 hover:text-red-600 text-sm"
             >
               Remove
             </button>
           </div>
+        )}
+        {showMissingError && !cvFile && (
+          <p className="text-xs text-red-600">CV is required to submit your application.</p>
         )}
       </div>
     </FormSection>
