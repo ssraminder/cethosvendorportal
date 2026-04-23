@@ -172,14 +172,6 @@ export function Apply() {
     setSubmitError(null)
   }
 
-  const handleToggleDomainOffered = useCallback((domain: DomainValue) => {
-    const current = translatorForm.getValues('domainsOffered') ?? []
-    const updated = current.includes(domain)
-      ? current.filter((d) => d !== domain)
-      : [...current, domain]
-    translatorForm.setValue('domainsOffered', updated, { shouldValidate: true })
-  }, [translatorForm])
-
   const handleToggleCheckbox = useCallback((
     form: { getValues: (field: string) => string[]; setValue: (field: string, value: string[], options?: { shouldValidate?: boolean }) => void },
     field: string,
