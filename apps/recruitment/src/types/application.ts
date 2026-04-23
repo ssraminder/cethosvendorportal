@@ -1,4 +1,9 @@
-export type RoleType = 'translator' | 'cognitive_debriefing'
+export type RoleType =
+  | 'translator'
+  | 'interpreter'
+  | 'transcriber'
+  | 'clinician_reviewer'
+  | 'cognitive_debriefing'
 
 export type Domain = 'legal' | 'medical' | 'immigration' | 'financial' | 'technical' | 'general'
 

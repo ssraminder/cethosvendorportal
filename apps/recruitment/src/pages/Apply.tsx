@@ -10,10 +10,23 @@ import { FormField } from '../components/FormField'
 import { LanguagePairRow } from '../components/LanguagePairRow'
 import { MultiSelect } from '../components/MultiSelect'
 import { RankedMultiSelect } from '../components/RankedMultiSelect'
+import { CvSection, ConsentSection } from '../components/FormHelpers'
 import { useLanguages } from '../hooks/useLanguages'
 import { supabase } from '../lib/supabase'
-import { translatorSchema, cognitiveDebriefingSchema } from '../lib/schemas'
-import type { TranslatorFormData, CognitiveDebriefingFormData } from '../lib/schemas'
+import {
+  translatorSchema,
+  cognitiveDebriefingSchema,
+  interpreterSchema,
+  transcriberSchema,
+  clinicianReviewerSchema,
+} from '../lib/schemas'
+import type {
+  TranslatorFormData,
+  CognitiveDebriefingFormData,
+  InterpreterFormData,
+  TranscriberFormData,
+  ClinicianReviewerFormData,
+} from '../lib/schemas'
 import {
   COUNTRIES,
   EXPERIENCE_OPTIONS,
@@ -29,6 +42,17 @@ import {
 import { DOMAIN_OPTIONS } from '../lib/domains'
 import type { DomainValue } from '../lib/domains'
 import { RATE_CURRENCIES } from '../lib/currencies'
+import {
+  ROLE_OPTIONS,
+  INTERPRETER_MODES,
+  INTERPRETER_SETTINGS,
+  INTERPRETER_DELIVERY,
+  TRANSCRIBER_SPECIALIZATIONS,
+  TRANSCRIBER_VERBATIM,
+  TRANSCRIBER_TIMESTAMPING,
+  CLINICIAN_CREDENTIALS,
+  CLINICIAN_THERAPY_AREAS,
+} from '../lib/roles'
 import type { RoleType } from '../types/application'
 
 const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal'
@@ -67,6 +91,57 @@ export function Apply() {
   const { fields: certFields, append: addCert, remove: removeCert } = useFieldArray({
     control: translatorForm.control,
     name: 'certifications',
+  })
+
+  // Interpreter form
+  const interpreterForm = useForm<InterpreterFormData>({
+    resolver: zodResolver(interpreterSchema) as Resolver<InterpreterFormData>,
+    defaultValues: {
+      roleType: 'interpreter',
+      certifications: [],
+      interpreterLanguagePairs: [{ sourceLanguageId: '', targetLanguageId: '' }],
+      interpreterModes: [],
+      interpreterSettings: [],
+      rateCurrency: 'CAD',
+      privacyPolicy: false as unknown as true,
+      consentTest: false as unknown as true,
+      consentUnpaid: false as unknown as true,
+    },
+  })
+
+  const { fields: interpreterPairFields, append: addInterpreterPair, remove: removeInterpreterPair } = useFieldArray({
+    control: interpreterForm.control,
+    name: 'interpreterLanguagePairs',
+  })
+
+  // Transcriber form
+  const transcriberForm = useForm<TranscriberFormData>({
+    resolver: zodResolver(transcriberSchema) as Resolver<TranscriberFormData>,
+    defaultValues: {
+      roleType: 'transcriber',
+      certifications: [],
+      transcriberLanguages: [],
+      transcriberSpecializations: [],
+      rateCurrency: 'CAD',
+      privacyPolicy: false as unknown as true,
+      consentTest: false as unknown as true,
+      consentUnpaid: false as unknown as true,
+    },
+  })
+
+  // Clinician Reviewer form
+  const clinicianForm = useForm<ClinicianReviewerFormData>({
+    resolver: zodResolver(clinicianReviewerSchema) as Resolver<ClinicianReviewerFormData>,
+    defaultValues: {
+      roleType: 'clinician_reviewer',
+      clinicianCredentials: [],
+      clinicianWorkingLanguages: [],
+      clinicianTherapyAreas: [],
+      rateCurrency: 'CAD',
+      privacyPolicy: false as unknown as true,
+      consentTest: false as unknown as true,
+      consentUnpaid: false as unknown as true,
+    },
   })
 
   // Cognitive debriefing form
@@ -166,6 +241,35 @@ export function Apply() {
     }
   }
 
+  // Generic submit helper for the 3 new role paths.
+  const submitSimpleRole = async (data: Record<string, unknown>) => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const cvPath = await uploadCvIfPresent()
+      const payload = { ...data, cvStoragePath: cvPath }
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cvp-submit-application`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      )
+      const result = await response.json()
+      if (!result.success) throw new Error(result.error ?? 'Submission failed')
+      navigate('/apply/confirmation', { state: { applicationNumber: result.data.applicationNumber } })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onInterpreterSubmit = (data: InterpreterFormData) => submitSimpleRole(data)
+  const onTranscriberSubmit = (data: TranscriberFormData) => submitSimpleRole(data)
+  const onClinicianSubmit = (data: ClinicianReviewerFormData) => submitSimpleRole(data)
+
   const onCogSubmit = async (data: CognitiveDebriefingFormData) => {
     setSubmitting(true)
     setSubmitError(null)
@@ -234,39 +338,32 @@ export function Apply() {
           </p>
         </div>
 
-        {/* Role selector */}
+        {/* Role selector — 5 options */}
         <FormSection title="I am applying as a:">
-          <div className="flex gap-4">
-            <label className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-3 transition-colors ${
-              roleType === 'translator'
-                ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal'
-                : 'border-gray-200 hover:bg-gray-50'
-            }`}>
-              <input
-                type="radio"
-                name="roleType"
-                value="translator"
-                checked={roleType === 'translator'}
-                onChange={() => handleRoleChange('translator')}
-                className="text-cethos-teal focus:ring-cethos-teal"
-              />
-              <span className="text-sm font-medium">Translator / Reviewer</span>
-            </label>
-            <label className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-3 transition-colors ${
-              roleType === 'cognitive_debriefing'
-                ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal'
-                : 'border-gray-200 hover:bg-gray-50'
-            }`}>
-              <input
-                type="radio"
-                name="roleType"
-                value="cognitive_debriefing"
-                checked={roleType === 'cognitive_debriefing'}
-                onChange={() => handleRoleChange('cognitive_debriefing')}
-                className="text-cethos-teal focus:ring-cethos-teal"
-              />
-              <span className="text-sm font-medium">Cognitive Debriefing Consultant</span>
-            </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {ROLE_OPTIONS.map((role) => (
+              <label
+                key={role.value}
+                className={`flex items-start gap-2 cursor-pointer rounded-lg border p-3 transition-colors ${
+                  roleType === role.value
+                    ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal'
+                    : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="roleType"
+                  value={role.value}
+                  checked={roleType === role.value}
+                  onChange={() => handleRoleChange(role.value)}
+                  className="mt-0.5 text-cethos-teal focus:ring-cethos-teal shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{role.label}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{role.hint}</div>
+                </div>
+              </label>
+            ))}
           </div>
         </FormSection>
 
@@ -958,6 +1055,405 @@ export function Apply() {
               disabled={submitting}
               className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? 'Submitting...' : 'Submit Application'}
+            </button>
+          </form>
+        )}
+
+        {/* ===== INTERPRETER FORM ===== */}
+        {roleType === 'interpreter' && (
+          <form onSubmit={interpreterForm.handleSubmit(onInterpreterSubmit)} className="space-y-6">
+            <FormSection title="Personal Information">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Full name" required error={interpreterForm.formState.errors.fullName?.message}>
+                  <input {...interpreterForm.register('fullName')} className={inputClasses} placeholder="Jane Smith" />
+                </FormField>
+                <FormField label="Email" required error={interpreterForm.formState.errors.email?.message}>
+                  <input {...interpreterForm.register('email')} type="email" className={inputClasses} />
+                </FormField>
+                <FormField label="Phone" error={interpreterForm.formState.errors.phone?.message}>
+                  <input {...interpreterForm.register('phone')} type="tel" className={inputClasses} />
+                </FormField>
+                <FormField label="City" error={interpreterForm.formState.errors.city?.message}>
+                  <input {...interpreterForm.register('city')} className={inputClasses} />
+                </FormField>
+                <FormField label="Country" required error={interpreterForm.formState.errors.country?.message}>
+                  <select {...interpreterForm.register('country')} className={selectClasses}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="LinkedIn URL" error={interpreterForm.formState.errors.linkedinUrl?.message}>
+                  <input {...interpreterForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Professional Background">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Years of experience" required error={interpreterForm.formState.errors.yearsExperience?.message}>
+                  <select {...interpreterForm.register('yearsExperience')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EXPERIENCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="Education level" required error={interpreterForm.formState.errors.educationLevel?.message}>
+                  <select {...interpreterForm.register('educationLevel')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EDUCATION_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Interpretation Profile">
+              <FormField label="Modes" required error={interpreterForm.formState.errors.interpreterModes?.message as string | undefined}>
+                <MultiSelect
+                  options={INTERPRETER_MODES.map((m) => ({ value: m.value, label: m.label }))}
+                  value={(interpreterForm.watch('interpreterModes') ?? []) as string[]}
+                  onChange={(next) => interpreterForm.setValue('interpreterModes', next as InterpreterFormData['interpreterModes'], { shouldValidate: true })}
+                  placeholder="Select interpretation modes…"
+                />
+              </FormField>
+
+              <FormField label="Settings" required error={interpreterForm.formState.errors.interpreterSettings?.message as string | undefined}>
+                <MultiSelect
+                  options={INTERPRETER_SETTINGS.map((s) => ({ value: s.value, label: s.label }))}
+                  value={(interpreterForm.watch('interpreterSettings') ?? []) as string[]}
+                  onChange={(next) => interpreterForm.setValue('interpreterSettings', next as InterpreterFormData['interpreterSettings'], { shouldValidate: true })}
+                  placeholder="Select settings…"
+                />
+              </FormField>
+
+              <FormField label="Delivery" required error={interpreterForm.formState.errors.interpreterDelivery?.message}>
+                <select {...interpreterForm.register('interpreterDelivery')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {INTERPRETER_DELIVERY.map((d) => (<option key={d.value} value={d.value}>{d.label}</option>))}
+                </select>
+              </FormField>
+            </FormSection>
+
+            <FormSection title="Language Pairs">
+              <div className="space-y-3">
+                {interpreterPairFields.map((field, index) => {
+                  const pairErrors = interpreterForm.formState.errors.interpreterLanguagePairs?.[index]
+                  return (
+                    <div key={field.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-cethos-navy">Pair {index + 1}</span>
+                        {interpreterPairFields.length > 1 && (
+                          <button type="button" onClick={() => removeInterpreterPair(index)} className="text-gray-400 hover:text-red-500">×</button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Source *</label>
+                          <select {...interpreterForm.register(`interpreterLanguagePairs.${index}.sourceLanguageId`)} className={selectClasses}>
+                            <option value="">Select...</option>
+                            {languages.map((l) => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                          </select>
+                          {pairErrors?.sourceLanguageId && <p className="mt-1 text-xs text-red-600">{pairErrors.sourceLanguageId.message}</p>}
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Target *</label>
+                          <select {...interpreterForm.register(`interpreterLanguagePairs.${index}.targetLanguageId`)} className={selectClasses}>
+                            <option value="">Select...</option>
+                            {languages.map((l) => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                          </select>
+                          {pairErrors?.targetLanguageId && <p className="mt-1 text-xs text-red-600">{pairErrors.targetLanguageId.message}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <button type="button" onClick={() => addInterpreterPair({ sourceLanguageId: '', targetLanguageId: '' })} className="flex items-center gap-1.5 text-sm text-cethos-teal hover:text-cethos-teal-light font-medium">
+                  <Plus className="w-4 h-4" /> Add another language pair
+                </button>
+              </div>
+            </FormSection>
+
+            <FormSection title="Rates">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField label="Hourly rate" required error={interpreterForm.formState.errors.interpreterHourlyRate?.message}>
+                  <input {...interpreterForm.register('interpreterHourlyRate')} type="number" step="0.01" className={inputClasses} placeholder="75.00" />
+                </FormField>
+                <FormField label="Minimum engagement (hours)" hint="E.g. 1 or 2 hour minimum">
+                  <input {...interpreterForm.register('interpreterMinEngagementHours')} type="number" step="0.5" className={inputClasses} placeholder="1" />
+                </FormField>
+                <FormField label="Currency" required error={interpreterForm.formState.errors.rateCurrency?.message}>
+                  <select {...interpreterForm.register('rateCurrency')} className={selectClasses}>
+                    {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} />
+
+            <FormSection title="Additional Information">
+              <FormField label="How did you hear about us?">
+                <select {...interpreterForm.register('referralSource')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {REFERRAL_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+              <FormField label="Additional notes">
+                <textarea {...interpreterForm.register('notes')} rows={3} className={inputClasses} />
+              </FormField>
+            </FormSection>
+
+            <ConsentSection form={interpreterForm} />
+
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
+            )}
+            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? 'Submitting...' : 'Submit Application'}
+            </button>
+          </form>
+        )}
+
+        {/* ===== TRANSCRIBER FORM ===== */}
+        {roleType === 'transcriber' && (
+          <form onSubmit={transcriberForm.handleSubmit(onTranscriberSubmit)} className="space-y-6">
+            <FormSection title="Personal Information">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Full name" required error={transcriberForm.formState.errors.fullName?.message}>
+                  <input {...transcriberForm.register('fullName')} className={inputClasses} />
+                </FormField>
+                <FormField label="Email" required error={transcriberForm.formState.errors.email?.message}>
+                  <input {...transcriberForm.register('email')} type="email" className={inputClasses} />
+                </FormField>
+                <FormField label="Phone" error={transcriberForm.formState.errors.phone?.message}>
+                  <input {...transcriberForm.register('phone')} type="tel" className={inputClasses} />
+                </FormField>
+                <FormField label="City" error={transcriberForm.formState.errors.city?.message}>
+                  <input {...transcriberForm.register('city')} className={inputClasses} />
+                </FormField>
+                <FormField label="Country" required error={transcriberForm.formState.errors.country?.message}>
+                  <select {...transcriberForm.register('country')} className={selectClasses}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="LinkedIn URL" error={transcriberForm.formState.errors.linkedinUrl?.message}>
+                  <input {...transcriberForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Professional Background">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Years of experience" required error={transcriberForm.formState.errors.yearsExperience?.message}>
+                  <select {...transcriberForm.register('yearsExperience')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EXPERIENCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="Education level" required error={transcriberForm.formState.errors.educationLevel?.message}>
+                  <select {...transcriberForm.register('educationLevel')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EDUCATION_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Transcription Profile">
+              <FormField label="Working languages" required error={transcriberForm.formState.errors.transcriberLanguages?.message as string | undefined}>
+                <MultiSelect
+                  options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                  value={(transcriberForm.watch('transcriberLanguages') ?? []) as string[]}
+                  onChange={(next) => transcriberForm.setValue('transcriberLanguages', next, { shouldValidate: true })}
+                  placeholder="Select working languages…"
+                />
+              </FormField>
+
+              <FormField label="Specializations" required error={transcriberForm.formState.errors.transcriberSpecializations?.message as string | undefined}>
+                <MultiSelect
+                  options={TRANSCRIBER_SPECIALIZATIONS.map((s) => ({ value: s.value, label: s.label }))}
+                  value={(transcriberForm.watch('transcriberSpecializations') ?? []) as string[]}
+                  onChange={(next) => transcriberForm.setValue('transcriberSpecializations', next as TranscriberFormData['transcriberSpecializations'], { shouldValidate: true })}
+                  placeholder="Select specializations…"
+                />
+              </FormField>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Verbatim style" required error={transcriberForm.formState.errors.transcriberVerbatimMode?.message}>
+                  <select {...transcriberForm.register('transcriberVerbatimMode')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {TRANSCRIBER_VERBATIM.map((v) => (<option key={v.value} value={v.value}>{v.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="Time-stamping" required error={transcriberForm.formState.errors.transcriberTimestamping?.message}>
+                  <select {...transcriberForm.register('transcriberTimestamping')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {TRANSCRIBER_TIMESTAMPING.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Rates">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField label="Per audio-minute" required error={transcriberForm.formState.errors.transcriberRatePerMinute?.message}>
+                  <input {...transcriberForm.register('transcriberRatePerMinute')} type="number" step="0.01" className={inputClasses} placeholder="2.50" />
+                </FormField>
+                <FormField label="Per hour (optional)">
+                  <input {...transcriberForm.register('transcriberRatePerHour')} type="number" step="0.01" className={inputClasses} placeholder="45.00" />
+                </FormField>
+                <FormField label="Currency" required error={transcriberForm.formState.errors.rateCurrency?.message}>
+                  <select {...transcriberForm.register('rateCurrency')} className={selectClasses}>
+                    {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} />
+
+            <FormSection title="Additional Information">
+              <FormField label="How did you hear about us?">
+                <select {...transcriberForm.register('referralSource')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {REFERRAL_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+              <FormField label="Additional notes">
+                <textarea {...transcriberForm.register('notes')} rows={3} className={inputClasses} />
+              </FormField>
+            </FormSection>
+
+            <ConsentSection form={transcriberForm} />
+
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
+            )}
+            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? 'Submitting...' : 'Submit Application'}
+            </button>
+          </form>
+        )}
+
+        {/* ===== CLINICIAN REVIEWER FORM ===== */}
+        {roleType === 'clinician_reviewer' && (
+          <form onSubmit={clinicianForm.handleSubmit(onClinicianSubmit)} className="space-y-6">
+            <FormSection title="Personal Information">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Full name" required error={clinicianForm.formState.errors.fullName?.message}>
+                  <input {...clinicianForm.register('fullName')} className={inputClasses} />
+                </FormField>
+                <FormField label="Email" required error={clinicianForm.formState.errors.email?.message}>
+                  <input {...clinicianForm.register('email')} type="email" className={inputClasses} />
+                </FormField>
+                <FormField label="Phone" error={clinicianForm.formState.errors.phone?.message}>
+                  <input {...clinicianForm.register('phone')} type="tel" className={inputClasses} />
+                </FormField>
+                <FormField label="City" error={clinicianForm.formState.errors.city?.message}>
+                  <input {...clinicianForm.register('city')} className={inputClasses} />
+                </FormField>
+                <FormField label="Country" required error={clinicianForm.formState.errors.country?.message}>
+                  <select {...clinicianForm.register('country')} className={selectClasses}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="LinkedIn URL" error={clinicianForm.formState.errors.linkedinUrl?.message}>
+                  <input {...clinicianForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Clinical Credentials">
+              <FormField label="Credentials" required error={clinicianForm.formState.errors.clinicianCredentials?.message as string | undefined}>
+                <MultiSelect
+                  options={CLINICIAN_CREDENTIALS.map((c) => ({ value: c.value, label: c.label }))}
+                  value={(clinicianForm.watch('clinicianCredentials') ?? []) as string[]}
+                  onChange={(next) => clinicianForm.setValue('clinicianCredentials', next as ClinicianReviewerFormData['clinicianCredentials'], { shouldValidate: true })}
+                  placeholder="Select credentials…"
+                />
+              </FormField>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Licensing country" required error={clinicianForm.formState.errors.clinicianLicensingCountry?.message}>
+                  <select {...clinicianForm.register('clinicianLicensingCountry')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="State / Province (optional)">
+                  <input {...clinicianForm.register('clinicianLicensingRegion')} className={inputClasses} placeholder="e.g. California, Ontario" />
+                </FormField>
+                <FormField label="Education level" required error={clinicianForm.formState.errors.educationLevel?.message}>
+                  <select {...clinicianForm.register('educationLevel')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EDUCATION_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Review Profile">
+              <FormField label="Working languages" required error={clinicianForm.formState.errors.clinicianWorkingLanguages?.message as string | undefined}>
+                <MultiSelect
+                  options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                  value={(clinicianForm.watch('clinicianWorkingLanguages') ?? []) as string[]}
+                  onChange={(next) => clinicianForm.setValue('clinicianWorkingLanguages', next, { shouldValidate: true })}
+                  placeholder="Select languages…"
+                />
+              </FormField>
+
+              <FormField label="Therapy areas" required error={clinicianForm.formState.errors.clinicianTherapyAreas?.message as string | undefined}>
+                <MultiSelect
+                  options={CLINICIAN_THERAPY_AREAS.map((a) => ({ value: a.value, label: a.label }))}
+                  value={(clinicianForm.watch('clinicianTherapyAreas') ?? []) as string[]}
+                  onChange={(next) => clinicianForm.setValue('clinicianTherapyAreas', next as ClinicianReviewerFormData['clinicianTherapyAreas'], { shouldValidate: true })}
+                  placeholder="Select therapy areas…"
+                />
+              </FormField>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField label="Years clinical review" required error={clinicianForm.formState.errors.clinicianYearsClinicalReview?.message}>
+                  <input {...clinicianForm.register('clinicianYearsClinicalReview')} type="number" min="0" className={inputClasses} />
+                </FormField>
+                <FormField label="Years COA/PRO (optional)">
+                  <input {...clinicianForm.register('clinicianYearsCoa')} type="number" min="0" className={inputClasses} />
+                </FormField>
+                <FormField label="Hourly rate" required error={clinicianForm.formState.errors.clinicianHourlyRate?.message}>
+                  <input {...clinicianForm.register('clinicianHourlyRate')} type="number" step="0.01" className={inputClasses} placeholder="150.00" />
+                </FormField>
+              </div>
+
+              <FormField label="Currency" required error={clinicianForm.formState.errors.rateCurrency?.message}>
+                <select {...clinicianForm.register('rateCurrency')} className={`${selectClasses} max-w-xs`}>
+                  {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
+                </select>
+              </FormField>
+            </FormSection>
+
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} />
+
+            <FormSection title="Additional Information">
+              <FormField label="How did you hear about us?">
+                <select {...clinicianForm.register('referralSource')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {REFERRAL_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+              <FormField label="Additional notes">
+                <textarea {...clinicianForm.register('notes')} rows={3} className={inputClasses} />
+              </FormField>
+            </FormSection>
+
+            <ConsentSection form={clinicianForm} />
+
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
+            )}
+            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}
             </button>

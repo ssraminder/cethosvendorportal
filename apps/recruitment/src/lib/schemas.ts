@@ -1,5 +1,24 @@
 import { z } from 'zod'
 import { DOMAIN_VALUES } from './domains'
+import {
+  INTERPRETER_MODES,
+  INTERPRETER_SETTINGS,
+  INTERPRETER_DELIVERY,
+  TRANSCRIBER_SPECIALIZATIONS,
+  TRANSCRIBER_VERBATIM,
+  TRANSCRIBER_TIMESTAMPING,
+  CLINICIAN_CREDENTIALS,
+  CLINICIAN_THERAPY_AREAS,
+} from './roles'
+
+const modeValues = INTERPRETER_MODES.map((m) => m.value) as [string, ...string[]]
+const settingValues = INTERPRETER_SETTINGS.map((s) => s.value) as [string, ...string[]]
+const deliveryValues = INTERPRETER_DELIVERY.map((d) => d.value) as [string, ...string[]]
+const transcriberSpecValues = TRANSCRIBER_SPECIALIZATIONS.map((s) => s.value) as [string, ...string[]]
+const verbatimValues = TRANSCRIBER_VERBATIM.map((v) => v.value) as [string, ...string[]]
+const timestampingValues = TRANSCRIBER_TIMESTAMPING.map((t) => t.value) as [string, ...string[]]
+const credentialValues = CLINICIAN_CREDENTIALS.map((c) => c.value) as [string, ...string[]]
+const clinicianAreaValues = CLINICIAN_THERAPY_AREAS.map((a) => a.value) as [string, ...string[]]
 
 // -- Shared fields --
 
@@ -101,7 +120,83 @@ export const cognitiveDebriefingSchema = z.object({
   ...consentSchema.shape,
 })
 
+// -- Interpreter --
+
+const interpreterPairSchema = z.object({
+  sourceLanguageId: z.string().min(1, 'Source language is required'),
+  targetLanguageId: z.string().min(1, 'Target language is required'),
+}).refine(
+  (d) => d.sourceLanguageId !== d.targetLanguageId,
+  { message: 'Source and target language must be different', path: ['targetLanguageId'] }
+)
+
+export const interpreterSchema = z.object({
+  roleType: z.literal('interpreter'),
+  ...personalInfoSchema.shape,
+  yearsExperience: z.string().min(1, 'Years of experience is required'),
+  educationLevel: z.string().min(1, 'Education level is required'),
+  certifications: z.array(certificationSchema).default([]),
+  interpreterLanguagePairs: z.array(interpreterPairSchema).min(1, 'At least one language pair is required'),
+  interpreterModes: z.array(z.enum(modeValues)).min(1, 'Select at least one interpretation mode'),
+  interpreterSettings: z.array(z.enum(settingValues)).min(1, 'Select at least one setting'),
+  interpreterDelivery: z.enum(deliveryValues, { error: 'Select a delivery option' }),
+  interpreterHourlyRate: z.string().min(1, 'Hourly rate is required'),
+  interpreterMinEngagementHours: z.string().optional(),
+  rateCurrency: z.string().min(3, 'Select a currency'),
+  referralSource: z.string().optional(),
+  notes: z.string().optional(),
+  ...consentSchema.shape,
+})
+
+// -- Transcriber --
+
+export const transcriberSchema = z.object({
+  roleType: z.literal('transcriber'),
+  ...personalInfoSchema.shape,
+  yearsExperience: z.string().min(1, 'Years of experience is required'),
+  educationLevel: z.string().min(1, 'Education level is required'),
+  certifications: z.array(certificationSchema).default([]),
+  transcriberLanguages: z.array(z.string().min(1)).min(1, 'Select at least one working language'),
+  transcriberSpecializations: z.array(z.enum(transcriberSpecValues)).min(1, 'Select at least one specialization'),
+  transcriberRatePerMinute: z.string().min(1, 'Per-minute rate is required'),
+  transcriberRatePerHour: z.string().optional(),
+  transcriberVerbatimMode: z.enum(verbatimValues, { error: 'Select a verbatim mode' }),
+  transcriberTimestamping: z.enum(timestampingValues, { error: 'Select a time-stamping preference' }),
+  rateCurrency: z.string().min(3, 'Select a currency'),
+  referralSource: z.string().optional(),
+  notes: z.string().optional(),
+  ...consentSchema.shape,
+})
+
+// -- Clinician Reviewer --
+
+export const clinicianReviewerSchema = z.object({
+  roleType: z.literal('clinician_reviewer'),
+  ...personalInfoSchema.shape,
+  educationLevel: z.string().min(1, 'Education level is required'),
+  clinicianCredentials: z.array(z.enum(credentialValues)).min(1, 'Select at least one credential'),
+  clinicianLicensingCountry: z.string().min(1, 'Licensing country is required'),
+  clinicianLicensingRegion: z.string().optional(),
+  clinicianWorkingLanguages: z.array(z.string().min(1)).min(1, 'Select at least one working language'),
+  clinicianTherapyAreas: z.array(z.enum(clinicianAreaValues)).min(1, 'Select at least one therapy area'),
+  clinicianYearsClinicalReview: z.string().min(1, 'Clinical review experience is required'),
+  clinicianYearsCoa: z.string().optional(),
+  clinicianHourlyRate: z.string().min(1, 'Hourly rate is required'),
+  rateCurrency: z.string().min(3, 'Select a currency'),
+  referralSource: z.string().optional(),
+  notes: z.string().optional(),
+  ...consentSchema.shape,
+})
+
 export type TranslatorFormData = z.infer<typeof translatorSchema>
 export type CognitiveDebriefingFormData = z.infer<typeof cognitiveDebriefingSchema>
-export type ApplicationFormData = TranslatorFormData | CognitiveDebriefingFormData
+export type InterpreterFormData = z.infer<typeof interpreterSchema>
+export type TranscriberFormData = z.infer<typeof transcriberSchema>
+export type ClinicianReviewerFormData = z.infer<typeof clinicianReviewerSchema>
+export type ApplicationFormData =
+  | TranslatorFormData
+  | CognitiveDebriefingFormData
+  | InterpreterFormData
+  | TranscriberFormData
+  | ClinicianReviewerFormData
 export type PairServiceRate = z.infer<typeof pairServiceRateSchema>
