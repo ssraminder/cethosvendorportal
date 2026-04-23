@@ -1,0 +1,20 @@
+# Root-level Netlify config for the monorepo's recruitment app
+# (join.cethos.com). Netlify picks this up when the Netlify site is
+# connected to the repo root with no base directory set.
+#
+# If you operate the vendor portal (apps/vendor/) from the same repo on
+# a separate Netlify site, set that site's Base directory to
+# "apps/vendor" in the Netlify UI — it will use apps/vendor/netlify.toml
+# and ignore this file.
+
+[build]
+  base = "apps/recruitment"
+  command = "npm run build"
+  publish = "apps/recruitment/dist"
+
+# SPA catch-all: any client-router path returns index.html so React Router
+# can take over. Must come before any more specific redirects.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
