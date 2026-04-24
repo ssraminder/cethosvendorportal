@@ -14,6 +14,42 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — April 24, 2026 (Phase E: References system end-to-end)
+
+Completes the references-system phase scheduled earlier today. Two-step flow: staff requests, applicant fills contacts, references fill questionnaire, Opus analyses each response, staff reviews in admin.
+
+### Schema (migration `20260424240000`)
+- **NEW** `cvp_application_reference_requests` — top-level request, holds the applicant-facing `request_token` (14-day expiry).
+- **NEW** `cvp_application_references` — one row per individual reference, holds the referee-facing `feedback_token` (21-day expiry), the response, and the AI analysis JSON.
+- service_role full access; authenticated SELECT for admin reads.
+
+### Backend edge functions
+- **NEW** `cvp-request-references` — staff side. dryRun previews V18 with optional Opus draft of the body; real send creates the request row + fires V18 to applicant.
+- **NEW** `cvp-submit-reference-contacts` — applicant side. validateOnly returns context; submit accepts 1–3 contacts, creates per-reference rows + tokens, fires V19 to each.
+- **NEW** `cvp-submit-reference-feedback` — referee side. validateOnly previews context; submit persists the response + fires V20 ack + runs Opus analysis (sentiment/strength_score/themes/red_flags/summary/verifies_relationship). Decline path supported. AI failures captured in `ai_analysis_error`, response itself still saved.
+
+### Email templates V18–V21 added to `_shared/email-templates.ts`
+- V18 — applicant: "Please share your references" (with optional staff/AI message)
+- V19 — reference: "[Applicant] listed you as a reference" with feedback link
+- V20 — reference: thank-you ack after submission
+- V21 — applicant: heads-up that a reference came in (suppressed by default per CLAUDE.md)
+
+### Public pages (recruitment app)
+- **NEW** `/references/:token` (`ReferencesEntry.tsx`) — applicant adds 1–3 contacts. Validates token, dedupes against existing submissions, friendly error states for expired/invalid tokens.
+- **NEW** `/reference-feedback/:token` (`ReferenceFeedback.tsx`) — referee answers. Free-text + 1–5 rating + decline path with optional reason. 30-char minimum on the free-text response.
+
+### Admin UI
+- **NEW** References section on RecruitmentDetail (between Conversation and Timeline). Lists all requests + references for the application. Each received reference shows the AI analysis (sentiment / strength / themes / red flags / 1–2 sentence summary) with the full free-text expandable on click. "Request references" button opens a modal that mirrors the staff-reply flow: AI-draft instructions textarea → Opus draft button → editable subject + body → HTML preview → Send.
+
+### Phase E status: SHIPPED end-to-end
+Backend + 4 templates + 3 edge functions + 2 public pages + admin section all live.
+
+### Notes
+- V21 (heads-up to applicant when a reference comes in) is implemented in templates but not currently fired — staff can opt-in later via a flag on the request row.
+- Supabase function-deploy intermittently 500'd on `https://deno.land/std@0.208.0/http/server.ts` import — retried 2-3× per function and all succeeded.
+
+---
+
 ## Session — April 24, 2026 (T3 + T4 + admin RLS + Revoke)
 
 Closing out the test-per-domain rework. T3 ships vendor self-service Request Test, T4 fills out the remaining 15 domains via AI, admin VendorDomainsTab gains a Revoke action.
