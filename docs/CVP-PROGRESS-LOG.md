@@ -14,6 +14,41 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — April 24, 2026 (T0: test-per-domain rework + Life Sciences seeds)
+
+Rework of how translator tests are assigned. Shifts the unit of work from (lang_pair × service_type) to (lang_pair × domain). Fixes a latent bug where `cvp-submit-application` stamped every combination with `domainsOffered[0]` regardless of the actual domain mix. Adds a mandatory General baseline test for every translator. Certified translation becomes a skip-test flow. Seeds real Life Sciences content with AI-drafted reference translations.
+
+### Migrations applied (on `lmzoyezvsjgsxveoakdr`)
+- `20260424200000_cvp_test_combinations_domain_unit.sql` — backfill-collapses duplicate combinations into one per (app × pair × domain) using a status-rank ROW_NUMBER, NULLs out `service_type` on survivors, flips `certified_official` combos to `status='skip_manual_review'`, swaps the 5-col UNIQUE for a 4-col UNIQUE, adds `is_baseline_general` + the `skip_manual_review` status value.
+- `20260424200100_cvp_translator_domains.sql` — new durable per (translator × pair × domain) approval table with `status`, `approval_source`, `cooldown_until`, RLS service_role-only, updated_at trigger, 3 indexes.
+- `20260424200200_cvp_life_sciences_seeds.sql` — 6 library rows (3 difficulties × 2 forward pairs: EN→FR, EN→FA), real English source texts (Patient Info Leaflet / Informed Consent Form / Study Protocol eligibility), domain-weighted MQM rubrics, also adds `cvp_test_library.ai_generation_error` column.
+
+### Edge functions deployed
+- `cvp-seed-library-refs` (new) — reads rows WHERE `reference_translation IS NULL AND is_active=false`, calls Opus (MODEL_QUALITY) to produce domain-appropriate references, writes them back + flips `is_active=true`. Idempotent, per-row. On failure writes `ai_generation_error` and leaves inactive (AI-fallback rule).
+- `cvp-send-tests` — tiny patch: if `combo.service_type IS NULL` (new domain-unit combos), skip the service_type filter when querying the library; otherwise keep the strict match for any residual legacy rows.
+- `cvp-submit-application` — rewrote combination generation (lines 235–270). Drops the per-service-type loop. Emits one row per (language_pair × domain) for every applicant-selected domain, plus a forced General row per pair. Certified rows land with `status='skip_manual_review'`.
+
+### Seeds generated
+- All 6 Life Sciences rows populated with Opus-drafted reference translations (FR + FA). Title prefix `[AI-DRAFT]` stays until staff remove it post-QA. Active and available to `cvp-send-tests`.
+
+### Smoke-test dummy refreshed
+- `scripts/smoke-seed-dummy-application.sql` rewritten for the new shape. APP-26-9900 now has 4 combinations: immigration (pending, matches existing library seed), life_sciences (pending, matches new seed), general (pending baseline), certified_official (skip_manual_review).
+
+### Verification
+- Duplicate check: `SELECT ... GROUP BY (app, pair, domain) HAVING COUNT(*)>1` → 0 rows.
+- Certified status check: 0 rows remain in pending/sent/etc.
+- `service_type IS NOT NULL` count: 0 rows.
+- `cvp_translator_domains` table exists.
+- 6 Life Sciences library rows all `is_active=true` with reference_translation set.
+
+### Deferred (future phases)
+- T1 (next session): `cvp-approve-application` writes to `cvp_translator_domains`; new `VendorDomainsTab.tsx`; admin UI certified-skip card.
+- T2: Medical + General + Legal + Immigration seeds via the same pipeline; reverse-direction pairs (FR→EN, FA→EN) via an extended seed-refs that also synthesises source_text.
+- T3: Vendor self-service Request Test page + `cvp-request-test` edge function.
+- Dropping `cvp_translators.approved_combinations` jsonb — kept writing for backward compat; deprecation tracked for after `vendor-get-profile` migrates.
+
+---
+
 ## Session — April 23, 2026 (Phase C.2: staff reply compose + sidebar badge + digest inbound stats)
 
 ### Backend
