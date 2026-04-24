@@ -35,6 +35,12 @@ interface Body {
   staffNotes?: string;
   staffId?: string;
   reapplyAfterMonths?: number;
+  /** When true, runs AI + renders preview but does NOT update status or queue email. */
+  dryRun?: boolean;
+  /** Staff-edited applicant-facing reason (replaces AI output when sending). */
+  editedReason?: string;
+  /** Staff-edited subject line (replaces default when sending). */
+  editedSubject?: string;
 }
 
 serve(async (req: Request) => {
@@ -86,10 +92,14 @@ serve(async (req: Request) => {
     userMessage: userPrompt,
     maxTokens: 400,
   });
-  const reasonSummary =
+  const aiReason =
     ai.ok && ai.text
       ? ai.text
       : "After reviewing the materials submitted, our team has decided not to proceed at this time.";
+
+  // Staff-edited override takes precedence over AI output when sending.
+  const editedReason = (body.editedReason ?? "").trim();
+  const reasonSummary = editedReason || aiReason;
 
   // Pre-render the V12 body so we can store it for audit alongside what was queued.
   const tpl = buildV12Rejected({
@@ -98,14 +108,33 @@ serve(async (req: Request) => {
     reasonSummary,
     reapplyAfterDate,
   });
+  const subject = (body.editedSubject ?? "").trim() || tpl.subject;
+
+  // ---- Preview mode: return rendered content without any DB mutation ----
+  if (body.dryRun === true) {
+    return json({
+      success: true,
+      data: {
+        dryRun: true,
+        aiOutput: aiReason,
+        aiError: ai.ok ? null : ai.error,
+        subject,
+        html: tpl.html,
+        text: tpl.text,
+        reapplyAfterDate,
+      },
+    });
+  }
 
   // Status → rejected; queue email; cron sends after 48h intercept window.
+  const editedSubject = (body.editedSubject ?? "").trim();
   const { error: updErr } = await supabase
     .from("cvp_applications")
     .update({
       status: "rejected",
       rejection_reason: reasonSummary,
       rejection_email_draft: tpl.html,
+      rejection_email_subject_override: editedSubject || null,
       rejection_email_status: "queued",
       rejection_email_queued_at: now.toISOString(),
       can_reapply_after: reapplyAfter.toISOString().split("T")[0],
@@ -129,7 +158,7 @@ serve(async (req: Request) => {
     aiInputPrompt: userPrompt,
     aiOutput: ai.ok ? ai.text : null,
     aiError: ai.ok ? null : ai.error,
-    messageSentSubject: tpl.subject,
+    messageSentSubject: subject,
     messageSentBody: tpl.html,
     staffUserId: body.staffId ?? null,
   });

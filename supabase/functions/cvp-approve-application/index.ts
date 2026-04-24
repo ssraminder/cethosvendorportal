@@ -35,6 +35,13 @@ interface ApprovePayload {
   staffId?: string;
   /** Optional staff notes — captured + AI-rephrased for inclusion in V11. */
   staffNotes?: string;
+  /** Preview-only: runs AI + renders V11 with placeholder setup link. No
+   *  vendor/translator row creation, no DB mutations, no email send. */
+  dryRun?: boolean;
+  /** Staff-edited welcome line (replaces AI output when sending). */
+  editedWelcomeMessage?: string;
+  /** Staff-edited subject line (replaces template default when sending). */
+  editedSubject?: string;
 }
 
 serve(async (req: Request) => {
@@ -81,6 +88,55 @@ serve(async (req: Request) => {
   if (comboErr) return json({ success: false, error: "combination_lookup_failed", detail: comboErr.message }, 500);
 
   const approveIds = (combos ?? []).map((c) => c.id);
+
+  // ---- Preview mode: render V11 without any DB mutations or email send ----
+  if (body.dryRun === true) {
+    const staffNotesPreview = (body.staffNotes ?? "").trim();
+    let aiPreviewOutput: string | null = null;
+    let aiPreviewError: string | null = null;
+    if (staffNotesPreview.length >= 5) {
+      const ai = await claudeRewrite({
+        systemPrompt: APPROVE_NOTE_SYSTEM_PROMPT,
+        userMessage: `Applicant: ${app.full_name}\nApplication: ${app.application_number}\n\nStaff notes (internal):\n${staffNotesPreview}`,
+        maxTokens: 250,
+      });
+      aiPreviewOutput = ai.ok ? ai.text : null;
+      aiPreviewError = ai.ok ? null : ai.error;
+    }
+    const editedWelcomeMessagePreview = (body.editedWelcomeMessage ?? "").trim();
+    const staffMessagePreview = editedWelcomeMessagePreview ||
+      (aiPreviewOutput && aiPreviewOutput.trim().length > 0 ? aiPreviewOutput : null);
+
+    const vendorPortalUrlPreview = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
+    const approvedCombinationsListHtmlPreview = approveIds.length > 0
+      ? `<ul>${(combos ?? [])
+          .map((c) => `<li>${c.service_type} — ${c.domain}</li>`)
+          .join("")}</ul>`
+      : `<p><em>No combinations yet — staff has not approved any.</em></p>`;
+    const tplPreview = buildV11ApprovedWelcome({
+      fullName: app.full_name,
+      applicationNumber: app.application_number,
+      vendorPortalUrl: vendorPortalUrlPreview,
+      passwordSetupLink: `${vendorPortalUrlPreview}/setup-password?token=__PREVIEW_TOKEN__`,
+      passwordSetupExpiryHours: 72,
+      approvedCombinationsList: approvedCombinationsListHtmlPreview,
+      staffMessage: staffMessagePreview,
+    });
+    const subjectPreview = (body.editedSubject ?? "").trim() || tplPreview.subject;
+    return json({
+      success: true,
+      data: {
+        dryRun: true,
+        aiOutput: aiPreviewOutput,
+        aiError: aiPreviewError,
+        subject: subjectPreview,
+        html: tplPreview.html,
+        text: tplPreview.text,
+        combinationCount: approveIds.length,
+      },
+    });
+  }
+
   if (approveIds.length === 0) {
     return json({ success: false, error: "no_combinations_to_approve" }, 400);
   }
@@ -252,6 +308,12 @@ serve(async (req: Request) => {
     }
   }
 
+  // Staff-edited welcome line overrides the AI output at send-time.
+  const editedWelcomeMessage = (body.editedWelcomeMessage ?? "").trim();
+  if (editedWelcomeMessage) {
+    staffMessageForEmail = editedWelcomeMessage;
+  }
+
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
   const passwordSetupLink = `${vendorPortalUrl}/setup-password?token=${setupToken}`;
   const approvedCombinationsListHtml = `<ul>${approvedCombos
@@ -267,9 +329,10 @@ serve(async (req: Request) => {
     approvedCombinationsList: approvedCombinationsListHtml,
     staffMessage: staffMessageForEmail,
   });
+  const subject = (body.editedSubject ?? "").trim() || tpl.subject;
   await sendMailgunEmail({
     to: { email: app.email, name: app.full_name },
-    subject: tpl.subject,
+    subject,
     html: tpl.html,
     text: tpl.text,
     respectDoNotContactFor: app.email,
@@ -284,7 +347,7 @@ serve(async (req: Request) => {
     aiInputPrompt,
     aiOutput,
     aiError,
-    messageSentSubject: tpl.subject,
+    messageSentSubject: subject,
     messageSentBody: tpl.html,
     staffUserId: body.staffId ?? null,
   });
