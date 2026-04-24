@@ -14,6 +14,23 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — April 23, 2026 (Phase C.2: staff reply compose + sidebar badge + digest inbound stats)
+
+### Backend
+- `_shared/mailgun.ts`: added `inReplyTo` + `references` options so outbound staff replies thread with the applicant's reply in their mail client. Angle brackets normalised defensively.
+- **NEW** `cvp-staff-reply` edge function: staff reply to an inbound email with proper threading headers. Two-step flow — `dryRun:true` returns AI draft (Opus via `MODEL_QUALITY`) + rendered HTML preview; real send posts via Mailgun, writes to `cvp_outbound_messages` (threaded back to original outbound when known), stamps `cvp_inbound_emails.acknowledged_at/by`. Accepts `useAIDraft`, `aiInstructions`, `editedSubject`, `editedBody`.
+- `cvp-daily-recruitment-status`: new "📨 inbound" line in the Needs-attention section — replies in last 24h, unacknowledged count, how many are threaded to an application — plus a by-intent breakdown table. Unacked count also surfaces in the email subject.
+
+### Admin UI (portal repo)
+- `RecruitmentDetail.tsx`: added Reply button to every inbound conversation row (emerald, Mail icon). Opens the new `StaffReplyModal` — textarea for staff guidance to the AI, "Draft with AI (Opus)" button, editable subject + body, HTML preview iframe, Send. Reuses the existing `callEdgeFunction` + `session.staffId` pattern.
+- `AdminLayout.tsx`: unacknowledged-inbound-count badge on the Recruitment sidebar item (amber). Poll every 60s + refresh on route change so staff see new replies without a full reload.
+- **NEW** `cvp-get-application-summary` edge function (utility): returns application row + latest prescreen + flag feedback + decision history in a single call for future audit UI. Not yet consumed by the UI.
+
+### Status
+Phase C.2 complete end-to-end; Phase E (references system) is next.
+
+---
+
 ## Session — April 22, 2026 (Go-Live push: form restructure + approval/rejection plumbing)
 
 ### Form / applicant-facing work

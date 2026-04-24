@@ -46,6 +46,15 @@ export interface MailgunSendOptions {
     decisionId?: string;
     staffUserId?: string;
   };
+  /**
+   * When provided, these values are sent as In-Reply-To and References
+   * headers so the applicant's mail client threads this reply into the
+   * existing conversation. Pass the applicant's inbound Message-Id (with or
+   * without angle brackets — we normalise) as inReplyTo. References can be
+   * the full thread chain for long conversations.
+   */
+  inReplyTo?: string;
+  references?: string[];
 }
 
 export interface MailgunSendResult {
@@ -134,6 +143,21 @@ export async function sendMailgunEmail(
   if (options.text) form.append("text", options.text);
   if (options.tags?.length) {
     for (const tag of options.tags.slice(0, 3)) form.append("o:tag", tag);
+  }
+  // Threading headers — the applicant's mail client uses these to render a
+  // coherent conversation view instead of a new orphaned thread.
+  if (options.inReplyTo) {
+    const n = String(options.inReplyTo).replace(/^<|>$/g, "");
+    form.append("h:In-Reply-To", `<${n}>`);
+  }
+  if (options.references?.length) {
+    const refs = options.references
+      .map((r) => {
+        const n = String(r).replace(/^<|>$/g, "");
+        return `<${n}>`;
+      })
+      .join(" ");
+    form.append("h:References", refs);
   }
 
   const url = `${apiBase()}/${domain}/messages`;
