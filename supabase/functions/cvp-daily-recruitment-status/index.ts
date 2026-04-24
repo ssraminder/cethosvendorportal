@@ -200,6 +200,28 @@ serve(async (req: Request) => {
       .eq("rejection_email_status", "queued");
     const queuedRejections = rejQueuedRows?.length ?? 0;
 
+    // ---- Inbound applicant replies (Phase C.2) ----
+    // Surface replies that landed in the last 24h + total still awaiting a
+    // staff acknowledgement, broken down by AI-classified intent so staff
+    // can triage without opening the portal.
+    const { data: inboundRows } = await supabase
+      .from("cvp_inbound_emails")
+      .select("id, received_at, acknowledged_at, classified_intent, application_id");
+    const inbound = inboundRows ?? [];
+    const inbound24h = inbound.filter(
+      (i) => (i.received_at as string) >= twentyFourHoursAgo,
+    ).length;
+    const unackedInbound = inbound.filter((i) => !i.acknowledged_at).length;
+    const inboundMatched = inbound.filter((i) => i.application_id).length;
+    const inboundByIntent: Record<string, number> = {};
+    for (const i of inbound) {
+      const key = (i.classified_intent as string) ?? "unclassified";
+      inboundByIntent[key] = (inboundByIntent[key] ?? 0) + 1;
+    }
+    const inboundByIntentBuckets: Bucket[] = Object.entries(inboundByIntent)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, count]) => ({ label: label.replace(/_/g, " "), count }));
+
     // ---- Build HTML ----
     const todayStr = now.toISOString().slice(0, 10);
     const html = `
@@ -220,6 +242,14 @@ serve(async (req: Request) => {
   <p style="margin:4px 0;font-size:14px;">
     <strong>${needsAttention}</strong> in <code>staff_review</code> · <strong>${rejectionInterceptWindow}</strong> still inside 48h rejection intercept · <strong>${queuedRejections}</strong> rejection emails queued to send
   </p>
+  <p style="margin:4px 0;font-size:14px;color:${unackedInbound > 0 ? "#B45309" : "#6B7280"};">
+    📨 <strong>${inbound24h}</strong> applicant replies in last 24h · <strong>${unackedInbound}</strong> still unacknowledged · <strong>${inboundMatched}</strong> threaded to an application
+  </p>
+  ${
+    inboundByIntentBuckets.length > 0
+      ? `<p style="margin:8px 0 4px;font-size:13px;color:#6B7280;">Inbound by classified intent:</p>${renderBuckets(inboundByIntentBuckets)}`
+      : ""
+  }
 
   <h2 style="font-size:15px;color:#0C2340;margin:24px 0 8px;border-bottom:1px solid #E5E7EB;padding-bottom:4px;">Tests</h2>
   <p style="margin:4px 0;font-size:14px;">
@@ -246,7 +276,7 @@ serve(async (req: Request) => {
   </p>
 </div>`;
 
-    const subject = `[CETHOS] Recruitment — ${todayStr} · ${totalApps} apps, ${needsAttention} need attention, ${outstandingExpiring24h} tests expiring <24h`;
+    const subject = `[CETHOS] Recruitment — ${todayStr} · ${totalApps} apps, ${needsAttention} need attention, ${unackedInbound} inbound unacked, ${outstandingExpiring24h} tests expiring <24h`;
 
     const sendResult = await sendMailgunOperationalEmail({
       to: recipients,
@@ -257,7 +287,7 @@ serve(async (req: Request) => {
     const sent = sendResult.sent;
 
     console.log(
-      `cvp-daily-recruitment-status: recipients=${recipients.length} sent=${sent} totalApps=${totalApps} needsAttention=${needsAttention}`,
+      `cvp-daily-recruitment-status: recipients=${recipients.length} sent=${sent} totalApps=${totalApps} needsAttention=${needsAttention} unackedInbound=${unackedInbound}`,
     );
 
     return jsonResponse({
@@ -283,6 +313,10 @@ serve(async (req: Request) => {
           totalTranslators,
           activeTranslators,
           newTranslators7d,
+          inbound24h,
+          unackedInbound,
+          inboundMatched,
+          inboundByIntent,
         },
       },
     });
