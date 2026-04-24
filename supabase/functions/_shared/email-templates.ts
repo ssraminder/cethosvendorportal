@@ -427,3 +427,86 @@ export function buildV17RequestMoreInfo(p: V17Params): RenderedEmail {
     `,
   });
 }
+
+// ---- V18: References — request to applicant ----
+export interface V18Params {
+  fullName: string;
+  applicationNumber: string;
+  staffMessage: string | null;   // optional Opus-drafted explanation
+  contactsLinkUrl: string;        // /references/:request_token
+  expiryDays: number;
+}
+export function buildV18ReferencesRequest(p: V18Params): RenderedEmail {
+  const messageBlock = p.staffMessage
+    ? `<p>${esc(p.staffMessage)}</p>`
+    : `<p>To finalise your CETHOS application, we'd like to speak with two or three professional references who can vouch for your translation work — former clients, project managers, or peer translators are ideal.</p>`;
+  return render(`Please share your references · ${p.applicationNumber}`, {
+    preheader: "Send us 2–3 contacts and we'll handle the rest.",
+    heading: `Hi ${esc(p.fullName.split(" ")[0])} — references, please`,
+    body: `
+      ${messageBlock}
+      <p>Click the button below to enter your references' contact details. We'll reach out to them directly with a short questionnaire — you don't need to coordinate anything.</p>
+      <p style="color:${BRAND.muted};font-size:13px;">This link expires in ${p.expiryDays} days.</p>
+    `,
+    cta: { label: "Add my references", url: p.contactsLinkUrl },
+  });
+}
+
+// ---- V19: Reference — request to a specific reference ----
+export interface V19Params {
+  referenceName: string;
+  applicantName: string;
+  applicantApplicationNumber: string;
+  feedbackLinkUrl: string;        // /reference-feedback/:feedback_token
+  expiryDays: number;
+}
+export function buildV19ReferenceFeedbackRequest(p: V19Params): RenderedEmail {
+  return render(`${p.applicantName} listed you as a reference`, {
+    preheader: `A short questionnaire about ${p.applicantName.split(" ")[0]}'s translation work — under 5 minutes.`,
+    heading: `${esc(p.applicantName)} listed you as a reference`,
+    body: `
+      <p>Hi ${esc(p.referenceName.split(" ")[0])},</p>
+      <p><strong>${esc(p.applicantName)}</strong> is applying to join the CETHOS network of professional translators, and listed you as someone who can speak to their work.</p>
+      <p>If you're willing, please answer a few short questions — under 5 minutes — by clicking the link below. Your responses go directly to our vendor-management team and aren't shared with ${esc(p.applicantName.split(" ")[0])}.</p>
+      <p>If you don't recognise this person or would prefer not to respond, you can decline on the same page — no follow-up.</p>
+      <p style="color:${BRAND.muted};font-size:13px;">This link expires in ${p.expiryDays} days.</p>
+    `,
+    cta: { label: "Respond now", url: p.feedbackLinkUrl },
+  });
+}
+
+// ---- V20: Reference — thank-you ack after submission ----
+export interface V20Params {
+  referenceName: string;
+  applicantName: string;
+}
+export function buildV20ReferenceAck(p: V20Params): RenderedEmail {
+  return render(`Thanks for your reference for ${p.applicantName}`, {
+    preheader: "Your input helps us build a stronger translator network.",
+    heading: "Thank you",
+    body: `
+      <p>Hi ${esc(p.referenceName.split(" ")[0])},</p>
+      <p>Thanks for taking the time to share your feedback on <strong>${esc(p.applicantName)}</strong>. Your input is genuinely useful — references are a meaningful part of how we evaluate new translators.</p>
+      <p>You won't hear from us again about this application unless we have a follow-up question.</p>
+      <p>If you ever need translation services yourself, we'd be glad to help — just reply to this email.</p>
+    `,
+  });
+}
+
+// ---- V21: Applicant — heads-up that a reference came in (suppressed by default) ----
+export interface V21Params {
+  fullName: string;
+  applicationNumber: string;
+  referenceName: string;
+}
+export function buildV21ApplicantReferenceReceived(p: V21Params): RenderedEmail {
+  return render(`We've heard back from one of your references · ${p.applicationNumber}`, {
+    preheader: `${p.referenceName} has responded.`,
+    heading: "Reference received",
+    body: `
+      <p>Hi ${esc(p.fullName.split(" ")[0])},</p>
+      <p>Just a quick note — <strong>${esc(p.referenceName)}</strong> has responded to our reference questionnaire for application <strong>${esc(p.applicationNumber)}</strong>.</p>
+      <p>We'll be in touch once we've reviewed all responses. No action needed from you in the meantime.</p>
+    `,
+  });
+}
