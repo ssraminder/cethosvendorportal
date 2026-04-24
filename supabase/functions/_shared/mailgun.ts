@@ -35,6 +35,17 @@ export interface MailgunSendOptions {
    * Pass the normalized recipient email you want gated (useful when `to` is a list).
    */
   respectDoNotContactFor?: string;
+  /**
+   * When provided, log the send to cvp_outbound_messages (keyed by Mailgun
+   * Message-Id) so inbound replies can be threaded back to the originating
+   * outbound + application. Skip for system/auto-reply sends.
+   */
+  trackContext?: {
+    applicationId?: string;
+    templateTag?: string;
+    decisionId?: string;
+    staffUserId?: string;
+  };
 }
 
 export interface MailgunSendResult {
@@ -147,6 +158,42 @@ export async function sendMailgunEmail(
       };
     }
     const json = (await response.json()) as { id?: string };
+
+    // Log to cvp_outbound_messages when context provided — powers threading.
+    if (options.trackContext && json.id) {
+      try {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        );
+        // Mailgun returns Message-Id wrapped in angle brackets; strip them so
+        // inbound In-Reply-To lookup matches the canonical form.
+        const normalizedMessageId = String(json.id).replace(/^<|>$/g, "");
+        const primaryRecipient = recipients[0]?.email ?? null;
+        const { error: logErr } = await supabase
+          .from("cvp_outbound_messages")
+          .insert({
+            application_id: options.trackContext.applicationId ?? null,
+            message_id: normalizedMessageId,
+            recipient_email: primaryRecipient,
+            subject: options.subject,
+            body_html: options.html,
+            body_text: options.text ?? null,
+            template_tag: options.trackContext.templateTag ?? null,
+            decision_id: options.trackContext.decisionId ?? null,
+            sent_by_staff_id: options.trackContext.staffUserId ?? null,
+          });
+        if (logErr) {
+          console.error(
+            `Failed to log outbound message (non-fatal):`,
+            logErr.message,
+          );
+        }
+      } catch (err) {
+        console.error("Exception logging outbound message (non-fatal):", err);
+      }
+    }
+
     return { sent: true, suppressed: false, mailgunId: json.id };
   } catch (err) {
     console.error(`Mailgun send error (${options.subject}):`, err);

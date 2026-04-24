@@ -337,6 +337,11 @@ serve(async (req: Request) => {
     text: tpl.text,
     respectDoNotContactFor: app.email,
     tags: ["v11-approved-welcome", body.applicationId],
+    trackContext: {
+      applicationId: body.applicationId,
+      templateTag: "v11-approved-welcome",
+      staffUserId: body.staffId,
+    },
   });
 
   await logDecision({
