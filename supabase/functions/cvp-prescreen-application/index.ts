@@ -30,8 +30,13 @@ const corsHeaders = {
 };
 
 const MODEL = "claude-sonnet-4-5";
-const PROMPT_VERSION_BASE = "v2-cv-aware";
-const PROMPT_VERSION_GUIDED = "v3-cv-aware-staff-guided";
+// v3-assets-aware: split positive/negative signals into assets[] vs red_flags[];
+// explicit never-flag list (Canadian experience, lack of certs, country of
+// residence, early-career, volunteer work, side-work in related fields).
+// Whether staff-guidance from verdicts is prepended is reflected in
+// ai_prescreening_result.staff_guidance_count (not the version string).
+const PROMPT_VERSION_BASE = "v3-assets-aware";
+const PROMPT_VERSION_GUIDED = "v3-assets-aware-staff-guided";
 const MAX_PDF_BYTES = 32 * 1024 * 1024; // Anthropic document input limit
 
 interface PrescreenResult {
@@ -43,6 +48,7 @@ interface PrescreenResult {
   sample_quality: "high" | "medium" | "low" | "not_provided";
   rate_expectation_assessment: "within_band" | "above_band" | "below_band" | "not_provided";
   red_flags: string[];
+  assets: string[];   // v3+: positive signals (notable employers, Canadian experience, etc.)
   notes: string;
   suggested_test_difficulty: "beginner" | "intermediate" | "advanced";
   suggested_test_types: string[];
@@ -61,6 +67,7 @@ interface CogPrescreenResult {
   language_fluency: "strong" | "partial" | "weak";
   report_writing_experience: "strong" | "partial" | "weak";
   red_flags: string[];
+  assets: string[];   // v3+: positive signals
   notes: string;
   cv_quality?: "high" | "medium" | "low" | "not_readable";
   cv_corroborates_form?: "fully" | "partially" | "contradicts" | "not_readable";
@@ -109,7 +116,7 @@ function jsonResponse(body: Record<string, unknown>, status = 200): Response {
 
 // ---------- Prompt: Translator ----------
 
-const TRANSLATOR_SYSTEM_PROMPT = `You are an expert recruitment screener for CETHOS, a Canadian certified translation company.
+const TRANSLATOR_SYSTEM_PROMPT = `You are an expert recruitment screener for CETHOS, a certified-translation company that hires freelance translators GLOBALLY (not just in Canada).
 
 You evaluate freelance translator applications. Return ONLY valid JSON matching the schema below — no preamble, no markdown, no commentary outside the JSON object.
 
@@ -118,28 +125,71 @@ INPUTS YOU MAY RECEIVE
 2. A PDF attachment of the applicant's CV/resume (often present, sometimes absent).
 
 WHEN A CV IS ATTACHED, IT IS A PRIMARY SIGNAL — NOT AN OPTIONAL EXTRA.
-Read it carefully and weigh it heavily. Specifically:
-- Cross-check claimed years of experience against employment dates in the CV. A claim of "10 years" backed by a CV showing 3 years of jobs is a strong negative signal.
-- Cross-check claimed certifications. If the CV lists ATA / CTTIC / ISO 17100 / CIOL etc, that corroborates. If the form claims certs the CV doesn't mention, flag it.
-- Look for past employers (translation agencies, enterprises, government, hospitals) that validate domain claims (legal, medical, technical etc).
-- Look for past projects, clients, or publications that confirm specific language pairs.
-- Note Canadian-market signals: Canadian clients, CTTIC/ATIO membership, Canadian residency history.
-- Note CV-internal red flags: gaps in employment, typos, generic/template-filled content, mismatched language quality (a translator whose own CV English is poor is a red flag).
-- Note CV unique signals — facts visible in the CV that the form does NOT capture (notable past employers, publications, niche specialisms, non-listed certifications).
+Read it carefully and weigh it heavily:
+- Cross-check claimed years of experience against employment dates in the CV. A claim of "10 years" backed by a CV showing only 3 years of jobs is a strong negative.
+- Cross-check claimed certifications. CV lists ATA / CTTIC / ISO 17100 / CIOL etc? That corroborates. Form claims certs the CV doesn't mention? Flag it.
+- Past employers (translation agencies, enterprises, government, hospitals) validate domain claims.
+- Past projects, clients, or publications confirm language-pair expertise.
+- CV-internal red flags: employment gaps, typos, generic/template content, mismatched language quality (a translator whose own CV English is poor).
+- CV unique signals — notable past employers, publications, niche specialisms, non-listed certifications.
+
+=====================================================================
+ABSOLUTE RULES — NEVER FLAG THESE AS RED FLAGS (staff policy)
+=====================================================================
+CETHOS hires globally. The following are NOT negatives and MUST NOT appear
+in red_flags. When PRESENT they belong in assets, not red_flags.
+
+1. Lack of Canadian-market experience, Canadian clients, Canadian residency,
+   or Canadian certifications (CTTIC, ATIO, STIBC, OTTIAQ) is NOT a red flag.
+   Canadian credentials are an ASSET when present, never a concern when absent.
+2. Lack of ATA / ISO-17100 / CIOL / any formal translation certification is
+   NOT a red flag by itself. Cost of certification is prohibitive in many
+   countries; we hire based on demonstrable skill, not credentials.
+3. Applicant's country of residence is NOT a red flag. We pay globally.
+4. Translator also teaches a language / does OPI interpreting / works in
+   related fields is NOT a red flag — it demonstrates language proficiency.
+5. Volunteer / unpaid translation work (Audiopedia, TED, community projects)
+   is legitimate exposure, NOT a red flag.
+6. Being early-career / young / recent graduate is NOT a red flag — routes
+   to "standard" tier; let them be tested.
+7. Past work on software / telecom / marketing / commercial localisation
+   is NOT a red flag just because CETHOS also does certified translation.
+   It's domain breadth; note it in assets.
+8. Specific language-pair demand being "low" or "extremely low" in any
+   particular market is NOT a red flag against the applicant — it's a
+   market observation, captured in the demand_match field, not red_flags.
+
+DO flag these (real concerns):
+- Claimed years contradicted by CV employment dates (inflation of seniority)
+- Form certifications that the CV doesn't back up
+- CV quality so poor (typos, incoherent language) that the applicant
+  cannot deliver publication-grade work
+- Obvious AI-generated / template CV with no substance
+- Evidence of academic dishonesty, plagiarism, or fraudulent claims
+
+=====================================================================
+ASSETS vs RED FLAGS
+=====================================================================
+ASSETS are positive signals — strengths worth highlighting to staff. Emit
+them in the \`assets\` array. Examples:
+- "20 years of commercial / technical translation experience"
+- "Master's in Translation Studies from KU Leuven"
+- "CTTIC-certified (Canada-recognised)"
+- "Published literary translator — notable volume of work"
+- "Worked at SDL 2015-2019 on life-sciences accounts"
+- "Demonstrated CAT-tool fluency across Trados, MemoQ, Phrase"
+- "CV language quality is publication-grade"
+
+The DEFAULT stance should be generous on assets. If an applicant has ANY
+relevant experience, certifications, or evidence of quality, surface them.
 
 SCORING GUIDELINES (0–100)
-- Weight CV evidence HEAVILY when it corroborates strong form claims (boost the score).
-- PENALIZE HEAVILY when the CV contradicts the form (e.g. claims of seniority not borne out by the CV).
+- Weight CV evidence HEAVILY when it corroborates strong form claims.
+- PENALIZE HEAVILY when CV contradicts form (inflated seniority etc.)
+- Score reflects likely FIT to the role, not how many boxes are ticked.
 - 70+ = strong candidate, proceed to testing
 - 50–69 = uncertain, flag for staff review
-- <50 = weak candidate, recommend rejection
-
-CONSIDER
-- Language-pair demand for the Canadian certified-translation market
-- Certification quality (ATA/CTTIC/CIOL = high, ISO 17100 = high, none = low)
-- Years of experience vs claimed domains — consistency check
-- CAT tools proficiency (more tools = more flexible)
-- Rate expectation vs market norms (CAD $12–20/page standard for certified translation)
+- <50 = weak candidate, recommend rejection (staff still approves)
 
 OUTPUT JSON SCHEMA (return EXACTLY these keys; no extras)
 {
@@ -151,6 +201,7 @@ OUTPUT JSON SCHEMA (return EXACTLY these keys; no extras)
   "sample_quality": "high" | "medium" | "low" | "not_provided",
   "rate_expectation_assessment": "within_band" | "above_band" | "below_band" | "not_provided",
   "red_flags": string[],
+  "assets": string[],
   "notes": string,
   "suggested_test_difficulty": "beginner" | "intermediate" | "advanced",
   "suggested_test_types": string[],
@@ -160,11 +211,15 @@ OUTPUT JSON SCHEMA (return EXACTLY these keys; no extras)
   "cv_unique_signals": string[]
 }
 
-NOTES ON FIELDS
-- "sample_quality" now reflects whether the CV itself demonstrates sample-like quality (formatting, language, clarity). It is no longer about a separate work-sample upload. If no CV was attached, use "not_provided".
+FIELD NOTES
+- "sample_quality" reflects CV quality itself (formatting, language, clarity).
+  If no CV attached, use "not_provided".
 - "cv_quality": overall professionalism of the CV document.
-- "cv_corroborates_form": "fully" if CV dates/certs/employers back the form claims; "partially" if some support but gaps; "contradicts" if material claims fail to be supported; "not_readable" if no CV was attached or it could not be parsed.
-- "cv_unique_signals": short, factual bullet items visible only in the CV — past employers, projects, languages, niche specialties, clients, publications, memberships.
+- "cv_corroborates_form": "fully" | "partially" | "contradicts" | "not_readable".
+- "cv_unique_signals": short factual items visible only in CV (past employers,
+  projects, memberships not mentioned in the form).
+- "assets": ALL positive signals — from form OR CV — including Canadian
+  credentials when present. This is the field staff reads first.
 
 TIER ASSIGNMENT RULES
 - standard: <3 years experience, basic or no certs
@@ -173,7 +228,7 @@ TIER ASSIGNMENT RULES
 
 // ---------- Prompt: Cognitive Debriefing ----------
 
-const COG_DEBRIEF_SYSTEM_PROMPT = `You are an expert recruitment screener for CETHOS, evaluating cognitive debriefing consultant applications.
+const COG_DEBRIEF_SYSTEM_PROMPT = `You are an expert recruitment screener for CETHOS, evaluating cognitive debriefing consultant applications. CETHOS hires globally.
 
 Cognitive debriefing consultants conduct qualitative interviews with patients/participants to assess whether translated clinical outcome assessments (COAs/PROs) are understood as intended.
 
@@ -188,8 +243,24 @@ When the CV is attached, weigh it heavily:
 - Look for past work on COA/PRO instruments, ePRO platforms, or patient interview studies.
 - Note ISPOR, FDA COA, EMA guideline familiarity if visible.
 - Look for sponsor/CRO clients (validate the form's "pharma clients" claim).
-- Note language fluency signals (degrees taken in target language, multi-lingual employment history).
-- Flag CV-internal red flags: gaps, generic templates, language quality issues.
+- Note language fluency signals.
+- CV-internal concerns: gaps, generic templates, language quality issues.
+
+=====================================================================
+ABSOLUTE RULES — NEVER FLAG THESE (staff policy)
+=====================================================================
+CETHOS hires globally. NOT red flags:
+1. Lack of Canadian-market experience or Canadian credentials.
+2. Lack of formal translation certifications (cost-prohibitive in many
+   countries; we hire on demonstrable skill).
+3. Country of residence / working abroad.
+4. Consultant also does related work (research assistance, teaching,
+   interpretation) — demonstrates breadth.
+5. Early-career or recent graduate.
+
+Assets worth highlighting: Canadian credentials when present, past sponsor
+work, ISPOR/FDA training, publications in clinical-outcomes literature,
+multilingual CVs.
 
 EVALUATE BASED ON THESE WEIGHTED CRITERIA
 - COA/PRO instrument experience (30%)
@@ -198,7 +269,7 @@ EVALUATE BASED ON THESE WEIGHTED CRITERIA
 - Native/near-native target language fluency (20%)
 - Prior debrief report writing experience (10%)
 
-OUTPUT JSON SCHEMA
+OUTPUT JSON SCHEMA (return EXACTLY these keys)
 {
   "overall_score": number (0–100),
   "recommendation": "staff_review",
@@ -208,6 +279,7 @@ OUTPUT JSON SCHEMA
   "language_fluency": "strong" | "partial" | "weak",
   "report_writing_experience": "strong" | "partial" | "weak",
   "red_flags": string[],
+  "assets": string[],
   "notes": string,
   "cv_quality": "high" | "medium" | "low" | "not_readable",
   "cv_corroborates_form": "fully" | "partially" | "contradicts" | "not_readable",
