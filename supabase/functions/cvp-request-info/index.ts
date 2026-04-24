@@ -6,7 +6,8 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { BREVO_TEMPLATES, sendBrevoEmail } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import { buildV17RequestMoreInfo } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,17 +66,20 @@ serve(async (req: Request) => {
     })
     .eq("id", body.applicationId);
 
-  const ok = await sendBrevoEmail({
+  const tpl = buildV17RequestMoreInfo({
+    fullName: app.full_name as string,
+    applicationNumber: app.application_number as string,
+    requestDetails: body.requestDetails,
+    infoDeadlineDate: deadlineDate,
+  });
+  const result = await sendMailgunEmail({
     to: { email: app.email as string, name: app.full_name as string },
-    templateId: BREVO_TEMPLATES.V17_REQUEST_MORE_INFO,
-    params: {
-      fullName: app.full_name as string,
-      applicationNumber: app.application_number as string,
-      requestDetails: body.requestDetails,
-      replyEmail: "recruiting@vendors.cethos.com",
-      deadlineDate,
-    },
+    subject: tpl.subject,
+    html: tpl.html,
+    text: tpl.text,
+    respectDoNotContactFor: app.email as string,
+    tags: ["v17-request-more-info", body.applicationId],
   });
 
-  return json({ success: true, data: { applicationId: body.applicationId, emailSent: ok } });
+  return json({ success: true, data: { applicationId: body.applicationId, emailSent: result.sent, suppressed: result.suppressed } });
 });

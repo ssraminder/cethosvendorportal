@@ -72,3 +72,59 @@ export async function sendBrevoEmail(options: SendEmailOptions): Promise<boolean
     return false;
   }
 }
+
+interface SendRawEmailOptions {
+  to: { email: string; name: string }[];
+  subject: string;
+  htmlContent: string;
+  sender?: { email: string; name: string };
+}
+
+/**
+ * Send a raw (non-template) transactional email via Brevo.
+ * Used for one-off operational/admin emails like daily status digests.
+ * Returns true on success, false on failure (non-throwing).
+ */
+export async function sendBrevoRawEmail(
+  options: SendRawEmailOptions,
+): Promise<boolean> {
+  const apiKey = Deno.env.get("BREVO_API_KEY");
+  if (!apiKey) {
+    console.error("BREVO_API_KEY not configured — skipping email send");
+    return false;
+  }
+
+  const sender = options.sender ?? {
+    email: Deno.env.get("BREVO_SENDER_EMAIL") ?? "noreply@cethos.com",
+    name: Deno.env.get("BREVO_SENDER_NAME") ?? "CETHOS Vendor Portal",
+  };
+
+  try {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sender,
+        to: options.to,
+        subject: options.subject,
+        htmlContent: options.htmlContent,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(
+        `Brevo raw send failed (${options.subject}): ${response.status} — ${errorBody}`,
+      );
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error(`Brevo raw send error (${options.subject}):`, err);
+    return false;
+  }
+}

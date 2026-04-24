@@ -8,7 +8,8 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { BREVO_TEMPLATES, sendBrevoEmail } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import { buildV11ApprovedWelcome } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -223,22 +224,25 @@ serve(async (req: Request) => {
 
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
   const passwordSetupLink = `${vendorPortalUrl}/setup-password?token=${setupToken}`;
-  const approvedCombinationsList = approvedCombos
-    .map((c) => `${c.service_type} — ${c.domain}`)
-    .join("\n");
+  const approvedCombinationsListHtml = `<ul>${approvedCombos
+    .map((c) => `<li>${c.service_type} — ${c.domain}</li>`)
+    .join("")}</ul>`;
 
-  await sendBrevoEmail({
+  const tpl = buildV11ApprovedWelcome({
+    fullName: app.full_name,
+    applicationNumber: app.application_number,
+    vendorPortalUrl,
+    passwordSetupLink,
+    passwordSetupExpiryHours: 72,
+    approvedCombinationsList: approvedCombinationsListHtml,
+  });
+  await sendMailgunEmail({
     to: { email: app.email, name: app.full_name },
-    templateId: BREVO_TEMPLATES.V11_APPROVED_WELCOME,
-    params: {
-      fullName: app.full_name,
-      applicationNumber: app.application_number,
-      vendorPortalUrl,
-      passwordSetupLink,
-      passwordSetupExpiryHours: 72,
-      approvedCombinationsList,
-      supportEmail: "support@cethos.com",
-    },
+    subject: tpl.subject,
+    html: tpl.html,
+    text: tpl.text,
+    respectDoNotContactFor: app.email,
+    tags: ["v11-approved-welcome", body.applicationId],
   });
 
   return json({

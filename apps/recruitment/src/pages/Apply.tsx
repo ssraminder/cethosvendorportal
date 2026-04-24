@@ -58,7 +58,9 @@ import type { RoleType } from '../types/application'
 const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal'
 const selectClasses = inputClasses
 
-const CV_MISSING_ERROR = 'Please upload your CV before submitting (PDF or DOCX, max 10MB).'
+const CV_MISSING_ERROR = 'Please upload your CV before submitting (PDF only, max 10MB).'
+const CV_NOT_PDF_ERROR = 'Only PDF format is accepted. If you have a DOCX, please export to PDF first.'
+const CV_TOO_LARGE_ERROR = 'CV is too large — maximum 10MB.'
 
 const VALID_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber', 'clinician_reviewer', 'cognitive_debriefing']
 
@@ -189,7 +191,21 @@ export function Apply() {
   const handleCvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) return
+    // PDF-only — Anthropic document input requires PDF and accepting DOCX would
+    // need a server-side conversion step we explicitly chose not to build.
+    const isPdf =
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!isPdf) {
+      setSubmitError(CV_NOT_PDF_ERROR)
+      e.target.value = ''
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setSubmitError(CV_TOO_LARGE_ERROR)
+      e.target.value = ''
+      return
+    }
+    setSubmitError(null)
     setCvFile(file)
   }
 

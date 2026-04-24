@@ -14,7 +14,7 @@ export function CvSection({ cvFile, setCvFile, handleCvUpload, showMissingError 
   return (
     <FormSection
       title="Resume / CV *"
-      description="Upload your most recent CV (PDF or DOCX, max 10MB). Required."
+      description="Upload your most recent CV as a PDF (max 10MB). Required. If you have a DOCX, please export to PDF first."
     >
       <div className="space-y-2">
         {!cvFile ? (
@@ -27,11 +27,11 @@ export function CvSection({ cvFile, setCvFile, handleCvUpload, showMissingError 
           >
             <Upload className={`w-5 h-5 ${showMissingError ? 'text-red-500' : 'text-gray-400'}`} />
             <span className={`text-sm ${showMissingError ? 'text-red-700 font-medium' : 'text-gray-500'}`}>
-              Click to upload your CV (PDF or DOCX)
+              Click to upload your CV (PDF only)
             </span>
             <input
               type="file"
-              accept=".pdf,.docx,.doc"
+              accept="application/pdf,.pdf"
               className="sr-only"
               onChange={handleCvUpload}
             />

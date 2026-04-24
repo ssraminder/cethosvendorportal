@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { sendBrevoEmail, BREVO_TEMPLATES } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import { buildV7TestReceived } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -196,16 +197,20 @@ serve(async (req: Request) => {
 
     if (appData) {
       const app = appData as Record<string, unknown>;
-      await sendBrevoEmail({
+      const tpl = buildV7TestReceived({
+        fullName: app.full_name as string,
+        applicationNumber: app.application_number as string,
+      });
+      await sendMailgunEmail({
         to: {
           email: app.email as string,
           name: app.full_name as string,
         },
-        templateId: BREVO_TEMPLATES.V7_TEST_RECEIVED,
-        params: {
-          fullName: app.full_name as string,
-          applicationNumber: app.application_number as string,
-        },
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        respectDoNotContactFor: app.email as string,
+        tags: ["v7-test-received", sub.application_id],
       });
     }
 
