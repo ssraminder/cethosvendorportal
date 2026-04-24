@@ -20,6 +20,8 @@ import {
   buildV2PrescreenPassed,
   buildV8UnderManualReview,
 } from "../_shared/email-templates.ts";
+import { buildPrescreenGuidance } from "../_shared/prescreen-guidance.ts";
+import { getSafeModeStatus } from "../_shared/safe-mode.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +30,8 @@ const corsHeaders = {
 };
 
 const MODEL = "claude-sonnet-4-5";
-const PROMPT_VERSION = "v2-cv-aware";
+const PROMPT_VERSION_BASE = "v2-cv-aware";
+const PROMPT_VERSION_GUIDED = "v3-cv-aware-staff-guided";
 const MAX_PDF_BYTES = 32 * 1024 * 1024; // Anthropic document input limit
 
 interface PrescreenResult {
@@ -414,6 +417,27 @@ serve(async (req: Request) => {
       );
     }
 
+    // ---- Safe mode: while active, no auto-advance + no auto V2/V8 email ----
+    const safeMode = await getSafeModeStatus(supabase);
+
+    // ---- Build staff-guidance prefix from prior verdicts (global learning) ----
+    // Aggregates cvp_prescreen_flag_feedback rows where staff marked the same
+    // red flag as `invalid` ≥2x with ≥70% invalid rate; tells Claude not to
+    // repeat them. Gracefully empty if migration 015 isn't applied yet.
+    const guidance = await buildPrescreenGuidance(supabase);
+    const promptVersion =
+      guidance.patternCount > 0 ? PROMPT_VERSION_GUIDED : PROMPT_VERSION_BASE;
+    if (guidance.error) {
+      console.warn(
+        `Prescreen guidance fetch errored (continuing without):`,
+        guidance.error,
+      );
+    } else if (guidance.patternCount > 0) {
+      console.log(
+        `Prescreen guidance applied: ${guidance.patternCount} suppression patterns from ${guidance.totalFeedbackRows} verdicts`,
+      );
+    }
+
     let aiResult: Record<string, unknown>;
     let aiScore: number;
     let newStatus: string;
@@ -454,8 +478,12 @@ Language pairs and domains: ${pairsDescription}
 Rate expectation (CAD/page): ${app.rate_expectation ?? "Not specified"}
 Additional notes: ${app.notes ?? "None"}`;
 
+        const translatorSystemPrompt = guidance.guidanceText
+          ? `${guidance.guidanceText}\n\n---\n\n${TRANSLATOR_SYSTEM_PROMPT}`
+          : TRANSLATOR_SYSTEM_PROMPT;
+
         aiResult = await callClaudeWithRetry(
-          TRANSLATOR_SYSTEM_PROMPT,
+          translatorSystemPrompt,
           userMessage,
           cv,
           4000,
@@ -465,15 +493,24 @@ Additional notes: ${app.notes ?? "None"}`;
         aiScore = result.overall_score;
         assignedTier = result.suggested_tier ?? null;
 
-        // Routing policy (per April 2026 decision):
+        // Routing policy (per April 2026 decisions):
         //   AI never auto-rejects. AI is recommendation-only for low scores —
-        //   staff must explicitly approve a rejection from the admin UI before
-        //   the V12 email is queued. AI's recommendation is preserved in
-        //   ai_prescreening_result.recommendation for the admin to act on.
-        //   Score >= 70 still auto-advances to "prescreened" so test invitations
-        //   can be triggered by staff via the existing "Send Tests" button.
-        if (aiScore >= 70) newStatus = "prescreened";
-        else newStatus = "staff_review";
+        //   staff must explicitly approve a rejection from admin UI before the
+        //   V12 email is queued.
+        //
+        //   Safe mode (first 30d OR 200 approved apps, whichever first): AI
+        //   also never auto-advances to 'prescreened'. ALL apps land in
+        //   staff_review with AI's recommendation preserved for the admin to
+        //   act on. Staff must explicitly click "Approve advance — send V2"
+        //   or "Acknowledge — send V8 manual review" to trigger the outbound.
+        //
+        //   Once safe mode lifts: score >= 70 resumes auto-advance to
+        //   'prescreened' + V2 email.
+        if (!safeMode.active && aiScore >= 70) {
+          newStatus = "prescreened";
+        } else {
+          newStatus = "staff_review";
+        }
       } else {
         // Cognitive debriefing
         const cvNote = cv.read
@@ -496,8 +533,12 @@ ISPOR familiarity: ${app.cog_ispor_familiarity ?? "Not specified"}
 FDA COA familiarity: ${app.cog_fda_familiarity ?? "Not specified"}
 Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
 
+        const cogSystemPrompt = guidance.guidanceText
+          ? `${guidance.guidanceText}\n\n---\n\n${COG_DEBRIEF_SYSTEM_PROMPT}`
+          : COG_DEBRIEF_SYSTEM_PROMPT;
+
         aiResult = await callClaudeWithRetry(
-          COG_DEBRIEF_SYSTEM_PROMPT,
+          cogSystemPrompt,
           userMessage,
           cv,
           4000,
@@ -525,7 +566,11 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
     aiResult.cv_read = cv.read;
     aiResult.cv_read_error = cv.error;
     aiResult.model_used = MODEL;
-    aiResult.prompt_version = PROMPT_VERSION;
+    aiResult.prompt_version = promptVersion;
+    aiResult.staff_guidance_count = guidance.patternCount;
+    aiResult.staff_guidance_total_verdicts = guidance.totalFeedbackRows;
+    aiResult.safe_mode_active = safeMode.active;
+    aiResult.safe_mode_reason = safeMode.reason;
 
     const updateData: Record<string, unknown> = {
       status: newStatus,
@@ -559,10 +604,12 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
       );
     }
 
-    // Send appropriate email based on routing (skip on AI fallback to avoid spam during outages)
+    // Send V2/V8 automatically ONLY when safe mode is off + AI succeeded.
+    // While safe mode is on, the admin UI surfaces an "AI recommends X — send
+    // V2/V8?" callout that routes through cvp-approve-prescreen-outcome.
     try {
       const aiFailed = aiResult.error === "ai_fallback";
-      if (newStatus !== "rejected" && !aiFailed) {
+      if (!safeMode.active && newStatus !== "rejected" && !aiFailed) {
         const appNumber = (application as Record<string, unknown>)
           .application_number as string;
         const roleTypeLabel =
@@ -594,6 +641,10 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
             applicationId,
           ],
         });
+      } else if (safeMode.active) {
+        console.log(
+          `Safe mode active (${safeMode.reason}) — skipping auto V2/V8 for ${applicationId}; staff must approve outbound.`,
+        );
       }
     } catch (emailError) {
       console.error("Error sending prescreen result email:", emailError);
@@ -608,8 +659,10 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
         tier: assignedTier,
         cv_read: cv.read,
         cv_read_error: cv.error,
-        prompt_version: PROMPT_VERSION,
+        prompt_version: promptVersion,
         model_used: MODEL,
+        staff_guidance_count: guidance.patternCount,
+        staff_guidance_total_verdicts: guidance.totalFeedbackRows,
       },
     });
   } catch (err) {

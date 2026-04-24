@@ -1,17 +1,26 @@
 // Staff action: ask the applicant for additional information.
-// Sets cvp_applications.status='info_requested', stores the request details,
-// and sends V17 Request More Info email.
+// Sets cvp_applications.status='info_requested', stores raw staff notes,
+// runs them through Claude to produce a polished applicant-facing message,
+// sends V17, and writes the full audit trail to cvp_application_decisions.
 //
-// POST body: { applicationId, requestDetails, staffId?, deadlineDays? (default 7) }
+// POST body:
+//   { applicationId, staffNotes, staffId?, deadlineDays? (default 7) }
+// (legacy `requestDetails` accepted as alias for staffNotes)
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import { buildV17RequestMoreInfo } from "../_shared/email-templates.ts";
+import {
+  claudeRewrite,
+  logDecision,
+  REQUEST_INFO_SYSTEM_PROMPT,
+} from "../_shared/decision-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -22,25 +31,37 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
+interface Body {
+  applicationId?: string;
+  staffNotes?: string;
+  /** Legacy alias for staffNotes (early callers used this name). */
+  requestDetails?: string;
+  staffId?: string;
+  deadlineDays?: number;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  let body: { applicationId?: string; requestDetails?: string; staffId?: string; deadlineDays?: number };
+  let body: Body;
   try {
     body = await req.json();
   } catch {
     return json({ success: false, error: "invalid_json" }, 400);
   }
 
-  if (!body.applicationId) return json({ success: false, error: "applicationId_required" }, 400);
-  if (!body.requestDetails || body.requestDetails.trim().length < 10) {
-    return json({ success: false, error: "requestDetails_too_short" }, 400);
+  const staffNotes = (body.staffNotes ?? body.requestDetails ?? "").trim();
+  if (!body.applicationId) {
+    return json({ success: false, error: "applicationId_required" }, 400);
+  }
+  if (staffNotes.length < 5) {
+    return json({ success: false, error: "staffNotes_too_short" }, 400);
   }
 
   const { data: app, error: appErr } = await supabase
@@ -53,13 +74,27 @@ serve(async (req: Request) => {
   const now = new Date();
   const deadlineDays = body.deadlineDays ?? 7;
   const deadline = new Date(now.getTime() + deadlineDays * 24 * 3600 * 1000);
-  const deadlineDate = deadline.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" });
+  const deadlineDate = deadline.toLocaleDateString("en-CA", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  // Run staff notes through Claude. On failure, fall back to verbatim notes
+  // so the request still goes out — never block the staff action on AI.
+  const userPrompt = `Applicant: ${app.full_name}\nApplication: ${app.application_number}\nDeadline: ${deadlineDate}\n\nStaff notes:\n${staffNotes}`;
+  const ai = await claudeRewrite({
+    systemPrompt: REQUEST_INFO_SYSTEM_PROMPT,
+    userMessage: userPrompt,
+    maxTokens: 600,
+  });
+  const requestDetailsForApplicant = ai.ok && ai.text ? ai.text : staffNotes;
 
   await supabase
     .from("cvp_applications")
     .update({
       status: "info_requested",
-      staff_review_notes: body.requestDetails,
+      staff_review_notes: staffNotes,
       staff_reviewed_by: body.staffId ?? null,
       staff_reviewed_at: now.toISOString(),
       updated_at: now.toISOString(),
@@ -69,7 +104,7 @@ serve(async (req: Request) => {
   const tpl = buildV17RequestMoreInfo({
     fullName: app.full_name as string,
     applicationNumber: app.application_number as string,
-    requestDetails: body.requestDetails,
+    requestDetails: requestDetailsForApplicant,
     infoDeadlineDate: deadlineDate,
   });
   const result = await sendMailgunEmail({
@@ -81,5 +116,27 @@ serve(async (req: Request) => {
     tags: ["v17-request-more-info", body.applicationId],
   });
 
-  return json({ success: true, data: { applicationId: body.applicationId, emailSent: result.sent, suppressed: result.suppressed } });
+  await logDecision({
+    supabase,
+    applicationId: body.applicationId,
+    action: "info_requested",
+    staffNotes,
+    aiInputPrompt: userPrompt,
+    aiOutput: ai.ok ? ai.text : null,
+    aiError: ai.ok ? null : ai.error,
+    messageSentSubject: tpl.subject,
+    messageSentBody: tpl.html,
+    staffUserId: body.staffId ?? null,
+  });
+
+  return json({
+    success: true,
+    data: {
+      applicationId: body.applicationId,
+      emailSent: result.sent,
+      suppressed: result.suppressed,
+      aiProcessed: ai.ok,
+      aiOutputPreview: (ai.text ?? "").slice(0, 200),
+    },
+  });
 });

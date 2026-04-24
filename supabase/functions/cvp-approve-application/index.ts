@@ -10,6 +10,11 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import { buildV11ApprovedWelcome } from "../_shared/email-templates.ts";
+import {
+  claudeRewrite,
+  logDecision,
+  APPROVE_NOTE_SYSTEM_PROMPT,
+} from "../_shared/decision-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +33,8 @@ interface ApprovePayload {
   applicationId: string;
   combinationIds?: string[];
   staffId?: string;
+  /** Optional staff notes — captured + AI-rephrased for inclusion in V11. */
+  staffNotes?: string;
 }
 
 serve(async (req: Request) => {
@@ -211,6 +218,8 @@ serve(async (req: Request) => {
     });
   }
 
+  const staffNotes = (body.staffNotes ?? "").trim();
+
   await supabase
     .from("cvp_applications")
     .update({
@@ -218,9 +227,30 @@ serve(async (req: Request) => {
       translator_id: translatorId,
       staff_reviewed_by: body.staffId ?? null,
       staff_reviewed_at: now.toISOString(),
+      staff_review_notes: staffNotes || null,
       updated_at: now.toISOString(),
     })
     .eq("id", body.applicationId);
+
+  // Optional AI-rewrite of staff notes into a warm welcome line for V11.
+  let aiInputPrompt: string | null = null;
+  let aiOutput: string | null = null;
+  let aiError: string | null = null;
+  let staffMessageForEmail: string | null = null;
+  if (staffNotes.length >= 5) {
+    aiInputPrompt = `Applicant: ${app.full_name}\nApplication: ${app.application_number}\n\nStaff notes (internal):\n${staffNotes}`;
+    const ai = await claudeRewrite({
+      systemPrompt: APPROVE_NOTE_SYSTEM_PROMPT,
+      userMessage: aiInputPrompt,
+      maxTokens: 250,
+    });
+    if (ai.ok) {
+      aiOutput = ai.text;
+      staffMessageForEmail = ai.text && ai.text.trim().length > 0 ? ai.text : null;
+    } else {
+      aiError = ai.error;
+    }
+  }
 
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
   const passwordSetupLink = `${vendorPortalUrl}/setup-password?token=${setupToken}`;
@@ -235,6 +265,7 @@ serve(async (req: Request) => {
     passwordSetupLink,
     passwordSetupExpiryHours: 72,
     approvedCombinationsList: approvedCombinationsListHtml,
+    staffMessage: staffMessageForEmail,
   });
   await sendMailgunEmail({
     to: { email: app.email, name: app.full_name },
@@ -245,6 +276,19 @@ serve(async (req: Request) => {
     tags: ["v11-approved-welcome", body.applicationId],
   });
 
+  await logDecision({
+    supabase,
+    applicationId: body.applicationId,
+    action: "approved",
+    staffNotes: staffNotes || null,
+    aiInputPrompt,
+    aiOutput,
+    aiError,
+    messageSentSubject: tpl.subject,
+    messageSentBody: tpl.html,
+    staffUserId: body.staffId ?? null,
+  });
+
   return json({
     success: true,
     data: {
@@ -252,6 +296,7 @@ serve(async (req: Request) => {
       translatorId,
       vendorId,
       approvedCount: approveIds.length,
+      aiProcessed: Boolean(aiOutput),
     },
   });
 });

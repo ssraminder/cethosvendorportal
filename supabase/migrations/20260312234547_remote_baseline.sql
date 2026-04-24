@@ -1,0 +1,1 @@
+-- baseline stub: this migration was applied directly to remote (e.g. via Supabase MCP / dashboard) before being captured in source. Idempotent no-op.

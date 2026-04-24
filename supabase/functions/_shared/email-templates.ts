@@ -274,6 +274,16 @@ export function buildV10RateAgreed(p: V10Params): RenderedEmail {
   });
 }
 
+// Optional AI-generated personal note from staff. Appended to V11/V13 bodies
+// when the staff member added context in the decision modal.
+function staffMessageBlock(message?: string | null): string {
+  if (!message || message.trim().length === 0) return "";
+  return `<blockquote style="border-left:3px solid ${BRAND.teal};padding-left:12px;color:${BRAND.muted};margin:16px 0;">${message
+    .split(/\n\n+/)
+    .map((p) => `<p style="margin:6px 0;">${esc(p)}</p>`)
+    .join("")}</blockquote>`;
+}
+
 // ---- V11: Approved / welcome ----
 export interface V11Params {
   fullName: string;
@@ -282,6 +292,7 @@ export interface V11Params {
   passwordSetupLink: string;
   passwordSetupExpiryHours: number;
   approvedCombinationsList: string; // pre-rendered <ul>…</ul>
+  staffMessage?: string | null;     // optional AI-rephrased staff note
 }
 export function buildV11ApprovedWelcome(p: V11Params): RenderedEmail {
   return render(`Welcome to CETHOS · ${p.applicationNumber}`, {
@@ -291,6 +302,7 @@ export function buildV11ApprovedWelcome(p: V11Params): RenderedEmail {
       <p>Great news — your application <strong>${esc(p.applicationNumber)}</strong> is approved.</p>
       <p><strong>Approved for:</strong></p>
       ${p.approvedCombinationsList}
+      ${staffMessageBlock(p.staffMessage)}
       <p>Set your password to activate your vendor portal access. The link expires in <strong>${p.passwordSetupExpiryHours} hours</strong>.</p>
     `,
     cta: { label: "Set up your password", url: p.passwordSetupLink },
@@ -299,6 +311,8 @@ export function buildV11ApprovedWelcome(p: V11Params): RenderedEmail {
 }
 
 // ---- V12: Rejected ----
+// `reasonSummary` is the AI-rephrased applicant-facing reason produced from
+// the staff's raw notes. Never pass raw internal staff notes here.
 export interface V12Params {
   fullName: string;
   applicationNumber: string;
@@ -323,6 +337,7 @@ export interface V13Params {
   fullName: string;
   applicationNumber: string;
   waitlistPair: string;
+  staffMessage?: string | null;     // optional AI-rephrased staff note
 }
 export function buildV13Waitlisted(p: V13Params): RenderedEmail {
   return render(`You've been waitlisted · ${p.applicationNumber}`, {
@@ -331,6 +346,7 @@ export function buildV13Waitlisted(p: V13Params): RenderedEmail {
     body: `
       <p>Hi ${esc(p.fullName)},</p>
       <p>Your application <strong>${esc(p.applicationNumber)}</strong> is a strong fit, but we don't currently have regular work for the <strong>${esc(p.waitlistPair)}</strong> pair.</p>
+      ${staffMessageBlock(p.staffMessage)}
       <p>We'll email you directly when demand opens up.</p>
     `,
   });

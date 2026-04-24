@@ -147,6 +147,10 @@ serve(async (req: Request) => {
             prompt_version: r ? r.prompt_version : null,
             model_used: r ? r.model_used : null,
             recommendation: r ? r.recommendation : null,
+            red_flags: r && Array.isArray(r.red_flags) ? r.red_flags : [],
+            cv_unique_signals:
+              r && Array.isArray(r.cv_unique_signals) ? r.cv_unique_signals : [],
+            notes: r ? r.notes : null,
             reason: r
               ? String(r["reason"] ?? r["error"] ?? "")
               : "never_prescreened",
