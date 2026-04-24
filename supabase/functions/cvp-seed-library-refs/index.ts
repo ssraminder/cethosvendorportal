@@ -68,7 +68,7 @@ interface LanguageRow {
   code: string;
 }
 
-const SYSTEM_PROMPT = `You are drafting the REFERENCE TRANSLATION for a CETHOS translator-qualification test. Your output will be used as the gold-standard that applicant translations are scored against, so it must be accurate, idiomatic, and in the precise register the instructions specify.
+const REFERENCE_SYSTEM_PROMPT = `You are drafting the REFERENCE TRANSLATION for a CETHOS translator-qualification test. Your output will be used as the gold-standard that applicant translations are scored against, so it must be accurate, idiomatic, and in the precise register the instructions specify.
 
 Hard rules:
 - Output ONLY the translated text. No commentary, no markdown fences, no preamble or sign-off.
@@ -80,30 +80,26 @@ Hard rules:
 
 Output will be saved as the canonical reference. Treat this as production-quality copy.`;
 
+const SOURCE_SYSTEM_PROMPT = `You are drafting SOURCE TEXT for a CETHOS translator-qualification test. The applicant will translate this text from the source language into the target language. The text will be reviewed by human QA before going live.
+
+Hard rules:
+- Output ONLY the source-language text. No preamble, no notes, no markdown fences.
+- Write in the SOURCE language named in the user message. Do NOT write in the target language.
+- Realistic, domain-appropriate content. No copyrighted material — synthesise fresh.
+- Length: 250–450 words depending on difficulty (beginner ~250, intermediate ~350, advanced ~450).
+- Use formatting appropriate to the content type (bullets, numbered sections, ALL-CAPS headings, etc. — only where realistic).
+- Build in 3–6 translation challenges appropriate to the domain + difficulty: technical terms, ambiguous anaphora, domain idioms, register shifts, specific number/unit handling, etc. These will be what scorers look for.
+- Do NOT use "Lorem ipsum" or placeholder text. Every sentence should be real-looking content.
+- Use fully fictional names, companies, and addresses.
+
+Output goes straight into a test-library row; quality matters.`;
+
 async function callOpus(args: {
   apiKey: string;
-  sourceText: string;
-  sourceLangName: string;
-  targetLangName: string;
-  instructions: string;
-  domain: string;
-  difficulty: string;
+  systemPrompt: string;
+  userMessage: string;
+  maxTokens?: number;
 }): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
-  const userMessage = `Source language: ${args.sourceLangName}
-Target language: ${args.targetLangName}
-Domain: ${args.domain}
-Difficulty: ${args.difficulty}
-
-Instructions given to the applicant (follow these in your reference too):
-${args.instructions || "(none — use your best professional judgement)"}
-
-Source text to translate:
----
-${args.sourceText}
----
-
-Produce the reference translation now. Output ONLY the translation.`;
-
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -114,9 +110,9 @@ Produce the reference translation now. Output ONLY the translation.`;
       },
       body: JSON.stringify({
         model: MODEL_QUALITY,
-        max_tokens: 4000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMessage }],
+        max_tokens: args.maxTokens ?? 4000,
+        system: args.systemPrompt,
+        messages: [{ role: "user", content: args.userMessage }],
       }),
     });
 
@@ -138,6 +134,57 @@ Produce the reference translation now. Output ONLY the translation.`;
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+function referenceUserMessage(args: {
+  sourceText: string;
+  sourceLangName: string;
+  targetLangName: string;
+  instructions: string;
+  domain: string;
+  difficulty: string;
+}): string {
+  return `Source language: ${args.sourceLangName}
+Target language: ${args.targetLangName}
+Domain: ${args.domain}
+Difficulty: ${args.difficulty}
+
+Instructions given to the applicant (follow these in your reference too):
+${args.instructions || "(none — use your best professional judgement)"}
+
+Source text to translate:
+---
+${args.sourceText}
+---
+
+Produce the reference translation now. Output ONLY the translation.`;
+}
+
+function sourceUserMessage(args: {
+  sourceLangName: string;
+  targetLangName: string;
+  domain: string;
+  difficulty: string;
+  titleStem: string;
+  instructions: string;
+}): string {
+  return `Write a SOURCE TEXT in ${args.sourceLangName}. It will be translated by test-takers into ${args.targetLangName}.
+
+Domain: ${args.domain}
+Difficulty: ${args.difficulty}
+Content type hint (from the test title): ${args.titleStem}
+
+Instructions that will be given to the applicant alongside your source text:
+${args.instructions || "(none given)"}
+
+Requirements:
+- Write in ${args.sourceLangName} only.
+- Target length for ${args.difficulty} difficulty: ${args.difficulty === "beginner" ? "~250 words" : args.difficulty === "intermediate" ? "~350 words" : "~450 words"}.
+- Domain-realistic. Build in 3–6 translation challenges appropriate to ${args.domain}.
+- Use fully fictional names, companies, and addresses.
+- Do NOT include a heading like "Source text:" — output only the text itself.
+
+Write the source text now. Output ONLY the text in ${args.sourceLangName}.`;
 }
 
 serve(async (req: Request) => {
@@ -170,9 +217,9 @@ serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  // Load rows needing a reference. Only rows with a non-empty source_text are
-  // candidates — rows missing source_text will be handled in a separate
-  // T2 pass.
+  // Load rows needing a reference OR a source_text. As of T4 (Apr 24),
+  // rows can be seeded with source_text NULL — the function generates
+  // source first, then the reference.
   let q = supabase
     .from("cvp_test_library")
     .select(
@@ -180,7 +227,6 @@ serve(async (req: Request) => {
     )
     .is("reference_translation", null)
     .eq("is_active", false)
-    .not("source_text", "is", null)
     .limit(limit);
 
   if (body.libraryRowId) q = q.eq("id", body.libraryRowId);
@@ -241,21 +287,71 @@ serve(async (req: Request) => {
       continue;
     }
 
-    const result = await callOpus({
-      apiKey,
-      sourceText: row.source_text ?? "",
-      sourceLangName: srcLang.name,
-      targetLangName: tgtLang.name,
-      instructions: row.instructions ?? "",
-      domain: row.domain,
-      difficulty: row.difficulty,
-    });
-
-    if (!result.ok) {
+    // Stage 1: generate source_text if missing.
+    let sourceText = row.source_text;
+    if (!sourceText || sourceText.trim().length === 0) {
+      const srcGen = await callOpus({
+        apiKey,
+        systemPrompt: SOURCE_SYSTEM_PROMPT,
+        userMessage: sourceUserMessage({
+          sourceLangName: srcLang.name,
+          targetLangName: tgtLang.name,
+          domain: row.domain,
+          difficulty: row.difficulty,
+          titleStem: row.title.replace(/^\[AI-DRAFT\]\s*/, "").replace(/\s*\([^)]+\)$/, ""),
+          instructions: row.instructions ?? "",
+        }),
+        maxTokens: 2500,
+      });
+      if (!srcGen.ok) {
+        await supabase
+          .from("cvp_test_library")
+          .update({
+            ai_generation_error: `source: ${srcGen.error}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", row.id);
+        failed += 1;
+        details.push({
+          id: row.id,
+          title: row.title,
+          ok: false,
+          error: `source: ${srcGen.error}`,
+        });
+        continue;
+      }
+      sourceText = srcGen.text;
+      // Persist source_text right away so a retry on Stage 2 failure
+      // doesn't re-generate the source.
       await supabase
         .from("cvp_test_library")
         .update({
-          ai_generation_error: result.error,
+          source_text: sourceText,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+    }
+
+    // Stage 2: generate reference_translation.
+    const refGen = await callOpus({
+      apiKey,
+      systemPrompt: REFERENCE_SYSTEM_PROMPT,
+      userMessage: referenceUserMessage({
+        sourceText,
+        sourceLangName: srcLang.name,
+        targetLangName: tgtLang.name,
+        instructions: row.instructions ?? "",
+        domain: row.domain,
+        difficulty: row.difficulty,
+      }),
+      maxTokens: 4000,
+    });
+
+    if (!refGen.ok) {
+      await supabase
+        .from("cvp_test_library")
+        .update({
+          ai_generation_error: `reference: ${refGen.error}`,
           updated_at: new Date().toISOString(),
         })
         .eq("id", row.id);
@@ -264,7 +360,7 @@ serve(async (req: Request) => {
         id: row.id,
         title: row.title,
         ok: false,
-        error: result.error,
+        error: `reference: ${refGen.error}`,
       });
       continue;
     }
@@ -274,7 +370,7 @@ serve(async (req: Request) => {
     const { error: updateErr } = await supabase
       .from("cvp_test_library")
       .update({
-        reference_translation: result.text,
+        reference_translation: refGen.text,
         is_active: true,
         ai_generation_error: null,
         updated_at: new Date().toISOString(),
