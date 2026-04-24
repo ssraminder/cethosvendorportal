@@ -1,28 +1,21 @@
--- Smoke-test seed: one active library test + one dummy application + one
--- combination. Idempotent: re-running this script WILL NOT duplicate — it
--- upserts on deterministic keys.
+-- Smoke-test seed: one dummy application (APP-26-9900) with combinations
+-- covering the domain-unit model:
+--   - immigration      → uses existing Persian immigration library test
+--   - life_sciences    → uses new Life Sciences EN→FA seed
+--   - general          → baseline (no test yet; shows up as no_test_available)
+--   - certified_official → skip_manual_review (never tested)
 --
--- Values used (look these up with `SELECT id, code FROM languages`):
---   English           = fde091d2-db5f-4e41-a490-7e15efc419e1
---   Persian (Farsi)   = d972e8cc-519c-4446-9483-30da1346850c
---
--- Application number chosen outside the auto-sequence (APP-26-9900) so
--- rerunning the seed always hits the same row.
+-- Also seeds one active EN→FA Immigration library test so the preview has
+-- content to show. Idempotent on fixed UUIDs.
 
 BEGIN;
 
--- ---- 1) Seed an active EN→FA Immigration standard_translation test ----
+-- ---- 1) Seed the EN→FA Immigration library test ----
 INSERT INTO cvp_test_library (
-  id,
-  title,
-  source_language_id,
-  target_language_id,
-  domain,
-  service_type,
-  difficulty,
-  source_text,
-  instructions,
-  is_active
+  id, title,
+  source_language_id, target_language_id,
+  domain, service_type, difficulty,
+  source_text, instructions, is_active
 )
 VALUES (
   '11111111-1111-4111-8111-111111111111',
@@ -30,7 +23,7 @@ VALUES (
   'fde091d2-db5f-4e41-a490-7e15efc419e1',
   'd972e8cc-519c-4446-9483-30da1346850c',
   'immigration',
-  'standard_translation',
+  'domain_test',
   'intermediate',
   $TEST$CERTIFICATE OF LIVE BIRTH
 
@@ -54,25 +47,16 @@ Official Seal: [affixed]$TEST$,
   true
 )
 ON CONFLICT (id) DO UPDATE SET
-  title = EXCLUDED.title,
   source_text = EXCLUDED.source_text,
   instructions = EXCLUDED.instructions,
   is_active = true,
   updated_at = now();
 
-
--- ---- 2) Dummy application (status='prescreened' so SendTestsControls renders) ----
+-- ---- 2) Dummy application (translator, status='prescreened') ----
 INSERT INTO cvp_applications (
-  id,
-  application_number,
-  role_type,
-  email,
-  full_name,
-  country,
-  status,
-  ai_prescreening_score,
-  ai_prescreening_result,
-  ai_prescreening_at,
+  id, application_number, role_type, email, full_name, country,
+  status, ai_prescreening_score, ai_prescreening_result, ai_prescreening_at,
+  domains_offered,
   created_at
 )
 VALUES (
@@ -91,6 +75,7 @@ VALUES (
     'green_flags', jsonb_build_array('Seeded by smoke-seed-dummy-application.sql')
   ),
   now(),
+  ARRAY['immigration','life_sciences','certified_official']::text[],
   now()
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -98,56 +83,46 @@ ON CONFLICT (id) DO UPDATE SET
   application_number = EXCLUDED.application_number,
   email = EXCLUDED.email,
   full_name = EXCLUDED.full_name,
+  domains_offered = EXCLUDED.domains_offered,
   ai_prescreening_result = EXCLUDED.ai_prescreening_result,
   ai_prescreening_score = EXCLUDED.ai_prescreening_score,
   updated_at = now();
 
+-- ---- 3) Combinations per (pair × domain) — new domain-unit shape ----
+-- Cleanup any legacy rows from pre-rework seed runs so UNIQUE doesn't fight us.
+DELETE FROM cvp_test_combinations
+  WHERE application_id = '22222222-2222-4222-8222-222222222222';
 
--- ---- 3) Pending combination matching the seeded library test ----
 INSERT INTO cvp_test_combinations (
-  id,
-  application_id,
-  source_language_id,
-  target_language_id,
-  domain,
-  service_type,
-  status
+  id, application_id, source_language_id, target_language_id,
+  domain, service_type, status, is_baseline_general
 )
-VALUES (
-  '33333333-3333-4333-8333-333333333333',
-  '22222222-2222-4222-8222-222222222222',
-  'fde091d2-db5f-4e41-a490-7e15efc419e1',
-  'd972e8cc-519c-4446-9483-30da1346850c',
-  'immigration',
-  'standard_translation',
-  'pending'
-)
-ON CONFLICT (id) DO UPDATE SET
-  status = 'pending',
-  test_id = NULL,
-  test_submission_id = NULL,
-  updated_at = now();
+VALUES
+  ('33333333-3333-4333-8333-333333333333',
+   '22222222-2222-4222-8222-222222222222',
+   'fde091d2-db5f-4e41-a490-7e15efc419e1',
+   'd972e8cc-519c-4446-9483-30da1346850c',
+   'immigration', NULL, 'pending', false),
+  ('33333333-3333-4333-8333-333333333334',
+   '22222222-2222-4222-8222-222222222222',
+   'fde091d2-db5f-4e41-a490-7e15efc419e1',
+   'd972e8cc-519c-4446-9483-30da1346850c',
+   'life_sciences', NULL, 'pending', false),
+  ('33333333-3333-4333-8333-333333333335',
+   '22222222-2222-4222-8222-222222222222',
+   'fde091d2-db5f-4e41-a490-7e15efc419e1',
+   'd972e8cc-519c-4446-9483-30da1346850c',
+   'general', NULL, 'pending', true),
+  ('33333333-3333-4333-8333-333333333336',
+   '22222222-2222-4222-8222-222222222222',
+   'fde091d2-db5f-4e41-a490-7e15efc419e1',
+   'd972e8cc-519c-4446-9483-30da1346850c',
+   'certified_official', NULL, 'skip_manual_review', false);
 
 COMMIT;
 
 -- Verification
-SELECT
-  'library' AS kind,
-  id::text AS id,
-  title AS detail,
-  is_active::text AS flag
-FROM cvp_test_library WHERE id = '11111111-1111-4111-8111-111111111111'
-UNION ALL
-SELECT
-  'application',
-  id::text,
-  application_number || ' — ' || full_name,
-  status
-FROM cvp_applications WHERE id = '22222222-2222-4222-8222-222222222222'
-UNION ALL
-SELECT
-  'combination',
-  id::text,
-  domain || ' / ' || service_type,
-  status
-FROM cvp_test_combinations WHERE id = '33333333-3333-4333-8333-333333333333';
+SELECT domain, status, is_baseline_general
+FROM cvp_test_combinations
+WHERE application_id = '22222222-2222-4222-8222-222222222222'
+ORDER BY is_baseline_general DESC, domain;

@@ -182,17 +182,22 @@ serve(async (req: Request) => {
     const noTestAvailable: string[] = [];
 
     for (const combo of combs) {
-      // Find every eligible test in the library for this combination —
-      // match lang pair + domain + service_type, is_active, ordered by
-      // least-recently-used so rotation is natural.
-      const { data: tests } = await supabase
+      // Find every eligible test in the library for this combination.
+      // As of the domain-unit rework, `combo.service_type` is NULL for
+      // domain-based combinations — in that case we match on (pair × domain)
+      // only and accept any service_type in the library. Legacy combos that
+      // still carry a service_type keep the stricter match.
+      let libraryQ = supabase
         .from("cvp_test_library")
         .select("id, title, source_language_id, target_language_id, domain, service_type, difficulty, source_text, source_file_path, instructions, times_used, last_used_at")
         .eq("source_language_id", combo.source_language_id)
         .eq("target_language_id", combo.target_language_id)
         .eq("domain", combo.domain)
-        .eq("service_type", combo.service_type)
-        .eq("is_active", true)
+        .eq("is_active", true);
+      if (combo.service_type) {
+        libraryQ = libraryQ.eq("service_type", combo.service_type);
+      }
+      const { data: tests } = await libraryQ
         .order("times_used", { ascending: true })
         .order("last_used_at", { ascending: true, nullsFirst: true });
 

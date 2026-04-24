@@ -233,26 +233,32 @@ serve(async (req: Request) => {
     }
 
     // Create test combinations for translators.
-    // One combo per (language pair × service). Domain is applicant-wide —
-    // seed it with the first selected domain; staff can adjust per-combo
-    // during review.
+    // Post domain-unit rework: one combo per (language_pair × domain). Every
+    // translator also gets a mandatory General baseline test per pair,
+    // whether or not they picked "general" in the domains field. Certified
+    // combos land with status 'skip_manual_review' and never receive a test —
+    // staff approves them on CV + references alone.
+    // Rate info is NOT written to approved_rate here; it's owned by
+    // cvp_applications.rate_card at the (pair × service) level.
     if (payload.roleType === "translator") {
       const tp = payload as TranslatorPayload;
-      const primaryDomain = (tp.domainsOffered && tp.domainsOffered.length > 0)
-        ? tp.domainsOffered[0]
-        : "general";
-      const combinationRows: Record<string, unknown>[] = [];
 
+      const domainsToTest = new Set<string>(tp.domainsOffered ?? []);
+      domainsToTest.add("general"); // baseline — always
+
+      const combinationRows: Record<string, unknown>[] = [];
       for (const pair of tp.languagePairs ?? []) {
-        for (const svc of pair.services ?? []) {
+        for (const domain of domainsToTest) {
+          const isCertified = domain === "certified_official";
           combinationRows.push({
             application_id: application.id,
             source_language_id: pair.sourceLanguageId,
             target_language_id: pair.targetLanguageId,
-            domain: primaryDomain,
-            service_type: svc.serviceCode,
-            status: "pending",
-            approved_rate: svc.rate ? parseFloat(svc.rate) : null,
+            domain,
+            service_type: null,
+            status: isCertified ? "skip_manual_review" : "pending",
+            approved_rate: null,
+            is_baseline_general: domain === "general",
           });
         }
       }
