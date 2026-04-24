@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -81,10 +82,9 @@ serve(async (req: Request) => {
     const appUrl = Deno.env.get("VENDOR_APP_URL") || "https://vendor.cethos.com";
     const activationUrl = `${appUrl}/activate?token=${activationToken}`;
 
-    // Send invitation email via Brevo
-    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-    if (!brevoApiKey) {
-      console.error("BREVO_API_KEY not configured");
+    // Send invitation email via Mailgun
+    if (!Deno.env.get("MAILGUN_API_KEY") || !Deno.env.get("MAILGUN_DOMAIN")) {
+      console.error("MAILGUN_API_KEY or MAILGUN_DOMAIN not configured");
       return new Response(
         JSON.stringify({ error: "Email service not configured", activation_url: activationUrl }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -124,23 +124,15 @@ serve(async (req: Request) => {
       </div>
     `;
 
-    const emailRes = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "api-key": brevoApiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sender: { name: "CETHOS Translation Services", email: "donotreply@cethos.com" },
-        to: [{ email: vendor.email, name: vendor.full_name }],
-        subject: "You're invited to the CETHOS Vendor Portal",
-        htmlContent,
-      }),
+    const sendResult = await sendMailgunOperationalEmail({
+      to: { email: vendor.email, name: vendor.full_name },
+      subject: "You're invited to the CETHOS Vendor Portal",
+      html: htmlContent,
+      tags: ["vendor-invite"],
     });
 
-    if (!emailRes.ok) {
-      const errBody = await emailRes.text();
-      console.error("Brevo email send failed:", emailRes.status, errBody);
+    if (!sendResult.sent) {
+      console.error("Mailgun invite email send failed:", sendResult.reason);
       return new Response(
         JSON.stringify({ error: "Failed to send invitation email", activation_url: activationUrl }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }

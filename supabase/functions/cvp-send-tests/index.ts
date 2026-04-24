@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { sendBrevoEmail, BREVO_TEMPLATES } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import { buildV3TestInvitation } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -266,16 +267,28 @@ serve(async (req: Request) => {
 
     // Send batch test invitation email (V3)
     if (assigned.length > 0) {
-      await sendBrevoEmail({
+      const testLinksHtml = `<ul>${testLinks
+        .map((l) => {
+          const parts = l.split(": ");
+          const label = parts[0] ?? "";
+          const url = parts.slice(1).join(": ");
+          return `<li>${label}: <a href="${url}">${url}</a></li>`;
+        })
+        .join("")}</ul>`;
+      const tpl = buildV3TestInvitation({
+        fullName: app.full_name,
+        applicationNumber: app.application_number,
+        testCount: assigned.length,
+        testLinksHtml,
+        expiryHours: 48,
+      });
+      await sendMailgunEmail({
         to: { email: app.email, name: app.full_name },
-        templateId: BREVO_TEMPLATES.V3_TEST_INVITATION,
-        params: {
-          fullName: app.full_name,
-          applicationNumber: app.application_number,
-          testCount: assigned.length,
-          testLinks: testLinks.join("\n"),
-          expiryHours: 48,
-        },
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        respectDoNotContactFor: app.email,
+        tags: ["v3-test-invitation", applicationId],
       });
     }
 

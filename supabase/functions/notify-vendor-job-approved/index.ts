@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { sendBrevoEmail } from "../_shared/brevo.ts";
+import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -9,8 +9,29 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Brevo template ID for job approved notification — update when template is created
-const TEMPLATE_JOB_APPROVED = 22;
+function renderJobApprovedEmail(params: {
+  vendor_name: string;
+  job_reference: string;
+  source_language: string;
+  target_language: string;
+  quality_score: string | number;
+  reviewer_notes: string;
+  estimated_total: string;
+  portal_url: string;
+}): { subject: string; html: string } {
+  const subject = `Your delivery was approved — ${params.job_reference}`;
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;color:#111827;padding:24px;">
+  <h2 style="color:#0891B2;font-size:18px;">Delivery approved 🎉</h2>
+  <p>Hi ${params.vendor_name},</p>
+  <p>Your delivery for <strong>${params.job_reference}</strong> (${params.source_language} → ${params.target_language}) has been approved.</p>
+  <p style="margin:12px 0;"><strong>Quality score:</strong> ${params.quality_score}</p>
+  <p style="margin:12px 0;"><strong>Estimated payable:</strong> ${params.estimated_total}</p>
+  <p style="margin:12px 0;"><strong>Reviewer notes:</strong><br>${params.reviewer_notes}</p>
+  <p><a href="${params.portal_url}/jobs" style="display:inline-block;background:#0891B2;color:#fff;text-decoration:none;padding:11px 22px;border-radius:6px;font-weight:600;font-size:14px;">Open portal</a></p>
+</div>`;
+  return { subject, html };
+}
 
 interface JobApprovedRequest {
   job_id: string;
@@ -78,25 +99,27 @@ serve(async (req: Request) => {
       }
     }
 
-    const sent = await sendBrevoEmail({
+    const rendered = renderJobApprovedEmail({
+      vendor_name: vendor.full_name,
+      job_reference: job.job_reference || "",
+      source_language: sourceLang,
+      target_language: targetLang,
+      quality_score: (job.quality_score ?? "N/A") as string | number,
+      reviewer_notes: job.reviewer_notes || "No additional notes.",
+      estimated_total: job.estimated_total
+        ? `${job.estimated_total} ${job.currency}`
+        : "TBD",
+      portal_url: Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com",
+    });
+    const result = await sendMailgunOperationalEmail({
       to: { email: vendor.email, name: vendor.full_name },
-      templateId: TEMPLATE_JOB_APPROVED,
-      params: {
-        vendor_name: vendor.full_name,
-        job_reference: job.job_reference || "",
-        source_language: sourceLang,
-        target_language: targetLang,
-        quality_score: job.quality_score ?? "N/A",
-        reviewer_notes: job.reviewer_notes || "No additional notes.",
-        estimated_total: job.estimated_total
-          ? `${job.estimated_total} ${job.currency}`
-          : "TBD",
-        portal_url: Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com",
-      },
+      subject: rendered.subject,
+      html: rendered.html,
+      tags: ["job-approved", job_id],
     });
 
     return new Response(
-      JSON.stringify({ success: true, email_sent: sent }),
+      JSON.stringify({ success: true, email_sent: result.sent }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

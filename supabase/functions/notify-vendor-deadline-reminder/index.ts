@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { sendBrevoEmail } from "../_shared/brevo.ts";
+import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -9,8 +9,26 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Brevo template ID for deadline reminder — update when template is created
-const TEMPLATE_DEADLINE_REMINDER = 21;
+function renderDeadlineReminderEmail(params: {
+  vendor_name: string;
+  job_reference: string;
+  source_language: string;
+  target_language: string;
+  deadline: string;
+  hours_remaining: number;
+  portal_url: string;
+}): { subject: string; html: string } {
+  const subject = `Deadline in ${params.hours_remaining}h — ${params.job_reference}`;
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;color:#111827;padding:24px;">
+  <h2 style="color:#B45309;font-size:18px;">Deadline reminder</h2>
+  <p>Hi ${params.vendor_name},</p>
+  <p>Your job <strong>${params.job_reference}</strong> (${params.source_language} → ${params.target_language}) is due in <strong>${params.hours_remaining} hours</strong> — at ${params.deadline}.</p>
+  <p>If you're on track, no action needed. If you need help, reply to this email right away.</p>
+  <p><a href="${params.portal_url}/jobs" style="display:inline-block;background:#0891B2;color:#fff;text-decoration:none;padding:11px 22px;border-radius:6px;font-weight:600;font-size:14px;">Open job</a></p>
+</div>`;
+  return { subject, html };
+}
 
 /**
  * Cron-compatible edge function: finds all active jobs with deadlines
@@ -90,21 +108,23 @@ serve(async (req: Request) => {
         (new Date(job.deadline).getTime() - now.getTime()) / (60 * 60 * 1000)
       );
 
-      const sent = await sendBrevoEmail({
+      const rendered = renderDeadlineReminderEmail({
+        vendor_name: vendor.full_name,
+        job_reference: job.job_reference || "",
+        source_language: langMap.get(job.source_language_id) || "Unknown",
+        target_language: langMap.get(job.target_language_id) || "Unknown",
+        deadline: new Date(job.deadline).toLocaleString("en-CA"),
+        hours_remaining: hoursLeft,
+        portal_url: Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com",
+      });
+      const result = await sendMailgunOperationalEmail({
         to: { email: vendor.email, name: vendor.full_name },
-        templateId: TEMPLATE_DEADLINE_REMINDER,
-        params: {
-          vendor_name: vendor.full_name,
-          job_reference: job.job_reference || "",
-          source_language: langMap.get(job.source_language_id) || "Unknown",
-          target_language: langMap.get(job.target_language_id) || "Unknown",
-          deadline: new Date(job.deadline).toLocaleString("en-CA"),
-          hours_remaining: hoursLeft,
-          portal_url: Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com",
-        },
+        subject: rendered.subject,
+        html: rendered.html,
+        tags: ["deadline-reminder", job.id],
       });
 
-      if (sent) sentCount++;
+      if (result.sent) sentCount++;
     }
 
     return new Response(

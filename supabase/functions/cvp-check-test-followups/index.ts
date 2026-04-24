@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { sendBrevoEmail, BREVO_TEMPLATES } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import {
+  buildV4TestReminder24hr,
+  buildV5TestExpired,
+  buildV6FinalChanceDay7,
+} from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -112,15 +117,19 @@ serve(async (req: Request) => {
             )
           );
 
-          await sendBrevoEmail({
+          const tpl = buildV4TestReminder24hr({
+            fullName: app.full_name,
+            applicationNumber: app.application_number,
+            testLink: `${appUrl}/test/${row.token}`,
+            hoursRemaining: hoursLeft,
+          });
+          await sendMailgunEmail({
             to: { email: app.email, name: app.full_name },
-            templateId: BREVO_TEMPLATES.V4_TEST_REMINDER_24HR,
-            params: {
-              fullName: app.full_name,
-              applicationNumber: app.application_number,
-              testLink: `${appUrl}/test/${row.token}`,
-              hoursRemaining: hoursLeft,
-            },
+            subject: tpl.subject,
+            html: tpl.html,
+            text: tpl.text,
+            respectDoNotContactFor: app.email,
+            tags: ["v4-test-reminder", row.application_id],
           });
 
           await supabase
@@ -161,13 +170,17 @@ serve(async (req: Request) => {
           if (!appData) continue;
           const app = appData as unknown as ApplicationRow;
 
-          await sendBrevoEmail({
+          const tpl = buildV5TestExpired({
+            fullName: app.full_name,
+            applicationNumber: app.application_number,
+          });
+          await sendMailgunEmail({
             to: { email: app.email, name: app.full_name },
-            templateId: BREVO_TEMPLATES.V5_TEST_EXPIRED,
-            params: {
-              fullName: app.full_name,
-              applicationNumber: app.application_number,
-            },
+            subject: tpl.subject,
+            html: tpl.html,
+            text: tpl.text,
+            respectDoNotContactFor: app.email,
+            tags: ["v5-test-expired", row.application_id],
           });
 
           await supabase
@@ -231,14 +244,17 @@ serve(async (req: Request) => {
           if (!appData) continue;
           const app = appData as unknown as ApplicationRow;
 
-          await sendBrevoEmail({
+          const tpl = buildV6FinalChanceDay7({
+            fullName: app.full_name,
+            applicationNumber: app.application_number,
+          });
+          await sendMailgunEmail({
             to: { email: app.email, name: app.full_name },
-            templateId: BREVO_TEMPLATES.V6_FINAL_CHANCE_DAY7,
-            params: {
-              fullName: app.full_name,
-              applicationNumber: app.application_number,
-              // Applicant can reply to request a new link
-            },
+            subject: tpl.subject,
+            html: tpl.html,
+            text: tpl.text,
+            respectDoNotContactFor: app.email,
+            tags: ["v6-final-chance", row.application_id],
           });
 
           await supabase

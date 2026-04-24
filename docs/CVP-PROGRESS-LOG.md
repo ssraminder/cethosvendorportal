@@ -885,4 +885,67 @@ All tasks in Phase 1A are pending.
 
 ---
 
+## 2026-04-22 — Trainings module (vendor-management)
+
+Built a generic staff training engine in the CETHOS admin portal and seeded the first module, **Vendor Management**, covering every existing vendor-management feature.
+
+**DB (`D:\cethos-vendor\supabase\migrations\`):**
+- `011_cvp_trainings.sql` — 4 new tables (`cvp_trainings`, `cvp_training_lessons`, `cvp_training_assignments`, `cvp_training_lesson_progress`), RLS helpers (`cvp_is_training_admin`, `cvp_is_active_staff`, `cvp_current_staff_id`), 11 RLS policies. Applied to `lmzoyezvsjgsxveoakdr`.
+- `012_seed_vendor_management_training.sql` — seeds 1 training + 11 lessons (orientation → recruitment queue → application detail → test stage → assessment → negotiation → staff decisions → vendor directory → vendor detail tabs → messaging/tasks/nudges → cheat sheet). Idempotent via `ON CONFLICT (slug)`.
+
+**Portal UI (`D:\cethos\portal\cethos_app_figma_design_v1\`):**
+- New sidebar section "Trainings" (teal badge for unfinished assignments) + child link "Vendor Management" (`client/components/admin/AdminLayout.tsx`).
+- Routes added (`client/App.tsx`): `/admin/trainings`, `/admin/trainings/:slug`, `/admin/trainings/:slug/assign`, `/admin/trainings/:slug/:lessonSlug`.
+- Pages (`client/pages/admin/trainings/`): `TrainingsList.tsx`, `TrainingOverview.tsx`, `TrainingLesson.tsx` (react-markdown + remark-gfm, screenshot zoom, key-rule callouts, "try it yourself" deep link, "I've read this" button), `TrainingAssign.tsx` (admin-only multi-select + due date + current-assignee list).
+- Data layer: `client/lib/trainings.ts` — all Supabase queries, RLS-aware. Acknowledging the last lesson auto-stamps `completed_at` on the assignment.
+
+**Curriculum doc:**
+- `docs/TRAINING-VENDOR-MANAGEMENT-CURRICULUM.md` — canonical feature inventory (24 features grouped into 11 lessons) with rule citations and a smoke-test log table.
+
+**Assigned for role-path testing:** `raminder@cethoscorp.com` (reviewer).
+
+**Screenshots pending:** `client/public/training/vendor-management/` created and empty. Live screenshots were not captured in this session because admin UI login requires staff credentials. `TrainingLesson.tsx` degrades gracefully with an inline "Screenshot not yet captured" placeholder. Next step: log in as staff, walk through each lesson's `route_reference`, capture to the paths listed in each lesson's `screenshot_paths` array.
+
+---
+
+## 2026-04-23 — Mailgun migration (outbound + inbound Phase 1)
+
+Migrated all CVP transactional + operational email from Brevo to **Mailgun EU**. Added inbound applicant email handling with Phase-1 scope: unsubscribe detection + AI auto-reply pointing to `vm@cethos.com`.
+
+**Outbound:**
+- New transport: `supabase/functions/_shared/mailgun.ts` with `sendMailgunEmail` (honours `do_not_contact` gate) and `sendMailgunOperationalEmail` (ungated, for admin/OTP emails).
+- New template bundle: `supabase/functions/_shared/email-templates.ts` — 17 inline HTML templates V1–V17 (ship changes in code, no Mailgun dashboard drift).
+- Swapped 15 call sites: `cvp-submit-application`, `cvp-prescreen-application`, `cvp-send-tests`, `cvp-submit-test`, `cvp-check-test-followups`, `cvp-approve-application`, `cvp-send-queued-rejections`, `cvp-request-info`, `cvp-daily-recruitment-status`, `vendor-auth-otp-send`, `vendor-auth-invite`, `notify-vendor-job-offer`, `notify-vendor-job-approved`, `notify-vendor-deadline-reminder`. `_shared/brevo.ts` left in place for 1-week rollback window; delete later.
+
+**Inbound (Phase 1):**
+- Migration `014_cvp_inbound_emails.sql` — new `cvp_inbound_emails` table + `do_not_contact` / `do_not_contact_at` / `do_not_contact_source` columns on `cvp_applications`, with RLS (staff read-only; inserts via service role only).
+- New edge function `cvp-inbound-email` — verifies Mailgun HMAC signature, parses multipart, matches sender to an application, regex+Claude confirms unsubscribe intent, generates a polite AI auto-reply in the sender's language, logs every inbound.
+- Route to configure in Mailgun dashboard: `match_recipient("recruiting@vendors.cethos.com") → forward(<fn url>) + stop()`.
+
+**Secrets to add in Supabase** (see `docs/MAILGUN-SETUP.md` for full checklist):
+```
+MAILGUN_API_KEY
+MAILGUN_DOMAIN=vendors.cethos.com
+MAILGUN_REGION=eu
+MAILGUN_FROM_EMAIL=noreply@vendors.cethos.com
+MAILGUN_FROM_NAME=CETHOS Vendor Portal
+MAILGUN_REPLY_TO=recruiting@vendors.cethos.com
+MAILGUN_WEBHOOK_SIGNING_KEY
+CVP_SUPPORT_EMAIL=vm@cethos.com
+```
+
+**Docs:**
+- `docs/MAILGUN-SETUP.md` — secrets, DNS (SPF/DKIM/MX EU), route config, smoke tests, future phases.
+- Full multi-phase plan at `C:/Users/RaminderShah/.claude/plans/mailgun-inbound-outbound.md`.
+
+**Not yet done (user applies these):**
+- Apply migration 014 (`supabase db push`).
+- Deploy `cvp-inbound-email` + redeploy the 14 swapped functions (`supabase functions deploy <name>`).
+- Add the 8 secrets above in Supabase.
+- Add DNS records for `vendors.cethos.com` in Mailgun EU (MX required for inbound).
+- Create the Mailgun Route.
+- Run Section 5 smoke tests from `MAILGUN-SETUP.md`.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*

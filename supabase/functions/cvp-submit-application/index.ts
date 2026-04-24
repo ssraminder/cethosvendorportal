@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { BREVO_TEMPLATES, sendBrevoEmail } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import { buildV1ApplicationReceived } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +37,7 @@ interface TranslatorPayload {
   rateCurrency: string;
   referralSource?: string;
   notes?: string;
+  cvStoragePath?: string;
 }
 
 interface CognitiveDebriefingPayload {
@@ -61,6 +63,7 @@ interface CognitiveDebriefingPayload {
   cogAvailability: string;
   referralSource?: string;
   notes?: string;
+  cvStoragePath?: string;
 }
 
 type ApplicationPayload = TranslatorPayload | CognitiveDebriefingPayload;
@@ -116,6 +119,25 @@ serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Invalid role type" }, 400);
     }
 
+    // CV is required and must be a PDF (Anthropic document input requirement).
+    // Frontend should have uploaded to cvp-applicant-cvs and passed cvStoragePath.
+    if (!payload.cvStoragePath || typeof payload.cvStoragePath !== "string") {
+      return jsonResponse(
+        { success: false, error: "CV is required (PDF, max 10MB)." },
+        400,
+      );
+    }
+    if (!payload.cvStoragePath.toLowerCase().endsWith(".pdf")) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "Only PDF format is accepted for CVs. Please export your DOCX to PDF and resubmit.",
+        },
+        400,
+      );
+    }
+
     // Reapplication cooldown
     const { data: existingApps } = await supabase
       .from("cvp_applications")
@@ -158,6 +180,7 @@ serve(async (req: Request) => {
       ip_address: ipAddress,
       user_agent: userAgent,
       status: "submitted",
+      cv_storage_path: payload.cvStoragePath,
     };
 
     if (payload.roleType === "translator") {
@@ -246,18 +269,19 @@ serve(async (req: Request) => {
       }
     }
 
-    // Send V1 confirmation email via Brevo (real template ID from brevo.ts).
+    // Send V1 confirmation email via Mailgun.
     try {
-      await sendBrevoEmail({
+      const tpl = buildV1ApplicationReceived({
+        fullName: payload.fullName,
+        applicationNumber,
+      });
+      await sendMailgunEmail({
         to: { email: payload.email, name: payload.fullName },
-        templateId: BREVO_TEMPLATES.V1_APPLICATION_RECEIVED,
-        params: {
-          fullName: payload.fullName,
-          applicationNumber,
-          roleType: payload.roleType === "translator"
-            ? "Translator / Reviewer"
-            : "Cognitive Debriefing Consultant",
-        },
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        respectDoNotContactFor: payload.email,
+        tags: ["v1-application-received", applicationNumber],
       });
     } catch (emailError) {
       console.error("Error sending V1 confirmation email:", emailError);

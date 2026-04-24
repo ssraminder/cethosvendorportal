@@ -6,7 +6,8 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { BREVO_TEMPLATES, sendBrevoEmail } from "../_shared/brevo.ts";
+import { sendMailgunEmail } from "../_shared/mailgun.ts";
+import { buildV12Rejected } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,28 +53,36 @@ serve(async (req: Request) => {
         })
       : "six months from today";
 
-    const ok = await sendBrevoEmail({
+    const tpl = buildV12Rejected({
+      fullName: app.full_name as string,
+      applicationNumber: app.application_number as string,
+      reasonSummary,
+      reapplyAfterDate,
+    });
+    const result = await sendMailgunEmail({
       to: { email: app.email as string, name: app.full_name as string },
-      templateId: BREVO_TEMPLATES.V12_REJECTED,
-      params: {
-        fullName: app.full_name as string,
-        applicationNumber: app.application_number as string,
-        reasonSummary,
-        reapplyAfterDate,
-      },
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      respectDoNotContactFor: app.email as string,
+      tags: ["v12-rejected", app.id as string],
     });
 
-    if (ok) {
+    if (result.sent || result.suppressed) {
       await supabase
         .from("cvp_applications")
         .update({
-          rejection_email_status: "sent",
+          rejection_email_status: result.suppressed ? "suppressed" : "sent",
           updated_at: new Date().toISOString(),
         })
         .eq("id", app.id);
-      results.push({ id: app.id as string, sent: true });
+      results.push({ id: app.id as string, sent: result.sent });
     } else {
-      results.push({ id: app.id as string, sent: false, error: "brevo_send_failed" });
+      results.push({
+        id: app.id as string,
+        sent: false,
+        error: result.reason ?? "mailgun_send_failed",
+      });
     }
   }
 
