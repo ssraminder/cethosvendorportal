@@ -83,7 +83,16 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { applicationId } = await req.json();
+    const body = (await req.json()) as {
+      applicationId?: string;
+      /** Subset of combinations to send tests for. Default: all pending. */
+      combinationIds?: string[];
+      /** Override AI's suggested_test_difficulty for this send. */
+      difficulty?: "beginner" | "intermediate" | "advanced";
+      /** Staff who triggered (for audit + outbound tracking). */
+      staffId?: string;
+    };
+    const { applicationId } = body;
     if (!applicationId) {
       return jsonResponse(
         { success: false, error: "applicationId is required" },
@@ -107,15 +116,23 @@ serve(async (req: Request) => {
     }
 
     const app = application as unknown as ApplicationRow;
+    // Staff override wins; fall back to AI's suggestion; then intermediate.
     const suggestedDifficulty =
-      app.ai_prescreening_result?.suggested_test_difficulty ?? "intermediate";
+      body.difficulty ??
+      app.ai_prescreening_result?.suggested_test_difficulty ??
+      "intermediate";
 
-    // Fetch pending combinations for this application
-    const { data: combinations, error: combError } = await supabase
+    // Fetch pending combinations for this application (optionally filtered to
+    // the subset staff explicitly selected).
+    let comboQ = supabase
       .from("cvp_test_combinations")
       .select("id, application_id, source_language_id, target_language_id, domain, service_type, status")
       .eq("application_id", applicationId)
       .eq("status", "pending");
+    if (body.combinationIds && body.combinationIds.length > 0) {
+      comboQ = comboQ.in("id", body.combinationIds);
+    }
+    const { data: combinations, error: combError } = await comboQ;
 
     if (combError) {
       console.error("Error fetching combinations:", combError);
@@ -289,6 +306,11 @@ serve(async (req: Request) => {
         text: tpl.text,
         respectDoNotContactFor: app.email,
         tags: ["v3-test-invitation", applicationId],
+        trackContext: {
+          applicationId,
+          templateTag: "v3-test-invitation",
+          staffUserId: body.staffId,
+        },
       });
     }
 
