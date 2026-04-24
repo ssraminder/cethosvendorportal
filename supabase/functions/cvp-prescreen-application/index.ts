@@ -424,6 +424,143 @@ function parseJsonResponse(raw: string): Record<string, unknown> {
   return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
 }
 
+// ---------- Per-applicant staff context (Phase A: Reassess) ----------
+//
+// When the caller sets includeStaffContext=true, fold everything staff has
+// already said about THIS specific applicant into the system prompt as a
+// REFINEMENT guide. Distinct from global staff_guidance (which generalises
+// across all apps).
+
+interface PerAppContextInputs {
+  supabase: SupabaseClient;
+  applicationId: string;
+}
+
+interface PerAppContextResult {
+  contextText: string;
+  feedbackCount: number;
+  decisionCount: number;
+  inboundCount: number;
+}
+
+async function buildPerApplicantContext(
+  input: PerAppContextInputs,
+): Promise<PerAppContextResult> {
+  const [fb, dec, inb] = await Promise.all([
+    input.supabase
+      .from("cvp_prescreen_flag_feedback")
+      .select("flag_kind, flag_text, verdict, staff_notes")
+      .eq("application_id", input.applicationId)
+      .order("created_at", { ascending: true }),
+    input.supabase
+      .from("cvp_application_decisions")
+      .select("action, staff_notes, ai_output, created_at")
+      .eq("application_id", input.applicationId)
+      .order("created_at", { ascending: true }),
+    input.supabase
+      .from("cvp_inbound_emails")
+      .select(
+        "from_email, subject, stripped_text, body_plain, classified_intent, received_at",
+      )
+      .eq("matched_application_id", input.applicationId)
+      .order("received_at", { ascending: true })
+      .limit(20),
+  ]);
+
+  const feedback = fb.data ?? [];
+  const decisions = dec.data ?? [];
+  const inbound = inb.data ?? [];
+
+  if (feedback.length === 0 && decisions.length === 0 && inbound.length === 0) {
+    return {
+      contextText: "",
+      feedbackCount: 0,
+      decisionCount: 0,
+      inboundCount: 0,
+    };
+  }
+
+  const lines: string[] = [];
+  lines.push("=====================================================================");
+  lines.push("PER-APPLICANT STAFF CONTEXT (refine your prior assessment)");
+  lines.push("=====================================================================");
+  lines.push("");
+  lines.push(
+    "Staff has already reviewed the prior AI assessment for THIS specific",
+  );
+  lines.push("applicant. Treat this feedback as a targeted REFINEMENT, not general");
+  lines.push("policy. Incorporate it directly into your updated scoring:");
+  lines.push("");
+  lines.push(
+    "- Flags staff marked INVALID: DO NOT include in red_flags on the re-run.",
+  );
+  lines.push(
+    "- Green flags (assets) staff marked INVALID: MOVE to red_flags if staff's",
+  );
+  lines.push("  note indicates the signal is actually a concern.");
+  lines.push(
+    "- Flags marked CONTEXT_DEPENDENT: use judgement + staff's note; keep only",
+  );
+  lines.push("  if the evidence still applies in this applicant's specific context.");
+  lines.push(
+    "- Flags marked LOW_WEIGHT: keep but soften wording; don't drive rejection.",
+  );
+  lines.push("- Flags marked VALID: keep as-is (staff confirmed).");
+  lines.push(
+    "- Staff notes are internal reasoning — fold the spirit into your notes,",
+  );
+  lines.push("  but never quote raw internal language verbatim.");
+  lines.push("");
+
+  if (feedback.length > 0) {
+    lines.push(`FLAG VERDICTS (${feedback.length}):`);
+    for (const f of feedback) {
+      const kind = f.flag_kind === "red_flag" ? "[RED]" : "[ASSET]";
+      const note = f.staff_notes ? ` — Staff note: "${f.staff_notes}"` : "";
+      lines.push(
+        `  ${kind} (${f.verdict}): "${f.flag_text}"${note}`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (decisions.length > 0) {
+    lines.push(`DECISIONS TAKEN (${decisions.length}):`);
+    for (const d of decisions) {
+      const note = d.staff_notes ? ` — Staff notes: "${d.staff_notes}"` : "";
+      const ai = d.ai_output ? ` — AI sent: "${String(d.ai_output).slice(0, 200)}…"` : "";
+      lines.push(`  [${d.action}] at ${d.created_at}${note}${ai}`);
+    }
+    lines.push("");
+  }
+
+  if (inbound.length > 0) {
+    lines.push(`APPLICANT REPLIES RECEIVED (${inbound.length}):`);
+    for (const i of inbound) {
+      const body = (i.stripped_text || i.body_plain || "").slice(0, 500);
+      lines.push(
+        `  From ${i.from_email} on ${i.received_at} (${i.classified_intent ?? "other"}):`,
+      );
+      lines.push(`    Subject: ${i.subject ?? ""}`);
+      lines.push(`    Body: ${body.replace(/\s+/g, " ")}`);
+    }
+    lines.push("");
+  }
+
+  lines.push(
+    "When you re-run: produce a NEW overall_score that reflects the refined",
+  );
+  lines.push("view. Explicitly revise red_flags and assets per the verdicts above.");
+  lines.push("");
+
+  return {
+    contextText: lines.join("\n"),
+    feedbackCount: feedback.length,
+    decisionCount: decisions.length,
+    inboundCount: inbound.length,
+  };
+}
+
 // Retry-once helper
 async function callClaudeWithRetry(
   systemPrompt: string,
@@ -458,7 +595,12 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { applicationId } = await req.json();
+    const body = (await req.json()) as {
+      applicationId?: string;
+      includeStaffContext?: boolean;  // Phase A — reassess with this app's feedback
+    };
+    const { applicationId } = body;
+    const includeStaffContext = body.includeStaffContext === true;
     if (!applicationId) {
       return jsonResponse({ success: false, error: "applicationId is required" }, 400);
     }
@@ -497,8 +639,22 @@ serve(async (req: Request) => {
     // red flag as `invalid` ≥2x with ≥70% invalid rate; tells Claude not to
     // repeat them. Gracefully empty if migration 015 isn't applied yet.
     const guidance = await buildPrescreenGuidance(supabase);
-    const promptVersion =
-      guidance.patternCount > 0 ? PROMPT_VERSION_GUIDED : PROMPT_VERSION_BASE;
+
+    // ---- Per-applicant staff context (Phase A: only when reassessing) ----
+    const perAppContext = includeStaffContext
+      ? await buildPerApplicantContext({ supabase, applicationId })
+      : {
+          contextText: "",
+          feedbackCount: 0,
+          decisionCount: 0,
+          inboundCount: 0,
+        };
+
+    const promptVersion = includeStaffContext
+      ? "v4-reassessed-with-staff-context"
+      : guidance.patternCount > 0
+      ? PROMPT_VERSION_GUIDED
+      : PROMPT_VERSION_BASE;
     if (guidance.error) {
       console.warn(
         `Prescreen guidance fetch errored (continuing without):`,
@@ -550,9 +706,13 @@ Language pairs and domains: ${pairsDescription}
 Rate expectation (CAD/page): ${app.rate_expectation ?? "Not specified"}
 Additional notes: ${app.notes ?? "None"}`;
 
-        const translatorSystemPrompt = guidance.guidanceText
-          ? `${guidance.guidanceText}\n\n---\n\n${TRANSLATOR_SYSTEM_PROMPT}`
-          : TRANSLATOR_SYSTEM_PROMPT;
+        const translatorSystemPrompt = [
+          perAppContext.contextText,
+          guidance.guidanceText,
+          TRANSLATOR_SYSTEM_PROMPT,
+        ]
+          .filter((s) => s && s.length > 0)
+          .join("\n\n---\n\n");
 
         aiResult = await callClaudeWithRetry(
           translatorSystemPrompt,
@@ -605,9 +765,13 @@ ISPOR familiarity: ${app.cog_ispor_familiarity ?? "Not specified"}
 FDA COA familiarity: ${app.cog_fda_familiarity ?? "Not specified"}
 Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
 
-        const cogSystemPrompt = guidance.guidanceText
-          ? `${guidance.guidanceText}\n\n---\n\n${COG_DEBRIEF_SYSTEM_PROMPT}`
-          : COG_DEBRIEF_SYSTEM_PROMPT;
+        const cogSystemPrompt = [
+          perAppContext.contextText,
+          guidance.guidanceText,
+          COG_DEBRIEF_SYSTEM_PROMPT,
+        ]
+          .filter((s) => s && s.length > 0)
+          .join("\n\n---\n\n");
 
         aiResult = await callClaudeWithRetry(
           cogSystemPrompt,
@@ -643,6 +807,14 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
     aiResult.staff_guidance_total_verdicts = guidance.totalFeedbackRows;
     aiResult.safe_mode_active = safeMode.active;
     aiResult.safe_mode_reason = safeMode.reason;
+    aiResult.reassessed_with_staff_context = includeStaffContext;
+    if (includeStaffContext) {
+      aiResult.per_app_context = {
+        flag_feedback_count: perAppContext.feedbackCount,
+        decision_count: perAppContext.decisionCount,
+        inbound_count: perAppContext.inboundCount,
+      };
+    }
 
     const updateData: Record<string, unknown> = {
       status: newStatus,
