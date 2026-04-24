@@ -22,6 +22,7 @@ import {
 } from "../_shared/email-templates.ts";
 import { buildPrescreenGuidance } from "../_shared/prescreen-guidance.ts";
 import { getSafeModeStatus } from "../_shared/safe-mode.ts";
+import { MODEL_BASELINE, MODEL_QUALITY } from "../_shared/ai-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +30,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const MODEL = "claude-sonnet-4-5";
+// Model selected dynamically per request: reassessment uses the Opus-tier
+// MODEL_QUALITY; routine prescreens use the Sonnet-tier MODEL_BASELINE.
 // v3-assets-aware: split positive/negative signals into assets[] vs red_flags[];
 // explicit never-flag list (Canadian experience, lack of certs, country of
 // residence, early-career, volunteer work, side-work in related fields).
@@ -366,6 +368,7 @@ async function callClaude(
   userMessage: string,
   cv: CvFetchResult,
   maxTokens: number,
+  model: string,
 ): Promise<string> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
@@ -393,7 +396,7 @@ async function callClaude(
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: MODEL,
+      model,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: "user", content }],
@@ -567,14 +570,15 @@ async function callClaudeWithRetry(
   userMessage: string,
   cv: CvFetchResult,
   maxTokens: number,
+  model: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const raw = await callClaude(systemPrompt, userMessage, cv, maxTokens);
+    const raw = await callClaude(systemPrompt, userMessage, cv, maxTokens, model);
     return parseJsonResponse(raw);
   } catch (firstErr) {
     console.error("First Claude call failed, retrying once:", firstErr);
     await new Promise((r) => setTimeout(r, 1500));
-    const raw = await callClaude(systemPrompt, userMessage, cv, maxTokens);
+    const raw = await callClaude(systemPrompt, userMessage, cv, maxTokens, model);
     return parseJsonResponse(raw);
   }
 }
@@ -655,6 +659,10 @@ serve(async (req: Request) => {
       : guidance.patternCount > 0
       ? PROMPT_VERSION_GUIDED
       : PROMPT_VERSION_BASE;
+
+    // Reassessment uses the Opus-tier model for highest accuracy on
+    // decision-quality work. Routine prescreens stay on the Sonnet tier.
+    const modelUsed = includeStaffContext ? MODEL_QUALITY : MODEL_BASELINE;
     if (guidance.error) {
       console.warn(
         `Prescreen guidance fetch errored (continuing without):`,
@@ -719,6 +727,7 @@ Additional notes: ${app.notes ?? "None"}`;
           userMessage,
           cv,
           4000,
+          modelUsed,
         );
 
         const result = aiResult as unknown as PrescreenResult;
@@ -778,6 +787,7 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
           userMessage,
           cv,
           4000,
+          modelUsed,
         );
 
         const result = aiResult as unknown as CogPrescreenResult;
@@ -801,7 +811,7 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
     // ---- Stamp observability fields onto every result ----
     aiResult.cv_read = cv.read;
     aiResult.cv_read_error = cv.error;
-    aiResult.model_used = MODEL;
+    aiResult.model_used = modelUsed;
     aiResult.prompt_version = promptVersion;
     aiResult.staff_guidance_count = guidance.patternCount;
     aiResult.staff_guidance_total_verdicts = guidance.totalFeedbackRows;
@@ -904,7 +914,7 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
         cv_read: cv.read,
         cv_read_error: cv.error,
         prompt_version: promptVersion,
-        model_used: MODEL,
+        model_used: modelUsed,
         staff_guidance_count: guidance.patternCount,
         staff_guidance_total_verdicts: guidance.totalFeedbackRows,
       },

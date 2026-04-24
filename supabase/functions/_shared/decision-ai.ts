@@ -8,8 +8,12 @@
  */
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { MODEL_QUALITY } from "./ai-models.ts";
 
-const ANTHROPIC_MODEL = "claude-sonnet-4-5";
+// Decision-AI rewrites are high-stakes (reject reasons, waitlist copy, info
+// requests all go to applicants, and reference-email drafts / response
+// analysis sit at the same quality bar). Use the Opus-tier model.
+const ANTHROPIC_MODEL = MODEL_QUALITY;
 
 export type DecisionAction =
   | "approved"
