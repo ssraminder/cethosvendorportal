@@ -77,9 +77,12 @@ serve(async (req: Request) => {
     });
   }
 
+  // Include `status` so we can distinguish combos that passed a test
+  // (pending/assessed/approved) from certified skip-review combos. The
+  // distinction is written to cvp_translator_domains.approval_source.
   const comboQuery = supabase
     .from("cvp_test_combinations")
-    .select("id, source_language_id, target_language_id, domain, service_type, approved_rate")
+    .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id")
     .eq("application_id", body.applicationId);
 
   const { data: combos, error: comboErr } = body.combinationIds && body.combinationIds.length > 0
@@ -88,6 +91,56 @@ serve(async (req: Request) => {
   if (comboErr) return json({ success: false, error: "combination_lookup_failed", detail: comboErr.message }, 500);
 
   const approveIds = (combos ?? []).map((c) => c.id);
+
+  // ---- Resolve language names once for the V11 email body (and future
+  // logging). We fetch all distinct language IDs referenced by this app's
+  // approved combos; the map is reused for the cvp_translator_domains
+  // insert and the approvedCombinationsListHtml below.
+  const langIds = Array.from(
+    new Set(
+      (combos ?? []).flatMap((c) => [c.source_language_id, c.target_language_id]),
+    ),
+  );
+  const langMap = new Map<string, string>();
+  if (langIds.length > 0) {
+    const { data: langs } = await supabase
+      .from("languages")
+      .select("id, name")
+      .in("id", langIds);
+    for (const l of (langs ?? []) as { id: string; name: string }[]) {
+      langMap.set(l.id, l.name);
+    }
+  }
+  const pairLabel = (srcId: string, tgtId: string) =>
+    `${langMap.get(srcId) ?? "?"} → ${langMap.get(tgtId) ?? "?"}`;
+
+  // Human-readable domain labels for the applicant-facing welcome email.
+  // Kept minimal — staff see the raw keys in admin; applicants see these.
+  const DOMAIN_LABELS: Record<string, string> = {
+    legal: "Legal",
+    certified_official: "Certified / Official Documents",
+    immigration: "Immigration",
+    medical: "Medical",
+    life_sciences: "Life Sciences",
+    pharmaceutical: "Pharmaceutical",
+    financial: "Financial",
+    insurance: "Insurance",
+    technical: "Technical",
+    it_software: "IT & Software",
+    automotive_engineering: "Automotive & Engineering",
+    energy: "Energy",
+    marketing_advertising: "Marketing & Advertising",
+    literary_publishing: "Literary & Publishing",
+    academic_scientific: "Academic & Scientific",
+    government_public: "Government & Public Sector",
+    business_corporate: "Business & Corporate",
+    gaming_entertainment: "Gaming & Entertainment",
+    media_journalism: "Media & Journalism",
+    tourism_hospitality: "Tourism & Hospitality",
+    general: "General",
+    other: "Other",
+  };
+  const domainLabel = (d: string) => DOMAIN_LABELS[d] ?? d;
 
   // ---- Preview mode: render V11 without any DB mutations or email send ----
   if (body.dryRun === true) {
@@ -110,7 +163,7 @@ serve(async (req: Request) => {
     const vendorPortalUrlPreview = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
     const approvedCombinationsListHtmlPreview = approveIds.length > 0
       ? `<ul>${(combos ?? [])
-          .map((c) => `<li>${c.service_type} — ${c.domain}</li>`)
+          .map((c) => `<li>${domainLabel(c.domain)} — ${pairLabel(c.source_language_id, c.target_language_id)}</li>`)
           .join("")}</ul>`
       : `<p><em>No combinations yet — staff has not approved any.</em></p>`;
     const tplPreview = buildV11ApprovedWelcome({
@@ -317,8 +370,43 @@ serve(async (req: Request) => {
   const vendorPortalUrl = Deno.env.get("VENDOR_PORTAL_URL") ?? "https://vendor.cethos.com";
   const passwordSetupLink = `${vendorPortalUrl}/setup-password?token=${setupToken}`;
   const approvedCombinationsListHtml = `<ul>${approvedCombos
-    .map((c) => `<li>${c.service_type} — ${c.domain}</li>`)
+    .map((c) => `<li>${domainLabel(c.domain)} — ${pairLabel(c.source_language_id, c.target_language_id)}</li>`)
     .join("")}</ul>`;
+
+  // ---- Write cvp_translator_domains rows (T1) ----
+  // One row per approved (pair × domain). This is the new durable source of
+  // truth for "is vendor X approved for domain Y on pair Z?". The legacy
+  // jsonb snapshot on cvp_translators.approved_combinations stays populated
+  // for now (vendor-get-profile reads it).
+  //
+  // Approval source: combos that were in skip_manual_review before this
+  // call (certified_official flow) get 'staff_manual'; everything else is
+  // 'application' (first-time approval via the recruitment pipeline).
+  const translatorDomainRows = (combos ?? []).map((c) => ({
+    translator_id: translatorId,
+    source_language_id: c.source_language_id,
+    target_language_id: c.target_language_id,
+    domain: c.domain,
+    status: "approved",
+    approval_source: c.status === "skip_manual_review" ? "staff_manual" : "application",
+    approved_at: now.toISOString(),
+    approved_by: body.staffId ?? null,
+    test_combination_id: c.id,
+    last_submission_id: (c.test_submission_id as string | null) ?? null,
+  }));
+  if (translatorDomainRows.length > 0) {
+    // Upsert so re-approval (edge case: staff approves again after revoke)
+    // lands cleanly on the UNIQUE (translator_id, src, tgt, domain).
+    const { error: tdErr } = await supabase
+      .from("cvp_translator_domains")
+      .upsert(translatorDomainRows, {
+        onConflict: "translator_id,source_language_id,target_language_id,domain",
+      });
+    if (tdErr) {
+      // Non-fatal: jsonb snapshot + email still go out. Log for ops.
+      console.error("cvp_translator_domains upsert failed:", tdErr.message);
+    }
+  }
 
   const tpl = buildV11ApprovedWelcome({
     fullName: app.full_name,

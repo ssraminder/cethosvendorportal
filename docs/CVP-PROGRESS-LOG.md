@@ -14,6 +14,30 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — April 24, 2026 (T1: approval writes to cvp_translator_domains + VendorDomainsTab)
+
+T1 of the test-per-domain rework. Picks up where T0 left off.
+
+### Backend
+- `cvp-approve-application`:
+  - Combo select now includes `status` + `test_submission_id` so approval can distinguish skip_manual_review (certified) combos from tested combos.
+  - V11 email's approved-combinations list rewritten: was `${service_type} — ${domain}` (service_type is now always NULL, printed a leading em-dash); now `${domainLabel} — ${src} → ${tgt}` with 22-entry DOMAIN_LABELS map + live language-name resolution.
+  - **New write**: upserts one `cvp_translator_domains` row per approved combination after vendor + translator creation. `approval_source = 'staff_manual'` for skip_manual_review combos (certified), `'application'` for everything else. `last_submission_id` + `test_combination_id` wired for audit. Upsert on the 4-col UNIQUE handles the re-approval / revoke edge case cleanly. Non-fatal if the insert fails — jsonb snapshot + V11 email still go out.
+
+### Admin UI (portal)
+- **NEW** `VendorDomainsTab.tsx` — read-only matrix grouped by lang pair. Shows domain, status (approved / pending / in_review / rejected / revoked / skip_manual_review with icons + colour), approval_source (via application / via vendor request / staff manual), and approved/rejected timestamps. Cooldowns surface when a rejected row has `cooldown_until > now()`.
+- `AdminVendorDetail.tsx` — wired `Domains` tab between `Languages` and `Rates` in the tab bar.
+- `SendTestsControls` in `RecruitmentDetail.tsx` — new informational card (sky/blue) in both compose + preview steps listing certified combinations, explaining they'll auto-approve when staff runs the main Approve action (no separate button; avoids the partial-approval semantics that would require reworking cvp-approve-application). Also relaxed the early-return guard so the control renders when only certified combos exist (was hidden otherwise).
+
+### Deferred to T2+
+- Admin "Add manual approval" + "Revoke" actions on VendorDomainsTab (currently read-only).
+- Medical / General / Legal / Immigration library seeds via `cvp-seed-library-refs`.
+- Reverse-direction pairs (FR→EN, FA→EN) — needs seed function extension for source_text generation.
+- T3: Vendor portal Request Test flow.
+- Eventually: migrate `vendor-get-profile` + drop legacy `cvp_translators.approved_combinations` jsonb.
+
+---
+
 ## Session — April 24, 2026 (T0: test-per-domain rework + Life Sciences seeds)
 
 Rework of how translator tests are assigned. Shifts the unit of work from (lang_pair × service_type) to (lang_pair × domain). Fixes a latent bug where `cvp-submit-application` stamped every combination with `domainsOffered[0]` regardless of the actual domain mix. Adds a mandatory General baseline test for every translator. Certified translation becomes a skip-test flow. Seeds real Life Sciences content with AI-drafted reference translations.
