@@ -142,6 +142,11 @@ serve(async (req: Request) => {
     text: tpl.text,
     respectDoNotContactFor: app.email as string,
     tags: ["v13-waitlisted", body.applicationId],
+    trackContext: {
+      applicationId: body.applicationId,
+      templateTag: "v13-waitlisted",
+      staffUserId: body.staffId,
+    },
   });
 
   await logDecision({

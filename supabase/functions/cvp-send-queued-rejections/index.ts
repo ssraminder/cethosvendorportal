@@ -72,6 +72,10 @@ serve(async (req: Request) => {
       text: tpl.text,
       respectDoNotContactFor: app.email as string,
       tags: ["v12-rejected", app.id as string],
+      trackContext: {
+        applicationId: app.id as string,
+        templateTag: "v12-rejected",
+      },
     });
 
     if (result.sent || result.suppressed) {

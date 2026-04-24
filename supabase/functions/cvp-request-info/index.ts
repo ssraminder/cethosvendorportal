@@ -141,6 +141,11 @@ serve(async (req: Request) => {
     text: tpl.text,
     respectDoNotContactFor: app.email as string,
     tags: ["v17-request-more-info", body.applicationId],
+    trackContext: {
+      applicationId: body.applicationId,
+      templateTag: "v17-request-more-info",
+      staffUserId: body.staffId,
+    },
   });
 
   await logDecision({

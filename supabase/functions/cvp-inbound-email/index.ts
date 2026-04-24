@@ -292,9 +292,44 @@ serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  // Match applicant
-  let matchedApplicationId: string | null = null;
-  if (fields.fromEmail) {
+  // ---- Thread detection: does In-Reply-To match a known outbound? ----
+  let matchedOutboundId: string | null = null;
+  let matchedOutboundApplicationId: string | null = null;
+  let matchedOutboundTag: string | null = null;
+  let matchedOutboundSubject: string | null = null;
+  let matchedOutboundBody: string | null = null;
+  const normalizedInReplyTo = (fields.inReplyTo ?? "")
+    .replace(/^<|>$/g, "")
+    .trim();
+  // Fallback: References header often contains the thread root; try the last id in it.
+  let threadLookupId = normalizedInReplyTo;
+  if (!threadLookupId && fields.referencesHeader) {
+    const refIds = (fields.referencesHeader.match(/<([^>]+)>/g) ?? [])
+      .map((s) => s.replace(/^<|>$/g, ""));
+    threadLookupId = refIds[refIds.length - 1] ?? "";
+  }
+  if (threadLookupId) {
+    const { data: outboundRow } = await supabase
+      .from("cvp_outbound_messages")
+      .select("id, application_id, template_tag, subject, body_text")
+      .eq("message_id", threadLookupId)
+      .maybeSingle();
+    if (outboundRow) {
+      matchedOutboundId = (outboundRow as { id: string }).id;
+      matchedOutboundApplicationId =
+        (outboundRow as { application_id: string | null }).application_id;
+      matchedOutboundTag =
+        (outboundRow as { template_tag: string | null }).template_tag;
+      matchedOutboundSubject =
+        (outboundRow as { subject: string | null }).subject;
+      matchedOutboundBody =
+        (outboundRow as { body_text: string | null }).body_text;
+    }
+  }
+
+  // Match applicant — prefer threaded match, fallback to email lookup.
+  let matchedApplicationId: string | null = matchedOutboundApplicationId;
+  if (!matchedApplicationId && fields.fromEmail) {
     const { data } = await supabase
       .from("cvp_applications")
       .select("id")
@@ -311,31 +346,85 @@ serve(async (req: Request) => {
 
   const supportEmail = Deno.env.get("CVP_SUPPORT_EMAIL") ?? "vm@cethos.com";
 
-  const classification = await classifyAndDraft(fields, regexHit, supportEmail);
+  const isThreadedReply = Boolean(matchedOutboundId);
 
-  let actionTaken: "do_not_contact_set" | "auto_reply_sent" | "auto_reply_failed" | "noop" =
-    "noop";
+  // Classification: threaded replies always go through Opus analysis; non-
+  // threaded go through the existing classify-and-draft path (Haiku).
+  let isUnsubscribe = false;
+  let replyAnalysis: Record<string, unknown> | null = null;
+  let classificationSummary = "";
+  let classificationLanguage = "en";
+
+  if (isThreadedReply) {
+    // Analyze the reply with Opus given the original outbound as context.
+    replyAnalysis = await analyzeThreadedReply({
+      inbound: fields,
+      outboundSubject: matchedOutboundSubject ?? "",
+      outboundBody: matchedOutboundBody ?? "",
+      outboundTag: matchedOutboundTag ?? "",
+      regexHit,
+    });
+    if (replyAnalysis) {
+      isUnsubscribe = Boolean(replyAnalysis.is_unsubscribe) || regexHit;
+      classificationSummary = String(replyAnalysis.summary ?? "");
+      classificationLanguage = String(replyAnalysis.language ?? "en");
+    }
+  } else {
+    // Pre-existing non-threaded path
+    const classification = await classifyAndDraft(fields, regexHit, supportEmail);
+    isUnsubscribe = classification.isUnsubscribe;
+    classificationSummary = classification.summary;
+    classificationLanguage = classification.language;
+  }
+
+  let actionTaken:
+    | "do_not_contact_set"
+    | "auto_reply_sent"
+    | "auto_reply_failed"
+    | "noop"
+    | "threaded_received" = "noop";
   let autoReplySentAt: string | null = null;
 
-  // Always auto-reply (unsubscribe confirmation OR not-monitored notice).
-  const sendResult = await sendMailgunOperationalEmail({
-    to: { email: fields.fromEmail, name: fields.fromName || undefined },
-    subject: classification.replySubject,
-    html: classification.replyHtml,
-    tags: [
-      "inbound-autoreply",
-      classification.isUnsubscribe ? "unsubscribe" : "other",
-    ],
-  });
-  if (sendResult.sent) {
-    autoReplySentAt = new Date().toISOString();
-    actionTaken = "auto_reply_sent";
+  // Auto-reply policy:
+  //   - Threaded reply + unsubscribe: send removal confirmation (applicant expects
+  //     acknowledgement).
+  //   - Threaded reply + NOT unsubscribe: silent; staff handles via admin.
+  //   - Non-threaded: existing behaviour — send the "not monitored" auto-reply
+  //     (or unsubscribe confirmation).
+  if (isThreadedReply && !isUnsubscribe) {
+    actionTaken = "threaded_received";
   } else {
-    actionTaken = "auto_reply_failed";
+    const { replySubject, replyHtml } = isThreadedReply
+      ? buildUnsubscribeConfirmationReply(fields, classificationLanguage)
+      : await (async () => {
+          // For non-threaded, reuse classifyAndDraft output (already computed
+          // above as `classification`). Re-derive the subject/html here.
+          const classification = await classifyAndDraft(
+            fields,
+            regexHit,
+            supportEmail,
+          );
+          return {
+            replySubject: classification.replySubject,
+            replyHtml: classification.replyHtml,
+          };
+        })();
+    const sendResult = await sendMailgunOperationalEmail({
+      to: { email: fields.fromEmail, name: fields.fromName || undefined },
+      subject: replySubject,
+      html: replyHtml,
+      tags: ["inbound-autoreply", isUnsubscribe ? "unsubscribe" : "other"],
+    });
+    if (sendResult.sent) {
+      autoReplySentAt = new Date().toISOString();
+      actionTaken = "auto_reply_sent";
+    } else {
+      actionTaken = "auto_reply_failed";
+    }
   }
 
   // Apply do_not_contact after reply is sent (confirmation reaches them first).
-  if (classification.isUnsubscribe && matchedApplicationId) {
+  if (isUnsubscribe && matchedApplicationId) {
     const { error: dncErr } = await supabase
       .from("cvp_applications")
       .update({
@@ -348,12 +437,11 @@ serve(async (req: Request) => {
     else actionTaken = "do_not_contact_set";
   }
 
-  // Also set do_not_contact even if no application match, to prevent later first-email spam
-  // to an already-opted-out address. Use a marker row? Phase 1 keeps it simple — skip.
-
   // Log to cvp_inbound_emails
-  const intent = matchedApplicationId
-    ? classification.isUnsubscribe
+  const intent = isThreadedReply && !isUnsubscribe
+    ? "reply_to_outbound"
+    : matchedApplicationId
+    ? isUnsubscribe
       ? "unsubscribe"
       : "other"
     : "unmatched";
@@ -370,13 +458,16 @@ serve(async (req: Request) => {
     in_reply_to: fields.inReplyTo,
     references_header: fields.referencesHeader,
     matched_application_id: matchedApplicationId,
+    matched_outbound_id: matchedOutboundId,
     classified_intent: intent,
     ai_classification: {
-      language: classification.language,
-      intent: classification.intent,
-      summary: classification.summary,
+      language: classificationLanguage,
+      summary: classificationSummary,
       regex_flagged_unsubscribe: regexHit,
+      is_threaded: isThreadedReply,
+      outbound_tag: matchedOutboundTag,
     },
+    ai_reply_analysis: replyAnalysis,
     action_taken: actionTaken,
     auto_reply_sent_at: autoReplySentAt,
     raw_payload: fields.raw,
@@ -384,11 +475,112 @@ serve(async (req: Request) => {
   if (logErr) console.error("Failed to log inbound email:", logErr.message);
 
   console.log(
-    `cvp-inbound-email: from=${fields.fromEmail} matched=${matchedApplicationId ?? "none"} intent=${intent} action=${actionTaken}`,
+    `cvp-inbound-email: from=${fields.fromEmail} matched=${matchedApplicationId ?? "none"} threaded=${isThreadedReply} intent=${intent} action=${actionTaken}`,
   );
 
   return jsonResponse({
     success: true,
-    data: { intent, action: actionTaken, matched: matchedApplicationId },
+    data: {
+      intent,
+      action: actionTaken,
+      matched: matchedApplicationId,
+      threaded: isThreadedReply,
+      outboundId: matchedOutboundId,
+    },
   });
 });
+
+// ---------- Opus-powered threaded-reply analysis ----------
+
+const THREADED_REPLY_SYSTEM_PROMPT = `You are analyzing an applicant's reply to a recruitment email from CETHOS. Produce a structured JSON analysis that will help staff decide the next action.
+
+Return ONLY valid JSON matching this shape:
+{
+  "is_unsubscribe": boolean,
+  "language": "xx",
+  "sentiment": "positive" | "neutral" | "confused" | "frustrated" | "negative",
+  "addresses_question": "yes" | "partial" | "no" | "na",
+  "summary": "one-sentence summary of what they said",
+  "answers_provided": ["..."],
+  "open_questions": ["..."],
+  "recommended_next_action": "approve" | "reject" | "request_more_info" | "acknowledge" | "send_test" | "escalate" | "none",
+  "staff_attention_needed": boolean,
+  "notes_for_staff": "one or two sentences of context for the reviewer"
+}
+
+Use "addresses_question" = "na" when the outbound wasn't a question. Use "is_unsubscribe": true ONLY if the applicant explicitly asks to be removed; negative sentiment alone is not enough. If the reply is confused or asks clarifying questions of us, set staff_attention_needed = true and recommended_next_action = "request_more_info" or "acknowledge".`;
+
+async function analyzeThreadedReply(args: {
+  inbound: InboundFields;
+  outboundSubject: string;
+  outboundBody: string;
+  outboundTag: string;
+  regexHit: boolean;
+}): Promise<Record<string, unknown> | null> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return null;
+
+  const inboundBody = (args.inbound.strippedText || args.inbound.bodyPlain || "").slice(0, 5000);
+  const outboundSnippet = (args.outboundBody || "").slice(0, 2000);
+
+  const userMessage = `Outbound email CETHOS sent earlier:
+Subject: ${args.outboundSubject}
+Template: ${args.outboundTag}
+Body:
+${outboundSnippet}
+
+---
+Applicant's reply:
+Subject: ${args.inbound.subject}
+From: ${args.inbound.fromName} <${args.inbound.fromEmail}>
+Body:
+${inboundBody}
+---
+Regex pre-filter flagged unsubscribe: ${args.regexHit ? "YES" : "NO"}`;
+
+  const model = Deno.env.get("CVP_MODEL_QUALITY") ?? "claude-opus-4-7";
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 800,
+        system: THREADED_REPLY_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    });
+    if (!resp.ok) {
+      console.error(`Opus analysis failed: ${resp.status} ${await resp.text()}`);
+      return null;
+    }
+    const json = (await resp.json()) as { content: { type: string; text?: string }[] };
+    const text = (json.content ?? []).find((c) => c.type === "text")?.text ?? "";
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+    parsed.model_used = model;
+    return parsed;
+  } catch (err) {
+    console.error("Opus analysis exception:", err);
+    return null;
+  }
+}
+
+// ---------- Threaded unsubscribe confirmation builder ----------
+
+function buildUnsubscribeConfirmationReply(
+  fields: InboundFields,
+  _language: string,
+): { replySubject: string; replyHtml: string } {
+  // Keep it short + English for now; could localise later.
+  return {
+    replySubject: `Re: ${fields.subject || "Your request"}`,
+    replyHtml: `<p>Thank you — you've been removed from our recruitment list. You will not receive further emails from CETHOS recruitment. If this was a mistake, reply to this email and we'll restore you.</p>`,
+  };
+}
