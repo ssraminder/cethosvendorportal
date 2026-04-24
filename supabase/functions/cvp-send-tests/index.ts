@@ -91,6 +91,21 @@ serve(async (req: Request) => {
       difficulty?: "beginner" | "intermediate" | "advanced";
       /** Staff who triggered (for audit + outbound tracking). */
       staffId?: string;
+      /**
+       * When true, run the selection logic + return the chosen test per
+       * combination WITHOUT inserting submissions, flipping combination
+       * status, or sending the V3 invitation. Used by the admin "Preview
+       * tests" button so staff can review the exact test text before
+       * committing.
+       */
+      dryRun?: boolean;
+      /**
+       * Optional per-combination test overrides: { [combinationId]: testId }.
+       * When a combination appears here, we use that test instead of the
+       * auto-selection. Test must still match the combination's lang pair
+       * + domain + service_type + be is_active=true (validated server-side).
+       */
+      overrides?: Record<string, string>;
     };
     const { applicationId } = body;
     if (!applicationId) {
@@ -150,12 +165,26 @@ serve(async (req: Request) => {
       );
     }
 
-    const assigned: { combinationId: string; testId: string; token: string }[] = [];
+    // Phase 1 — selection only. This runs for BOTH dryRun (preview) and real
+    // send so the admin sees exactly the same tests they're about to send.
+    type Pick = {
+      combo: CombinationRow;
+      test: TestLibraryRow;
+      /** "override" when staff explicitly chose this test in the UI,
+       *  "difficulty-match" when we found one at the preferred difficulty,
+       *  "fallback" when we used any available match. */
+      selectionReason: "override" | "difficulty-match" | "fallback";
+      /** Alternative tests for the combo, in the order they'd be considered
+       *  after this pick. Useful for the preview UI's "swap" dropdown. */
+      alternatives: TestLibraryRow[];
+    };
+    const picks: Pick[] = [];
     const noTestAvailable: string[] = [];
 
     for (const combo of combs) {
-      // Find best matching test from library
-      // Filter by language pair, domain, service type, difficulty; prefer least recently used
+      // Find every eligible test in the library for this combination —
+      // match lang pair + domain + service_type, is_active, ordered by
+      // least-recently-used so rotation is natural.
       const { data: tests } = await supabase
         .from("cvp_test_library")
         .select("id, title, source_language_id, target_language_id, domain, service_type, difficulty, source_text, source_file_path, instructions, times_used, last_used_at")
@@ -169,37 +198,131 @@ serve(async (req: Request) => {
 
       const availableTests = (tests ?? []) as unknown as TestLibraryRow[];
 
-      // Prefer matching difficulty, fall back to any available
-      let selectedTest = availableTests.find(
-        (t) => t.difficulty === suggestedDifficulty
-      );
-      if (!selectedTest && availableTests.length > 0) {
-        selectedTest = availableTests[0];
+      const overrideId = body.overrides?.[combo.id];
+      let selectedTest: TestLibraryRow | undefined;
+      let selectionReason: Pick["selectionReason"] = "fallback";
+
+      if (overrideId) {
+        // Explicit staff pick — must be in the eligible list (guards against
+        // stale UI state or mismatched lang pairs).
+        const match = availableTests.find((t) => t.id === overrideId);
+        if (match) {
+          selectedTest = match;
+          selectionReason = "override";
+        }
+      }
+      if (!selectedTest) {
+        const byDifficulty = availableTests.find(
+          (t) => t.difficulty === suggestedDifficulty,
+        );
+        if (byDifficulty) {
+          selectedTest = byDifficulty;
+          selectionReason = "difficulty-match";
+        } else if (availableTests.length > 0) {
+          selectedTest = availableTests[0];
+          selectionReason = "fallback";
+        }
       }
 
       if (!selectedTest) {
-        // No test available — flag for staff
         noTestAvailable.push(combo.id);
-        await supabase
-          .from("cvp_test_combinations")
-          .update({
-            status: "no_test_available",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", combo.id);
         continue;
       }
 
-      // Create test submission with token (48hr expiry)
+      picks.push({
+        combo,
+        test: selectedTest,
+        selectionReason,
+        alternatives: availableTests.filter((t) => t.id !== selectedTest!.id),
+      });
+    }
+
+    // ---- Preview (dryRun) — no writes, no email ----
+    if (body.dryRun === true) {
+      // Fetch language names once so the preview UI doesn't have to
+      // re-resolve them client-side.
+      const langIds = Array.from(
+        new Set(
+          combs.flatMap((c) => [c.source_language_id, c.target_language_id]),
+        ),
+      );
+      const { data: langs } = await supabase
+        .from("languages")
+        .select("id, name")
+        .in("id", langIds);
+      const langMap = new Map<string, string>(
+        (langs ?? []).map((l) => [String(l.id), String(l.name)]),
+      );
+
+      return jsonResponse({
+        success: true,
+        data: {
+          dryRun: true,
+          applicationId,
+          suggestedDifficulty,
+          picks: picks.map((p) => ({
+            combinationId: p.combo.id,
+            sourceLanguage: langMap.get(p.combo.source_language_id) ?? "Unknown",
+            targetLanguage: langMap.get(p.combo.target_language_id) ?? "Unknown",
+            domain: p.combo.domain,
+            serviceType: p.combo.service_type,
+            test: {
+              id: p.test.id,
+              title: p.test.title,
+              difficulty: p.test.difficulty,
+              instructions: p.test.instructions,
+              sourceText: p.test.source_text,
+              sourceFilePath: p.test.source_file_path,
+              timesUsed: p.test.times_used,
+              lastUsedAt: p.test.last_used_at,
+            },
+            selectionReason: p.selectionReason,
+            alternatives: p.alternatives.map((t) => ({
+              id: t.id,
+              title: t.title,
+              difficulty: t.difficulty,
+              timesUsed: t.times_used,
+              lastUsedAt: t.last_used_at,
+            })),
+          })),
+          noTestAvailable: noTestAvailable.map((id) => {
+            const c = combs.find((cc) => cc.id === id)!;
+            return {
+              combinationId: id,
+              sourceLanguage: langMap.get(c.source_language_id) ?? "Unknown",
+              targetLanguage: langMap.get(c.target_language_id) ?? "Unknown",
+              domain: c.domain,
+              serviceType: c.service_type,
+            };
+          }),
+        },
+      });
+    }
+
+    // ---- Real send — write submissions, mark combos, update stats ----
+    const assigned: { combinationId: string; testId: string; token: string }[] = [];
+
+    // Flag any combinations with no available test so staff sees them in the UI.
+    for (const noTestComboId of noTestAvailable) {
+      await supabase
+        .from("cvp_test_combinations")
+        .update({
+          status: "no_test_available",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", noTestComboId);
+    }
+
+    for (const p of picks) {
       const tokenExpiresAt = new Date(
-        Date.now() + 48 * 60 * 60 * 1000
+        Date.now() + 48 * 60 * 60 * 1000,
       ).toISOString();
 
       const { data: submission, error: subError } = await supabase
         .from("cvp_test_submissions")
         .insert({
-          combination_id: combo.id,
-          test_id: selectedTest.id,
+          combination_id: p.combo.id,
+          test_id: p.test.id,
           application_id: applicationId,
           token_expires_at: tokenExpiresAt,
           status: "sent",
@@ -209,36 +332,34 @@ serve(async (req: Request) => {
 
       if (subError || !submission) {
         console.error(
-          `Error creating test submission for combination ${combo.id}:`,
-          subError
+          `Error creating test submission for combination ${p.combo.id}:`,
+          subError,
         );
         continue;
       }
 
-      // Update the combination with test assignment
       await supabase
         .from("cvp_test_combinations")
         .update({
-          test_id: selectedTest.id,
+          test_id: p.test.id,
           test_submission_id: submission.id,
           status: "test_sent",
           updated_at: new Date().toISOString(),
         })
-        .eq("id", combo.id);
+        .eq("id", p.combo.id);
 
-      // Update test library usage stats
       await supabase
         .from("cvp_test_library")
         .update({
-          times_used: selectedTest.times_used + 1,
+          times_used: p.test.times_used + 1,
           last_used_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", selectedTest.id);
+        .eq("id", p.test.id);
 
       assigned.push({
-        combinationId: combo.id,
-        testId: selectedTest.id,
+        combinationId: p.combo.id,
+        testId: p.test.id,
         token: submission.token,
       });
     }
