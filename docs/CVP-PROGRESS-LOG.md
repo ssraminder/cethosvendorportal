@@ -14,6 +14,39 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — April 24, 2026 (T2: priority domain library seeds)
+
+Part of the test-per-domain rework. T0 shipped Life Sciences (6 rows); T2 adds the next-priority domains so every applicant has library content that matches their picks.
+
+### Seeds added (migration `20260424210000_cvp_priority_domain_seeds.sql`)
+- **24 library rows** — 4 domains × 3 difficulties × 2 forward lang pairs (EN→FR, EN→FA):
+  - **general** — personal letter (beginner), internal HR announcement (intermediate), op-ed on urban transit (advanced)
+  - **medical** — medication instructions (beginner), hospital discharge summary (intermediate), cardiology consultation report (advanced)
+  - **legal** — residential lease clause (beginner), Terms of Service excerpt (intermediate), arbitration motion brief (advanced)
+  - **immigration** — personal statement letter (beginner), affidavit of support (intermediate), RFE response excerpt (advanced)
+- Each source text hand-written (200–450 words), synthetic (no copyright concerns). Domain-weighted MQM rubrics tuned per row.
+- All 24 Opus-drafted references generated via `cvp-seed-library-refs` (fired in parallel, one per row to fit within function timeout). Rows land `is_active=true` with `[AI-DRAFT]` title prefix until staff QA.
+
+### Ops note — migration drift resolved
+- Three phantom remote migration rows (20260424221225 / 22:24:00 / 22:53:55) from an earlier failed push attempt were blocking `supabase db push`. Repaired via `supabase migration repair --status reverted` then re-pushed cleanly. No actual drift in schema.
+
+### Library totals after T2
+| Domain | Rows | Lang Pairs | Difficulties |
+|---|---|---|---|
+| life_sciences | 6 | EN→FR, EN→FA | beg/int/adv |
+| general | 6 | EN→FR, EN→FA | beg/int/adv |
+| medical | 6 | EN→FR, EN→FA | beg/int/adv |
+| legal | 6 | EN→FR, EN→FA | beg/int/adv |
+| immigration | 6 | EN→FR, EN→FA | beg/int/adv |
+
+### Deferred
+- Reverse-direction pairs (FR→EN, FA→EN) — needs `cvp-seed-library-refs` extended to also synthesise source_text.
+- T3: Vendor portal Request Test flow.
+- Staff QA pass on AI-drafted refs — remove `[AI-DRAFT]` prefix once reviewed.
+- Admin VendorDomainsTab write actions (Add manual / Revoke) — deferred from T1.
+
+---
+
 ## Session — April 24, 2026 (T1: approval writes to cvp_translator_domains + VendorDomainsTab)
 
 T1 of the test-per-domain rework. Picks up where T0 left off.
