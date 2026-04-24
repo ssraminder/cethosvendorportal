@@ -10,6 +10,7 @@ import { SetPasswordForm } from "./components/profile/SetPasswordForm";
 import { LanguagePairs } from "./components/profile/LanguagePairs";
 import { VendorRates } from "./components/profile/VendorRates";
 import { PaymentInfo } from "./components/profile/PaymentInfo";
+import { RequestTest } from "./components/profile/RequestTest";
 import { JobBoard } from "./components/jobs/JobBoard";
 import { JobDetail } from "./components/jobs/JobDetail";
 import { InvoiceList } from "./components/invoices/InvoiceList";
@@ -30,6 +31,7 @@ function App() {
             <Route path="languages" element={<LanguagePairs />} />
             <Route path="rates" element={<VendorRates />} />
             <Route path="payment" element={<PaymentInfo />} />
+            <Route path="request-test" element={<RequestTest />} />
             <Route path="jobs" element={<JobBoard />} />
             <Route path="jobs/:id" element={<JobDetail />} />
             <Route path="invoices" element={<InvoiceList />} />

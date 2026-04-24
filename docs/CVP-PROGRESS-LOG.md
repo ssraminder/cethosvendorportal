@@ -14,6 +14,46 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — April 24, 2026 (T3 + T4 + admin RLS + Revoke)
+
+Closing out the test-per-domain rework. T3 ships vendor self-service Request Test, T4 fills out the remaining 15 domains via AI, admin VendorDomainsTab gains a Revoke action.
+
+### T3 — Vendor self-serve Request Test
+- **NEW** `cvp-request-test` edge function. Validates the vendor session, enforces 5 guardrails: (G1) translator must already be approved on the same lang pair, (G2) only one pending/in_review request at a time, (G3) cooldown_until on rejected rows blocks retry, (G4) certified_official is staff-only, (G5) library must have an active test for (pair, domain). On success: creates a pending `cvp_test_combinations` row + `cvp_translator_domains` row (status=pending, source=self_request), then internally calls `cvp-send-tests` to fire the V3 invitation.
+- **NEW** `cvp-get-my-domains` edge function. Read-only helper for the Request-Test page — validates vendor session, returns the translator's domain matrix + language records.
+- **NEW** `apps/vendor/src/components/profile/RequestTest.tsx`. Per approved lang pair, renders all testable domains as tiles. Tiles show approved / in-progress / cooldown / rejected state. "Request" button only on actionable cells. "You have a pending test" guard banner if any open request exists.
+- Vendor sidebar gains a "Request test" entry between Payment and Jobs.
+- V22 deferred — the existing V3 test invitation is reused (content is identical: applicant clicks a token link in their email).
+
+### Admin VendorDomainsTab — Revoke action + RLS
+- Migration `20260424220000_cvp_translator_domains_admin_rls.sql` — adds SELECT/INSERT/UPDATE policies for `authenticated` (admin staff) on `cvp_translator_domains`. Service-role-only original policy stays. Without these, the T1 tab's reads were silently returning empty under the anon/auth admin client.
+- VendorDomainsTab now has a "Revoke" button per approved (and skip_manual_review) row. Direct `UPDATE` via supabase-js with the staff's auth token; no edge function needed.
+
+### T4 — AI-generated seeds for the remaining 15 domains
+Plan was to extend `cvp-seed-library-refs` so it can synthesise BOTH the source_text and the reference_translation when the migration only seeds metadata. Done.
+- `cvp-seed-library-refs` extended with a `SOURCE_SYSTEM_PROMPT`. If `source_text IS NULL`, Stage 1 generates it in the source language (with domain + difficulty + title hint), persists immediately, then Stage 2 generates the reference translation. AI-fallback rule preserved per stage.
+- Migration `20260424230000_cvp_remaining_domain_seeds.sql` — 30 rows = 15 domains × 1 difficulty (intermediate) × 2 forward pairs (EN→FR, EN→FA), source_text NULL, instructions + MQM rubrics tuned per domain. Beginner + advanced deferred.
+- All 30 rows generated successfully via Opus (parallel fire, one per row, 150s timeout each). Total: 60 Opus calls.
+
+### Library state after T4
+**20 of 22 domains have ≥1 active library test** (skipped: certified_official no test by design; other not a real domain). Total active rows ≈ 56 (life_sciences 6, general 6, medical 7 incl. existing seed, legal 6, immigration 8 incl. existing seeds, plus 30 from T4 = 60 — minus a few placeholders, ~56 net).
+
+| Domain | Active rows |
+|---|---|
+| general, medical, legal, immigration, life_sciences | 6 each (3 difficulties × 2 pairs from T0/T2) |
+| pharmaceutical, financial, insurance, technical, it_software, automotive_engineering, energy, marketing_advertising, literary_publishing, academic_scientific, government_public, business_corporate, gaming_entertainment, media_journalism, tourism_hospitality | 2 each (intermediate × 2 pairs from T4) |
+
+### Migration history drift fixed twice this session
+Two phantom remote migration entries from failed pushes blocked subsequent pushes; both repaired via `supabase migration repair --status reverted`.
+
+### Deferred
+- Reverse-direction pairs (FR→EN, FA→EN) — `cvp-seed-library-refs` already supports source_text generation, so this is now a one-migration job.
+- Beginner + advanced for the 15 T4 domains.
+- Staff QA on AI-drafted content — remove `[AI-DRAFT]` prefix.
+- Add Manual Approval action on VendorDomainsTab (Revoke ships now; Add deferred).
+
+---
+
 ## Session — April 24, 2026 (T2: priority domain library seeds)
 
 Part of the test-per-domain rework. T0 shipped Life Sciences (6 rows); T2 adds the next-priority domains so every applicant has library content that matches their picks.
