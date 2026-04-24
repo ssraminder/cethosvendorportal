@@ -35,6 +35,12 @@ interface Body {
   staffNotes?: string;
   waitlistPair?: string;
   staffId?: string;
+  /** Preview-only: run AI + render V13, return without sending or updating status. */
+  dryRun?: boolean;
+  /** Staff-edited applicant-facing message (replaces AI output when sending). */
+  editedMessage?: string;
+  /** Staff-edited subject line (replaces template default when sending). */
+  editedSubject?: string;
 }
 
 serve(async (req: Request) => {
@@ -81,7 +87,11 @@ serve(async (req: Request) => {
     userMessage: userPrompt,
     maxTokens: 300,
   });
-  const staffMessage = ai.ok && ai.text ? ai.text : null;
+  const aiMessage = ai.ok && ai.text ? ai.text : null;
+
+  // Staff-edited message overrides the AI output at send-time.
+  const editedMessage = (body.editedMessage ?? "").trim();
+  const staffMessage = editedMessage || aiMessage;
 
   const tpl = buildV13Waitlisted({
     fullName: app.full_name as string,
@@ -89,6 +99,23 @@ serve(async (req: Request) => {
     waitlistPair,
     staffMessage,
   });
+  const subject = (body.editedSubject ?? "").trim() || tpl.subject;
+
+  // Preview: return the rendered email without sending or updating status.
+  if (body.dryRun === true) {
+    return json({
+      success: true,
+      data: {
+        dryRun: true,
+        aiOutput: aiMessage,
+        aiError: ai.ok ? null : ai.error,
+        subject,
+        html: tpl.html,
+        text: tpl.text,
+        waitlistPair,
+      },
+    });
+  }
 
   const now = new Date();
   const { error: updErr } = await supabase
@@ -110,7 +137,7 @@ serve(async (req: Request) => {
 
   const sendResult = await sendMailgunEmail({
     to: { email: app.email as string, name: app.full_name as string },
-    subject: tpl.subject,
+    subject,
     html: tpl.html,
     text: tpl.text,
     respectDoNotContactFor: app.email as string,
@@ -125,7 +152,7 @@ serve(async (req: Request) => {
     aiInputPrompt: userPrompt,
     aiOutput: ai.ok ? ai.text : null,
     aiError: ai.ok ? null : ai.error,
-    messageSentSubject: tpl.subject,
+    messageSentSubject: subject,
     messageSentBody: tpl.html,
     staffUserId: body.staffId ?? null,
   });

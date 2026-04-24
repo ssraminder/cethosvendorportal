@@ -38,6 +38,12 @@ interface Body {
   requestDetails?: string;
   staffId?: string;
   deadlineDays?: number;
+  /** Preview-only: run AI + render V17, return without sending or updating status. */
+  dryRun?: boolean;
+  /** Staff-edited applicant-facing request (replaces AI output when sending). */
+  editedRequest?: string;
+  /** Staff-edited subject line (replaces template default when sending). */
+  editedSubject?: string;
 }
 
 serve(async (req: Request) => {
@@ -88,7 +94,34 @@ serve(async (req: Request) => {
     userMessage: userPrompt,
     maxTokens: 600,
   });
-  const requestDetailsForApplicant = ai.ok && ai.text ? ai.text : staffNotes;
+  const aiRequest = ai.ok && ai.text ? ai.text : staffNotes;
+
+  // Staff-edited request overrides AI output at send-time.
+  const editedRequest = (body.editedRequest ?? "").trim();
+  const requestDetailsForApplicant = editedRequest || aiRequest;
+
+  const tpl = buildV17RequestMoreInfo({
+    fullName: app.full_name as string,
+    applicationNumber: app.application_number as string,
+    requestDetails: requestDetailsForApplicant,
+    infoDeadlineDate: deadlineDate,
+  });
+  const subject = (body.editedSubject ?? "").trim() || tpl.subject;
+
+  if (body.dryRun === true) {
+    return json({
+      success: true,
+      data: {
+        dryRun: true,
+        aiOutput: aiRequest,
+        aiError: ai.ok ? null : ai.error,
+        subject,
+        html: tpl.html,
+        text: tpl.text,
+        deadlineDate,
+      },
+    });
+  }
 
   await supabase
     .from("cvp_applications")
@@ -101,15 +134,9 @@ serve(async (req: Request) => {
     })
     .eq("id", body.applicationId);
 
-  const tpl = buildV17RequestMoreInfo({
-    fullName: app.full_name as string,
-    applicationNumber: app.application_number as string,
-    requestDetails: requestDetailsForApplicant,
-    infoDeadlineDate: deadlineDate,
-  });
   const result = await sendMailgunEmail({
     to: { email: app.email as string, name: app.full_name as string },
-    subject: tpl.subject,
+    subject,
     html: tpl.html,
     text: tpl.text,
     respectDoNotContactFor: app.email as string,
@@ -124,7 +151,7 @@ serve(async (req: Request) => {
     aiInputPrompt: userPrompt,
     aiOutput: ai.ok ? ai.text : null,
     aiError: ai.ok ? null : ai.error,
-    messageSentSubject: tpl.subject,
+    messageSentSubject: subject,
     messageSentBody: tpl.html,
     staffUserId: body.staffId ?? null,
   });

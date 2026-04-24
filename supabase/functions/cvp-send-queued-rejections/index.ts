@@ -34,7 +34,7 @@ serve(async (req: Request) => {
 
   const { data: queued, error: qErr } = await supabase
     .from("cvp_applications")
-    .select("id, email, full_name, application_number, rejection_reason, rejection_email_draft, can_reapply_after")
+    .select("id, email, full_name, application_number, rejection_reason, rejection_email_subject_override, can_reapply_after")
     .eq("rejection_email_status", "queued")
     .lte("rejection_email_queued_at", threshold)
     .limit(100);
@@ -44,9 +44,12 @@ serve(async (req: Request) => {
   const results: Array<{ id: string; sent: boolean; error?: string }> = [];
 
   for (const app of queued ?? []) {
-    const reasonSummary = (app.rejection_email_draft as string | null)
-      ?? (app.rejection_reason as string | null)
-      ?? "We were unable to move forward with your application at this time.";
+    // Plain-text reason slot; if staff edited in preview, it landed here.
+    // Previously this code fell back to rejection_email_draft (full HTML),
+    // which was a bug — the HTML would be injected as the <em> paragraph.
+    const reasonSummary =
+      (app.rejection_reason as string | null) ??
+      "We were unable to move forward with your application at this time.";
     const reapplyAfterDate = app.can_reapply_after
       ? new Date(app.can_reapply_after as string).toLocaleDateString("en-CA", {
           year: "numeric", month: "long", day: "numeric",
@@ -59,9 +62,12 @@ serve(async (req: Request) => {
       reasonSummary,
       reapplyAfterDate,
     });
+    // Staff-edited subject (from the preview step) overrides the default.
+    const subject =
+      (app.rejection_email_subject_override as string | null) ?? tpl.subject;
     const result = await sendMailgunEmail({
       to: { email: app.email as string, name: app.full_name as string },
-      subject: tpl.subject,
+      subject,
       html: tpl.html,
       text: tpl.text,
       respectDoNotContactFor: app.email as string,
