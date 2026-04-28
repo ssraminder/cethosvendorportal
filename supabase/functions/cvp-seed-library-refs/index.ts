@@ -32,7 +32,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { MODEL_QUALITY } from "../_shared/ai-models.ts";
+import { MODEL_BASELINE, MODEL_QUALITY } from "../_shared/ai-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,7 +52,7 @@ interface LibraryRow {
   id: string;
   title: string;
   source_language_id: string;
-  target_language_id: string;
+  target_language_id: string | null;
   domain: string;
   difficulty: string;
   source_text: string | null;
@@ -94,11 +94,32 @@ Hard rules:
 
 Output goes straight into a test-library row; quality matters.`;
 
+// Used for wildcard library rows (target_language_id IS NULL): one English
+// source serves all target languages, capped at 250 words. Difficulty is
+// expressed through challenge complexity, not length.
+const SOURCE_SYSTEM_PROMPT_WILDCARD = `You are drafting an ENGLISH SOURCE TEXT for a CETHOS translator-qualification test. The same source will be translated into many target languages, so it must be clean, idiomatic English that translates well into anything.
+
+Hard rules:
+- Output ONLY the English source text. No preamble, no notes, no markdown fences.
+- HARD CAP: 250 words. Stay well under — aim for 180–230 words.
+- Realistic, domain-appropriate content. No copyrighted material — synthesise fresh.
+- Use fully fictional names, companies, and addresses.
+- Build in 1–2 sharp translation challenges (not 3–6). Quality over quantity.
+- Difficulty is expressed by CHALLENGE COMPLEXITY, not length:
+  - beginner: one common register shift or a single domain idiom
+  - intermediate: one domain term plus one ambiguous referent or unit-handling case
+  - advanced: a nested clause or formal register, plus one technical term that demands target-language equivalent rather than literal translation
+- Use formatting appropriate to the content type (numbered clauses, headings, dialogue) only where it adds realism.
+- Do NOT explain the challenges. Just embed them in the text.
+
+Output goes straight into a test-library row; quality matters.`;
+
 async function callOpus(args: {
   apiKey: string;
   systemPrompt: string;
   userMessage: string;
   maxTokens?: number;
+  model?: string;
 }): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -109,7 +130,7 @@ async function callOpus(args: {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: MODEL_QUALITY,
+        model: args.model ?? MODEL_QUALITY,
         max_tokens: args.maxTokens ?? 4000,
         system: args.systemPrompt,
         messages: [{ role: "user", content: args.userMessage }],
@@ -187,6 +208,37 @@ Requirements:
 Write the source text now. Output ONLY the text in ${args.sourceLangName}.`;
 }
 
+// Wildcard variant: no target language (source serves all), 250-word hard cap.
+function wildcardSourceUserMessage(args: {
+  domain: string;
+  difficulty: string;
+  titleStem: string;
+  instructions: string;
+}): string {
+  return `Write an ENGLISH source text for a translator-qualification test.
+
+Domain: ${args.domain}
+Difficulty: ${args.difficulty}
+Content type hint (from the test title): ${args.titleStem}
+
+Instructions that will be given to the applicant alongside your source text:
+${args.instructions || "(none given)"}
+
+Requirements:
+- Write in English only.
+- HARD CAP: 250 words. Aim for 180–230.
+- Domain-realistic, with 1–2 sharp translation challenges appropriate to ${args.domain}.
+- Difficulty (${args.difficulty}) is expressed by challenge complexity, not text length.
+- Use fully fictional names, companies, and addresses.
+- Do NOT include a heading like "Source text:" — output only the text itself.
+
+Write the source text now. Output ONLY the English text.`;
+}
+
+function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter((t) => t.length > 0).length;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -248,9 +300,14 @@ serve(async (req: Request) => {
   }
 
   // Resolve language names once (not per row) so the prompt is human-readable.
+  // Wildcard rows have target_language_id=NULL — exclude from lookup.
   const langIds = Array.from(
     new Set(
-      candidates.flatMap((r) => [r.source_language_id, r.target_language_id]),
+      candidates.flatMap((r) =>
+        r.target_language_id
+          ? [r.source_language_id, r.target_language_id]
+          : [r.source_language_id],
+      ),
     ),
   );
   const { data: langs } = await supabase
@@ -271,9 +328,10 @@ serve(async (req: Request) => {
   let failed = 0;
 
   for (const row of candidates) {
+    const isWildcard = row.target_language_id === null;
     const srcLang = langMap.get(row.source_language_id);
-    const tgtLang = langMap.get(row.target_language_id);
-    if (!srcLang || !tgtLang) {
+    const tgtLang = isWildcard ? null : langMap.get(row.target_language_id!);
+    if (!srcLang || (!isWildcard && !tgtLang)) {
       const error = `language lookup failed (src=${row.source_language_id} tgt=${row.target_language_id})`;
       await supabase
         .from("cvp_test_library")
@@ -287,6 +345,80 @@ serve(async (req: Request) => {
       continue;
     }
 
+    // ---- Wildcard rows (target_language_id IS NULL) ----
+    // One English source serves all target languages. Use Sonnet (cheap +
+    // good enough for short content), enforce ≤250-word cap, skip the
+    // reference-translation stage entirely. Flip is_active=true on success.
+    if (isWildcard) {
+      const titleStem = row.title
+        .replace(/^\[AI-DRAFT\]\s*/, "")
+        .replace(/\s*\([^)]+\)$/, "");
+      let attempt = 0;
+      let wildSrc: { ok: true; text: string } | { ok: false; error: string } | null = null;
+      while (attempt < 2) {
+        const result = await callOpus({
+          apiKey,
+          systemPrompt: SOURCE_SYSTEM_PROMPT_WILDCARD,
+          userMessage: wildcardSourceUserMessage({
+            domain: row.domain,
+            difficulty: row.difficulty,
+            titleStem,
+            instructions: row.instructions ?? "",
+          }),
+          maxTokens: 700,
+          model: MODEL_BASELINE,
+        });
+        if (!result.ok) {
+          wildSrc = result;
+          break;
+        }
+        if (wordCount(result.text) <= 250) {
+          wildSrc = result;
+          break;
+        }
+        // Over the cap — retry once with stricter wording. Bail after that.
+        attempt += 1;
+        wildSrc = { ok: false, error: `output ${wordCount(result.text)} words > 250 cap` };
+      }
+      if (!wildSrc || !wildSrc.ok) {
+        const error = `wildcard source: ${wildSrc?.ok === false ? wildSrc.error : "unknown"}`;
+        await supabase
+          .from("cvp_test_library")
+          .update({
+            ai_generation_error: error,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", row.id);
+        failed += 1;
+        details.push({ id: row.id, title: row.title, ok: false, error });
+        continue;
+      }
+      const { error: updateErr } = await supabase
+        .from("cvp_test_library")
+        .update({
+          source_text: wildSrc.text,
+          is_active: true,
+          ai_generation_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      if (updateErr) {
+        failed += 1;
+        details.push({
+          id: row.id,
+          title: row.title,
+          ok: false,
+          error: `update failed: ${updateErr.message}`,
+        });
+        continue;
+      }
+      succeeded += 1;
+      details.push({ id: row.id, title: row.title, ok: true });
+      continue;
+    }
+
+    // ---- Language-specific rows (existing two-stage flow) ----
+
     // Stage 1: generate source_text if missing.
     let sourceText = row.source_text;
     if (!sourceText || sourceText.trim().length === 0) {
@@ -295,7 +427,7 @@ serve(async (req: Request) => {
         systemPrompt: SOURCE_SYSTEM_PROMPT,
         userMessage: sourceUserMessage({
           sourceLangName: srcLang.name,
-          targetLangName: tgtLang.name,
+          targetLangName: tgtLang!.name,
           domain: row.domain,
           difficulty: row.difficulty,
           titleStem: row.title.replace(/^\[AI-DRAFT\]\s*/, "").replace(/\s*\([^)]+\)$/, ""),
@@ -339,7 +471,7 @@ serve(async (req: Request) => {
       userMessage: referenceUserMessage({
         sourceText,
         sourceLangName: srcLang.name,
-        targetLangName: tgtLang.name,
+        targetLangName: tgtLang!.name,
         instructions: row.instructions ?? "",
         domain: row.domain,
         difficulty: row.difficulty,

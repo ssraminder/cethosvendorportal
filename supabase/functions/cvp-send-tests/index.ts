@@ -172,8 +172,15 @@ serve(async (req: Request) => {
       test: TestLibraryRow;
       /** "override" when staff explicitly chose this test in the UI,
        *  "difficulty-match" when we found one at the preferred difficulty,
-       *  "fallback" when we used any available match. */
-      selectionReason: "override" | "difficulty-match" | "fallback";
+       *  "fallback" when we used any available match,
+       *  "wildcard-fallback" when no language-specific test existed and we
+       *    used a target-language-agnostic wildcard row (target_language_id
+       *    IS NULL in the library). */
+      selectionReason:
+        | "override"
+        | "difficulty-match"
+        | "fallback"
+        | "wildcard-fallback";
       /** Alternative tests for the combo, in the order they'd be considered
        *  after this pick. Useful for the preview UI's "swap" dropdown. */
       alternatives: TestLibraryRow[];
@@ -201,7 +208,30 @@ serve(async (req: Request) => {
         .order("times_used", { ascending: true })
         .order("last_used_at", { ascending: true, nullsFirst: true });
 
-      const availableTests = (tests ?? []) as unknown as TestLibraryRow[];
+      let availableTests = (tests ?? []) as unknown as TestLibraryRow[];
+      let usedWildcardFallback = false;
+
+      // Wildcard fallback: when no language-specific row matches, look for
+      // a target-language-agnostic row (target_language_id IS NULL) at the
+      // same source language + domain. These are the EN→Target seed rows
+      // (one English source serves any target). Same rotation order applies.
+      if (availableTests.length === 0) {
+        let wildcardQ = supabase
+          .from("cvp_test_library")
+          .select("id, title, source_language_id, target_language_id, domain, service_type, difficulty, source_text, source_file_path, instructions, times_used, last_used_at")
+          .eq("source_language_id", combo.source_language_id)
+          .is("target_language_id", null)
+          .eq("domain", combo.domain)
+          .eq("is_active", true);
+        if (combo.service_type) {
+          wildcardQ = wildcardQ.eq("service_type", combo.service_type);
+        }
+        const { data: wildTests } = await wildcardQ
+          .order("times_used", { ascending: true })
+          .order("last_used_at", { ascending: true, nullsFirst: true });
+        availableTests = (wildTests ?? []) as unknown as TestLibraryRow[];
+        usedWildcardFallback = availableTests.length > 0;
+      }
 
       const overrideId = body.overrides?.[combo.id];
       let selectedTest: TestLibraryRow | undefined;
@@ -222,10 +252,14 @@ serve(async (req: Request) => {
         );
         if (byDifficulty) {
           selectedTest = byDifficulty;
-          selectionReason = "difficulty-match";
+          selectionReason = usedWildcardFallback
+            ? "wildcard-fallback"
+            : "difficulty-match";
         } else if (availableTests.length > 0) {
           selectedTest = availableTests[0];
-          selectionReason = "fallback";
+          selectionReason = usedWildcardFallback
+            ? "wildcard-fallback"
+            : "fallback";
         }
       }
 
