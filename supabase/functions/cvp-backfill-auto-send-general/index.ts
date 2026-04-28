@@ -119,6 +119,15 @@ serve(async (req: Request) => {
     "/functions/v1/cvp-send-tests";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+  // Resolve all English-variant language IDs once. The backfill only triggers
+  // EN→Target tests; Target→EN tests come from Phase 2 harvest.
+  const { data: enLangs } = await supabase
+    .from("languages")
+    .select("id")
+    .ilike("name", "English%");
+  const englishVariantIds =
+    (enLangs ?? []).map((l) => (l as { id: string }).id);
+
   for (const app of apps) {
     const score = app.ai_prescreening_score ?? 0;
     const aiResult = app.ai_prescreening_result ?? {};
@@ -162,15 +171,19 @@ serve(async (req: Request) => {
       continue;
     }
 
-    // Idempotency: only fire if there's at least one PENDING General combo.
-    // If General is already test_sent / completed / no_test_available, leave
-    // it alone — re-running shouldn't double-send.
-    const { count: pendingGeneral } = await supabase
+    // Idempotency + direction filter: only fire if there's at least one
+    // PENDING General combination whose SOURCE is an English variant. Target→EN
+    // combinations are out of scope for auto-send (Phase 2 harvest territory).
+    let pendingQ = supabase
       .from("cvp_test_combinations")
       .select("id", { count: "exact", head: true })
       .eq("application_id", app.id)
       .eq("domain", "general")
       .eq("status", "pending");
+    if (englishVariantIds.length > 0) {
+      pendingQ = pendingQ.in("source_language_id", englishVariantIds);
+    }
+    const { count: pendingGeneral } = await pendingQ;
 
     if (!pendingGeneral || pendingGeneral === 0) {
       skipped += 1;
@@ -178,7 +191,7 @@ serve(async (req: Request) => {
         id: app.id,
         appNumber: app.application_number,
         action: "skip",
-        reason: "no_pending_general_combo",
+        reason: "no_pending_en_to_target_general",
         score,
       });
       continue;
@@ -208,6 +221,7 @@ serve(async (req: Request) => {
         body: JSON.stringify({
           applicationId: app.id,
           domainFilter: ["general"],
+          sourceLanguageFilter: englishVariantIds,
         }),
       });
       const respJson = await resp.json().catch(() => ({}));

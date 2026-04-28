@@ -491,6 +491,51 @@ Evaluate the applicant's translation against the source text and reference trans
       .update(comboUpdate)
       .eq("id", combinationId);
 
+    // ---- Cascade auto-approval: certified_official follows General pass ----
+    // Per April 2026 policy: certified translation isn't tested — direction +
+    // formatting aren't yet in scope. When a translator's General test passes
+    // (auto-approved at score >= 80), every certified_official combination on
+    // the same application auto-approves alongside it. Staff doesn't have to
+    // touch them. If the General comes back as "assessed" (staff review) or
+    // "rejected", certified combos stay as-is and follow the manual flow.
+    if (combinationStatus === "approved") {
+      const { data: justAssessed } = await supabase
+        .from("cvp_test_combinations")
+        .select("domain, application_id")
+        .eq("id", combinationId)
+        .single();
+      const justAssessedDomain =
+        (justAssessed as { domain?: string } | null)?.domain ?? null;
+      if (justAssessedDomain === "general") {
+        const { data: certCombos } = await supabase
+          .from("cvp_test_combinations")
+          .select("id, status")
+          .eq("application_id", sub.application_id)
+          .eq("domain", "certified_official");
+        const eligibleCerts = (certCombos ?? []).filter(
+          (c) =>
+            (c as { status: string }).status === "pending" ||
+            (c as { status: string }).status === "skip_manual_review",
+        );
+        if (eligibleCerts.length > 0) {
+          await supabase
+            .from("cvp_test_combinations")
+            .update({
+              status: "approved",
+              approved_at: now,
+              updated_at: now,
+            })
+            .in(
+              "id",
+              eligibleCerts.map((c) => (c as { id: string }).id),
+            );
+          console.log(
+            `Cascade: auto-approved ${eligibleCerts.length} certified_official combination(s) for application ${sub.application_id} after General test passed.`,
+          );
+        }
+      }
+    }
+
     // Update test library pass/fail stats
     if (aiScore >= 80) {
       const { data: testRow } = await supabase

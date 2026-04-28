@@ -937,6 +937,15 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
           safeMode: safeMode.active,
         });
         if (decision.allowed) {
+          // Resolve all English-variant language IDs so auto-send only fires
+          // for EN→Target combinations. Target→EN tests come from Phase 2
+          // harvest, not auto-send.
+          const { data: enLangs } = await supabase
+            .from("languages")
+            .select("id")
+            .ilike("name", "English%");
+          const englishVariantIds =
+            (enLangs ?? []).map((l) => (l as { id: string }).id);
           // Fire-and-forget. cvp-send-tests handles its own retries / partial
           // failures and writes per-combination status (test_sent /
           // no_test_available). We don't await the result on the prescreen
@@ -956,6 +965,7 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
             body: JSON.stringify({
               applicationId,
               domainFilter: ["general"],
+              sourceLanguageFilter: englishVariantIds,
             }),
           }).catch((e) =>
             console.error(

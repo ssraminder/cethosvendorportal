@@ -94,10 +94,19 @@ serve(async (req: Request) => {
        * or vendor-self-serve later. When omitted, all domains are eligible.
        */
       domainFilter?: string[];
+      /**
+       * Source-language allowlist (UUIDs). When provided, only pending
+       * combinations whose `source_language_id` is in this list are eligible.
+       * Used by the auto-send pipeline to restrict to EN→Target combinations
+       * (Target→EN tests come from Phase 2 harvest, not auto-send).
+       */
+      sourceLanguageFilter?: string[];
       /** Override AI's suggested_test_difficulty for this send. */
       difficulty?: "beginner" | "intermediate" | "advanced";
       /** Staff who triggered (for audit + outbound tracking). */
       staffId?: string;
+      /** CC the V3 invitation (visible to applicant). */
+      cc?: string | string[];
       /**
        * BCC the V3 invitation to one or more email addresses (staff
        * oversight). Applicants don't see these recipients.
@@ -161,6 +170,9 @@ serve(async (req: Request) => {
     }
     if (body.domainFilter && body.domainFilter.length > 0) {
       comboQ = comboQ.in("domain", body.domainFilter);
+    }
+    if (body.sourceLanguageFilter && body.sourceLanguageFilter.length > 0) {
+      comboQ = comboQ.in("source_language_id", body.sourceLanguageFilter);
     }
     const { data: combinations, error: combError } = await comboQ;
 
@@ -517,6 +529,7 @@ serve(async (req: Request) => {
       });
       await sendMailgunEmail({
         to: { email: app.email, name: app.full_name },
+        cc: body.cc,
         bcc: body.bcc,
         subject: tpl.subject,
         html: tpl.html,
