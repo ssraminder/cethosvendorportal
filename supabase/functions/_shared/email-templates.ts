@@ -137,9 +137,11 @@ export function buildV3TestInvitation(p: V3Params): RenderedEmail {
     heading: `Your test${p.testCount > 1 ? "s" : ""} ${p.testCount > 1 ? "are" : "is"} ready`,
     body: `
       <p>Hi ${esc(p.fullName)},</p>
-      <p>You have <strong>${p.testCount}</strong> test${p.testCount > 1 ? "s" : ""} to complete for application <strong>${esc(p.applicationNumber)}</strong>.</p>
-      <p>${p.testLinksHtml}</p>
-      <p><strong>Each link expires in ${p.expiryHours} hours.</strong> One submission per link. If you miss the window, reply and we'll issue a new one.</p>
+      <p>You have <strong>${p.testCount}</strong> test${p.testCount > 1 ? "s" : ""} to complete for application <strong>${esc(p.applicationNumber)}</strong>. The translator workspace below has your source text segmented into sentences — translate each one and click <strong>Confirm ✓</strong> as you finish. Your work saves automatically.</p>
+      ${p.testLinksHtml}
+      <p style="font-size: 13px; color: #6B7280; margin-top: 16px;">
+        These accounts and links expire in <strong>${p.expiryHours} hours</strong>. One submission per test. If you miss the window, reply and we'll issue a fresh one. The login above is single-use; please don't share it.
+      </p>
     `,
   });
 }

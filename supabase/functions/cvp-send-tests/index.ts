@@ -407,7 +407,20 @@ serve(async (req: Request) => {
     }
 
     // ---- Real send — write submissions, mark combos, update stats ----
-    const assigned: { combinationId: string; testId: string; token: string }[] = [];
+    interface AssignedRow {
+      combinationId: string;
+      testId: string;
+      submissionId: string;
+      token: string;
+      tmEmail: string;
+      tmPassword: string;
+      tmJobUrl: string;
+      sourceLangName: string;
+      targetLangName: string;
+      domain: string;
+      difficulty: string;
+    }
+    const assigned: AssignedRow[] = [];
 
     // Flag any combinations with no available test so staff sees them in the UI.
     for (const noTestComboId of noTestAvailable) {
@@ -418,6 +431,33 @@ serve(async (req: Request) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", noTestComboId);
+    }
+
+    // Resolve language codes/names once so per-pick provisioning doesn't repeat
+    // the lookup. Codes are passed to TM (which expects "en-US" / "fa-IR" style
+    // tags); names are used for the email body.
+    const allLangIds = Array.from(
+      new Set(picks.flatMap((p) => [
+        p.combo.source_language_id,
+        p.combo.target_language_id,
+      ])),
+    );
+    const { data: langRows } = await supabase
+      .from("languages")
+      .select("id, name, code")
+      .in("id", allLangIds);
+    const langInfo = new Map<string, { name: string; code: string }>(
+      ((langRows ?? []) as { id: string; name: string; code: string }[]).map(
+        (l) => [l.id, { name: l.name, code: l.code }],
+      ),
+    );
+
+    const TM_BASE_URL = Deno.env.get("TM_BASE_URL") ?? "https://tm.cethos.com";
+    const TM_API_KEY = Deno.env.get("TM_API_KEY") ?? "";
+    if (!TM_API_KEY) {
+      console.error(
+        "TM_API_KEY not configured — cannot provision TM-Cethos test jobs.",
+      );
     }
 
     for (const p of picks) {
@@ -445,6 +485,91 @@ serve(async (req: Request) => {
         continue;
       }
 
+      // ---- Provision TM-Cethos account + job for this submission ----
+      const srcInfo = langInfo.get(p.combo.source_language_id);
+      const tgtInfo = langInfo.get(p.combo.target_language_id);
+      if (!TM_API_KEY || !srcInfo || !tgtInfo || !p.test.source_text) {
+        console.error(
+          `Cannot provision TM job for submission ${submission.id}: ` +
+            `${!TM_API_KEY ? "no TM_API_KEY; " : ""}` +
+            `${!srcInfo ? "missing src lang; " : ""}` +
+            `${!tgtInfo ? "missing tgt lang; " : ""}` +
+            `${!p.test.source_text ? "no source_text on library row; " : ""}`,
+        );
+        // Mark the combination so staff sees the failure rather than a silent
+        // skip. Don't push into `assigned` — no email goes out for this combo.
+        await supabase
+          .from("cvp_test_combinations")
+          .update({
+            status: "no_test_available",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", p.combo.id);
+        continue;
+      }
+
+      let tmResult: {
+        applicant_email: string;
+        applicant_password: string;
+        job_id: string;
+        job_reference?: string;
+      } | null = null;
+      try {
+        const tmResp = await fetch(
+          `${TM_BASE_URL}/api/admin/test-jobs/create`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${TM_API_KEY}`,
+            },
+            body: JSON.stringify({
+              test_submission_id: submission.id,
+              applicant_full_name: app.full_name,
+              source_text: p.test.source_text,
+              source_lang: srcInfo.code,
+              target_lang: tgtInfo.code,
+              instructions: p.test.instructions ?? undefined,
+            }),
+          },
+        );
+        if (!tmResp.ok) {
+          const errBody = await tmResp.text();
+          throw new Error(`TM ${tmResp.status}: ${errBody.slice(0, 500)}`);
+        }
+        tmResult = await tmResp.json();
+      } catch (tmErr) {
+        console.error(
+          `TM provisioning failed for submission ${submission.id}:`,
+          tmErr instanceof Error ? tmErr.message : String(tmErr),
+        );
+        // Don't email the applicant if TM didn't provision — they'd get
+        // unusable credentials. Mark for staff retry.
+        await supabase
+          .from("cvp_test_combinations")
+          .update({
+            status: "no_test_available",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", p.combo.id);
+        continue;
+      }
+
+      const tmJobUrl = `${TM_BASE_URL}/translator/editor/${tmResult!.job_id}`;
+
+      // Persist TM provisioning data on the submission for admin visibility
+      // and idempotency on retries.
+      await supabase
+        .from("cvp_test_submissions")
+        .update({
+          tm_user_email: tmResult!.applicant_email,
+          tm_user_password: tmResult!.applicant_password,
+          tm_job_id: tmResult!.job_id,
+          tm_job_url: tmJobUrl,
+          tm_provisioned_at: new Date().toISOString(),
+        })
+        .eq("id", submission.id);
+
       await supabase
         .from("cvp_test_combinations")
         .update({
@@ -467,7 +592,15 @@ serve(async (req: Request) => {
       assigned.push({
         combinationId: p.combo.id,
         testId: p.test.id,
+        submissionId: submission.id,
         token: submission.token,
+        tmEmail: tmResult!.applicant_email,
+        tmPassword: tmResult!.applicant_password,
+        tmJobUrl,
+        sourceLangName: srcInfo.name,
+        targetLangName: tgtInfo.name,
+        domain: p.combo.domain,
+        difficulty: p.test.difficulty,
       });
     }
 
@@ -482,44 +615,35 @@ serve(async (req: Request) => {
         .eq("id", applicationId);
     }
 
-    // Build test details for email
-    const appUrl = Deno.env.get("APP_URL") ?? "https://join.cethos.com";
-    const testLinks: string[] = [];
-
-    for (const a of assigned) {
-      // Fetch language names for the combination
-      const combo = combs.find((c) => c.id === a.combinationId);
-      if (combo) {
-        const { data: srcLang } = await supabase
-          .from("languages")
-          .select("name")
-          .eq("id", combo.source_language_id)
-          .single();
-        const { data: tgtLang } = await supabase
-          .from("languages")
-          .select("name")
-          .eq("id", combo.target_language_id)
-          .single();
-
-        const src = (srcLang as unknown as LanguageJoin | null)?.name ?? "Unknown";
-        const tgt = (tgtLang as unknown as LanguageJoin | null)?.name ?? "Unknown";
-
-        testLinks.push(
-          `${src} → ${tgt} (${combo.domain}, ${combo.service_type}): ${appUrl}/test/${a.token}`
-        );
-      }
-    }
-
-    // Send batch test invitation email (V3)
+    // ---- Send batch test invitation email (V3) ----
+    // Each assigned test got a fresh TM-Cethos account + job. The email lists
+    // one block per test with: pair + domain, sign-in URL, direct job URL,
+    // login email, single-use password.
     if (assigned.length > 0) {
-      const testLinksHtml = `<ul>${testLinks
-        .map((l) => {
-          const parts = l.split(": ");
-          const label = parts[0] ?? "";
-          const url = parts.slice(1).join(": ");
-          return `<li>${label}: <a href="${url}">${url}</a></li>`;
-        })
-        .join("")}</ul>`;
+      const escHtml = (s: string): string =>
+        s.replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;");
+
+      const testLinksHtml = assigned
+        .map((a) => `
+          <div style="margin: 16px 0; padding: 12px 14px; border-left: 3px solid #0891B2; background: #F9FAFB;">
+            <div style="font-weight: 600; margin-bottom: 6px;">
+              ${escHtml(a.sourceLangName)} → ${escHtml(a.targetLangName)} · ${escHtml(a.domain)} · ${escHtml(a.difficulty)}
+            </div>
+            <div style="margin: 4px 0;">
+              Take the test: <a href="${escHtml(a.tmJobUrl)}" style="color: #0891B2;">${escHtml(a.tmJobUrl)}</a>
+            </div>
+            <div style="margin: 4px 0;">
+              Email: <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmEmail)}</code>
+            </div>
+            <div style="margin: 4px 0;">
+              Password: <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmPassword)}</code>
+            </div>
+          </div>`)
+        .join("");
+
       const tpl = buildV3TestInvitation({
         fullName: app.full_name,
         applicationNumber: app.application_number,
