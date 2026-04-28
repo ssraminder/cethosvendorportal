@@ -415,12 +415,20 @@ serve(async (req: Request) => {
       tmEmail: string;
       tmPassword: string;
       tmJobUrl: string;
+      tmSigninUrl: string | null;
       sourceLangName: string;
       targetLangName: string;
       domain: string;
       difficulty: string;
     }
     const assigned: AssignedRow[] = [];
+    // Surface TM-side failures in the response so staff (and Claude) can
+    // see exactly what went wrong without needing Edge Function log access.
+    const tmFailures: Array<{
+      combinationId: string;
+      submissionId: string;
+      reason: string;
+    }> = [];
 
     // Flag any combinations with no available test so staff sees them in the UI.
     for (const noTestComboId of noTestAvailable) {
@@ -446,9 +454,24 @@ serve(async (req: Request) => {
       .from("languages")
       .select("id, name, code")
       .in("id", allLangIds);
-    const langInfo = new Map<string, { name: string; code: string }>(
+    const langInfo = new Map<
+      string,
+      { name: string; code: string; rtl: boolean }
+    >(
       ((langRows ?? []) as { id: string; name: string; code: string }[]).map(
-        (l) => [l.id, { name: l.name, code: l.code }],
+        (l) => [
+          l.id,
+          {
+            name: l.name,
+            code: l.code,
+            // Conservative RTL detection by language name. TM only uses this
+            // for first-time language upserts; ongoing entries keep whatever
+            // value was set initially.
+            rtl: /persian|farsi|arabic|hebrew|urdu|pashto|dari|kurdish/i.test(
+              l.name ?? "",
+            ),
+          },
+        ],
       ),
     );
 
@@ -489,13 +512,20 @@ serve(async (req: Request) => {
       const srcInfo = langInfo.get(p.combo.source_language_id);
       const tgtInfo = langInfo.get(p.combo.target_language_id);
       if (!TM_API_KEY || !srcInfo || !tgtInfo || !p.test.source_text) {
+        const reason =
+          `prerequisites missing: ` +
+          `${!TM_API_KEY ? "no TM_API_KEY; " : ""}` +
+          `${!srcInfo ? "missing src lang; " : ""}` +
+          `${!tgtInfo ? "missing tgt lang; " : ""}` +
+          `${!p.test.source_text ? "no source_text on library row; " : ""}`;
         console.error(
-          `Cannot provision TM job for submission ${submission.id}: ` +
-            `${!TM_API_KEY ? "no TM_API_KEY; " : ""}` +
-            `${!srcInfo ? "missing src lang; " : ""}` +
-            `${!tgtInfo ? "missing tgt lang; " : ""}` +
-            `${!p.test.source_text ? "no source_text on library row; " : ""}`,
+          `Cannot provision TM job for submission ${submission.id}: ${reason}`,
         );
+        tmFailures.push({
+          combinationId: p.combo.id,
+          submissionId: submission.id,
+          reason,
+        });
         // Mark the combination so staff sees the failure rather than a silent
         // skip. Don't push into `assigned` — no email goes out for this combo.
         await supabase
@@ -511,6 +541,7 @@ serve(async (req: Request) => {
       let tmResult: {
         applicant_email: string;
         applicant_password: string;
+        signin_url: string | null;
         job_id: string;
         job_reference?: string;
       } | null = null;
@@ -529,6 +560,10 @@ serve(async (req: Request) => {
               source_text: p.test.source_text,
               source_lang: srcInfo.code,
               target_lang: tgtInfo.code,
+              source_lang_name: srcInfo.name,
+              target_lang_name: tgtInfo.name,
+              source_lang_rtl: srcInfo.rtl,
+              target_lang_rtl: tgtInfo.rtl,
               instructions: p.test.instructions ?? undefined,
             }),
           },
@@ -539,10 +574,16 @@ serve(async (req: Request) => {
         }
         tmResult = await tmResp.json();
       } catch (tmErr) {
+        const reason = tmErr instanceof Error ? tmErr.message : String(tmErr);
         console.error(
           `TM provisioning failed for submission ${submission.id}:`,
-          tmErr instanceof Error ? tmErr.message : String(tmErr),
+          reason,
         );
+        tmFailures.push({
+          combinationId: p.combo.id,
+          submissionId: submission.id,
+          reason,
+        });
         // Don't email the applicant if TM didn't provision — they'd get
         // unusable credentials. Mark for staff retry.
         await supabase
@@ -597,6 +638,7 @@ serve(async (req: Request) => {
         tmEmail: tmResult!.applicant_email,
         tmPassword: tmResult!.applicant_password,
         tmJobUrl,
+        tmSigninUrl: tmResult!.signin_url,
         sourceLangName: srcInfo.name,
         targetLangName: tgtInfo.name,
         domain: p.combo.domain,
@@ -627,21 +669,39 @@ serve(async (req: Request) => {
          .replace(/"/g, "&quot;");
 
       const testLinksHtml = assigned
-        .map((a) => `
-          <div style="margin: 16px 0; padding: 12px 14px; border-left: 3px solid #0891B2; background: #F9FAFB;">
-            <div style="font-weight: 600; margin-bottom: 6px;">
-              ${escHtml(a.sourceLangName)} → ${escHtml(a.targetLangName)} · ${escHtml(a.domain)} · ${escHtml(a.difficulty)}
-            </div>
-            <div style="margin: 4px 0;">
-              Take the test: <a href="${escHtml(a.tmJobUrl)}" style="color: #0891B2;">${escHtml(a.tmJobUrl)}</a>
-            </div>
-            <div style="margin: 4px 0;">
-              Email: <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmEmail)}</code>
-            </div>
-            <div style="margin: 4px 0;">
-              Password: <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmPassword)}</code>
-            </div>
-          </div>`)
+        .map((a) => {
+          // Primary path: one-click magic link (no password to copy). The
+          // password block stays as a backup in case the magic link
+          // misbehaves — see /t/[token] in tm-cethos.
+          const ctaUrl = a.tmSigninUrl ?? a.tmJobUrl;
+          return `
+            <div style="margin: 16px 0; padding: 14px 16px; border-left: 3px solid #0891B2; background: #F9FAFB;">
+              <div style="font-weight: 600; margin-bottom: 10px;">
+                ${escHtml(a.sourceLangName)} → ${escHtml(a.targetLangName)} · ${escHtml(a.domain)} · ${escHtml(a.difficulty)}
+              </div>
+              <div style="margin: 6px 0 12px;">
+                <a href="${escHtml(ctaUrl)}"
+                   style="display: inline-block; background: #0891B2; color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 6px; font-weight: 600;">
+                  Open my test
+                </a>
+              </div>
+              <div style="font-size: 12px; color: #6B7280; margin-top: 8px;">
+                One-click link expires in 48 hours and can only be used once. If you'd rather sign in manually:
+              </div>
+              <div style="font-size: 12px; margin: 4px 0;">
+                <span style="color: #6B7280;">Editor URL:</span>
+                <a href="${escHtml(a.tmJobUrl)}" style="color: #0891B2;">${escHtml(a.tmJobUrl)}</a>
+              </div>
+              <div style="font-size: 12px; margin: 4px 0;">
+                <span style="color: #6B7280;">Email:</span>
+                <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmEmail)}</code>
+              </div>
+              <div style="font-size: 12px; margin: 4px 0;">
+                <span style="color: #6B7280;">Password:</span>
+                <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmPassword)}</code>
+              </div>
+            </div>`;
+        })
         .join("");
 
       const tpl = buildV3TestInvitation({
@@ -675,6 +735,7 @@ serve(async (req: Request) => {
         testsAssigned: assigned.length,
         noTestAvailable: noTestAvailable.length,
         tokens: assigned.map((a) => a.token),
+        tmFailures,
       },
     });
   } catch (err) {
