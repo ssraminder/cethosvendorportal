@@ -139,7 +139,7 @@ serve(async (req: Request) => {
     // Fetch application
     const { data: application, error: appError } = await supabase
       .from("cvp_applications")
-      .select("id, email, full_name, application_number, ai_prescreening_result")
+      .select("id, email, full_name, application_number, ai_prescreening_result, tm_user_id, tm_initial_password")
       .eq("id", applicationId)
       .single();
 
@@ -483,6 +483,84 @@ serve(async (req: Request) => {
       );
     }
 
+    // ---- Vendor account: one TM profile per applicant, reused across tests ----
+    // If we've never sent this vendor a test, the upsert mints an auth user +
+    // profile and returns a fresh password. We persist (tm_user_id,
+    // tm_initial_password) on cvp_applications so subsequent sends skip
+    // both the upsert call AND the password rotation.
+    let vendorUserId: string | null =
+      (app as Record<string, unknown>).tm_user_id as string | null ?? null;
+    let vendorPassword: string | null =
+      (app as Record<string, unknown>).tm_initial_password as string | null ?? null;
+    let vendorIsNew = false;
+
+    if (!vendorUserId && TM_API_KEY) {
+      try {
+        const upsertResp = await fetch(
+          `${TM_BASE_URL}/api/admin/vendor-accounts/upsert`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${TM_API_KEY}`,
+            },
+            body: JSON.stringify({
+              applicant_email: app.email,
+              applicant_full_name: app.full_name,
+            }),
+          },
+        );
+        if (!upsertResp.ok) {
+          const errBody = await upsertResp.text();
+          throw new Error(`TM ${upsertResp.status}: ${errBody.slice(0, 500)}`);
+        }
+        const upsertResult = (await upsertResp.json()) as {
+          idempotent: boolean;
+          user_id: string;
+          applicant_password?: string;
+        };
+        vendorUserId = upsertResult.user_id;
+        vendorIsNew = !upsertResult.idempotent;
+        if (upsertResult.applicant_password) {
+          vendorPassword = upsertResult.applicant_password;
+        }
+        // Persist on the application so subsequent calls don't hit TM again
+        // for account-creation — only for job-creation.
+        const appUpdate: Record<string, unknown> = {
+          tm_user_id: vendorUserId,
+          updated_at: new Date().toISOString(),
+        };
+        if (vendorPassword) {
+          appUpdate.tm_initial_password = vendorPassword;
+          appUpdate.tm_account_created_at = new Date().toISOString();
+        }
+        await supabase
+          .from("cvp_applications")
+          .update(appUpdate)
+          .eq("id", applicationId);
+      } catch (vendorErr) {
+        console.error(
+          `Vendor-account upsert failed for app ${applicationId}:`,
+          vendorErr instanceof Error ? vendorErr.message : String(vendorErr),
+        );
+        // Without a vendor user_id we can't create jobs. Mark every pending
+        // combination as no_test_available so staff sees it.
+        for (const p of picks) {
+          await supabase
+            .from("cvp_test_combinations")
+            .update({
+              status: "no_test_available",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", p.combo.id);
+        }
+        return jsonResponse({
+          success: false,
+          error: `Could not provision vendor account: ${vendorErr instanceof Error ? vendorErr.message : "unknown"}`,
+        }, 500);
+      }
+    }
+
     for (const p of picks) {
       const tokenExpiresAt = new Date(
         Date.now() + 48 * 60 * 60 * 1000,
@@ -538,9 +616,20 @@ serve(async (req: Request) => {
         continue;
       }
 
+      if (!vendorUserId) {
+        // Vendor account never provisioned (TM_API_KEY missing or upsert
+        // failed earlier). Mark this combo so staff can retry.
+        await supabase
+          .from("cvp_test_combinations")
+          .update({
+            status: "no_test_available",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", p.combo.id);
+        continue;
+      }
+
       let tmResult: {
-        applicant_email: string;
-        applicant_password: string;
         signin_url: string | null;
         job_id: string;
         job_reference?: string;
@@ -556,7 +645,7 @@ serve(async (req: Request) => {
             },
             body: JSON.stringify({
               test_submission_id: submission.id,
-              applicant_full_name: app.full_name,
+              user_id: vendorUserId,
               source_text: p.test.source_text,
               source_lang: srcInfo.code,
               target_lang: tgtInfo.code,
@@ -599,12 +688,14 @@ serve(async (req: Request) => {
       const tmJobUrl = `${TM_BASE_URL}/translator/editor/${tmResult!.job_id}`;
 
       // Persist TM provisioning data on the submission for admin visibility
-      // and idempotency on retries.
+      // and idempotency on retries. Email + password are sourced from the
+      // vendor account (cvp_applications.tm_initial_password) — they're the
+      // same across every test we send this vendor.
       await supabase
         .from("cvp_test_submissions")
         .update({
-          tm_user_email: tmResult!.applicant_email,
-          tm_user_password: tmResult!.applicant_password,
+          tm_user_email: app.email,
+          tm_user_password: vendorPassword,
           tm_job_id: tmResult!.job_id,
           tm_job_url: tmJobUrl,
           tm_provisioned_at: new Date().toISOString(),
@@ -635,8 +726,8 @@ serve(async (req: Request) => {
         testId: p.test.id,
         submissionId: submission.id,
         token: submission.token,
-        tmEmail: tmResult!.applicant_email,
-        tmPassword: tmResult!.applicant_password,
+        tmEmail: app.email,
+        tmPassword: vendorPassword ?? "(see your prior invitation, or reset from tm.cethos.com/profile)",
         tmJobUrl,
         tmSigninUrl: tmResult!.signin_url,
         sourceLangName: srcInfo.name,
@@ -686,29 +777,49 @@ serve(async (req: Request) => {
                 </a>
               </div>
               <div style="font-size: 12px; color: #6B7280; margin-top: 8px;">
-                One-click link expires in 48 hours and can only be used once. If you'd rather sign in manually:
+                One-click link expires in 48 hours and can only be used once. To sign in manually:
               </div>
               <div style="font-size: 12px; margin: 4px 0;">
                 <span style="color: #6B7280;">Editor URL:</span>
                 <a href="${escHtml(a.tmJobUrl)}" style="color: #0891B2;">${escHtml(a.tmJobUrl)}</a>
               </div>
-              <div style="font-size: 12px; margin: 4px 0;">
-                <span style="color: #6B7280;">Email:</span>
-                <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmEmail)}</code>
-              </div>
-              <div style="font-size: 12px; margin: 4px 0;">
-                <span style="color: #6B7280;">Password:</span>
-                <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(a.tmPassword)}</code>
-              </div>
             </div>`;
         })
         .join("");
+
+      // Account block (shown once at the top, not per test). Different copy
+      // for first-time vendors vs returning vendors.
+      const accountBlockHtml = vendorIsNew
+        ? `
+          <div style="margin: 0 0 20px; padding: 14px 16px; background: #ECFDF5; border-left: 3px solid #10B981;">
+            <div style="font-weight: 600; margin-bottom: 6px;">Your CETHOS translator account</div>
+            <div style="font-size: 13px; color: #374151; margin-bottom: 10px;">
+              We've created an account at <a href="https://tm.cethos.com" style="color: #0891B2;">tm.cethos.com</a> so you can take this test and any future ones we send.
+            </div>
+            <div style="font-size: 13px; margin: 4px 0;">
+              <span style="color: #6B7280;">Email:</span>
+              <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(app.email)}</code>
+            </div>
+            <div style="font-size: 13px; margin: 4px 0;">
+              <span style="color: #6B7280;">Password:</span>
+              <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(vendorPassword ?? "")}</code>
+            </div>
+            <div style="font-size: 12px; color: #6B7280; margin-top: 10px;">
+              You can change this password any time from your <a href="https://tm.cethos.com/profile" style="color: #0891B2;">profile page</a>.
+            </div>
+          </div>`
+        : `
+          <div style="margin: 0 0 16px; font-size: 13px; color: #6B7280;">
+            Sign in with your existing CETHOS translator account at <a href="https://tm.cethos.com" style="color: #0891B2;">tm.cethos.com</a> (email: <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(app.email)}</code>). Forgot your password? <a href="https://tm.cethos.com/forgot-password" style="color: #0891B2;">Reset it here</a>.
+          </div>`;
+
+      const fullBodyHtml = accountBlockHtml + testLinksHtml;
 
       const tpl = buildV3TestInvitation({
         fullName: app.full_name,
         applicationNumber: app.application_number,
         testCount: assigned.length,
-        testLinksHtml,
+        testLinksHtml: fullBodyHtml,
         expiryHours: 48,
       });
       await sendMailgunEmail({
