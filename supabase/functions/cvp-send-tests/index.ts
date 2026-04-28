@@ -165,6 +165,40 @@ serve(async (req: Request) => {
       );
     }
 
+    // Build a language-variant equivalence map. Library rows historically use
+    // the generic root language (e.g. "English", id=fde091d2…), but
+    // applicants pick locale variants like "English (US)", "English (UK)",
+    // "Spanish (Spain)" etc. when filling the application form. Without
+    // grouping, an "English (US) → Persian" combination finds no match
+    // even though plenty of "English → Persian" library rows exist.
+    //
+    // Equivalence rule: same root name (text before " (" if present) →
+    // same group. Expansion is one-hop (no transitivity tricks). The
+    // group always contains the language itself.
+    const { data: allLangs } = await supabase
+      .from("languages")
+      .select("id, name");
+    const variantRoot = (name: string): string => {
+      const i = name.indexOf(" (");
+      return i === -1 ? name : name.slice(0, i);
+    };
+    const langGroups = new Map<string, string[]>(); // langId → [equivalent langIds]
+    {
+      const byRoot = new Map<string, string[]>();
+      for (const l of (allLangs ?? []) as { id: string; name: string }[]) {
+        const r = variantRoot(l.name);
+        const arr = byRoot.get(r) ?? [];
+        arr.push(l.id);
+        byRoot.set(r, arr);
+      }
+      for (const l of (allLangs ?? []) as { id: string; name: string }[]) {
+        const r = variantRoot(l.name);
+        langGroups.set(l.id, byRoot.get(r) ?? [l.id]);
+      }
+    }
+    const equivIds = (langId: string): string[] =>
+      langGroups.get(langId) ?? [langId];
+
     // Phase 1 — selection only. This runs for BOTH dryRun (preview) and real
     // send so the admin sees exactly the same tests they're about to send.
     type Pick = {
@@ -194,11 +228,16 @@ serve(async (req: Request) => {
       // domain-based combinations — in that case we match on (pair × domain)
       // only and accept any service_type in the library. Legacy combos that
       // still carry a service_type keep the stricter match.
+      // Source and target are matched against ANY equivalent language variant
+      // (e.g. an "English (US)" combo matches "English" library rows). See
+      // langGroups setup above.
+      const srcEquiv = equivIds(combo.source_language_id);
+      const tgtEquiv = equivIds(combo.target_language_id);
       let libraryQ = supabase
         .from("cvp_test_library")
         .select("id, title, source_language_id, target_language_id, domain, service_type, difficulty, source_text, source_file_path, instructions, times_used, last_used_at")
-        .eq("source_language_id", combo.source_language_id)
-        .eq("target_language_id", combo.target_language_id)
+        .in("source_language_id", srcEquiv)
+        .in("target_language_id", tgtEquiv)
         .eq("domain", combo.domain)
         .eq("is_active", true);
       if (combo.service_type) {
@@ -215,11 +254,13 @@ serve(async (req: Request) => {
       // a target-language-agnostic row (target_language_id IS NULL) at the
       // same source language + domain. These are the EN→Target seed rows
       // (one English source serves any target). Same rotation order applies.
+      // Source language matching also uses the equivalence group so
+      // English (US) combos pick up wildcards seeded under generic English.
       if (availableTests.length === 0) {
         let wildcardQ = supabase
           .from("cvp_test_library")
           .select("id, title, source_language_id, target_language_id, domain, service_type, difficulty, source_text, source_file_path, instructions, times_used, last_used_at")
-          .eq("source_language_id", combo.source_language_id)
+          .in("source_language_id", srcEquiv)
           .is("target_language_id", null)
           .eq("domain", combo.domain)
           .eq("is_active", true);
