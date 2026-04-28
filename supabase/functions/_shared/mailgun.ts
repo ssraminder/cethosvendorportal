@@ -19,6 +19,13 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 
 export interface MailgunSendOptions {
   to: { email: string; name?: string } | { email: string; name?: string }[];
+  /**
+   * BCC recipients. Useful for staff supervision of automated outbound
+   * (e.g. backfill runs where staff want to see what was sent without
+   * disclosing the cc to the applicant). Mailgun handles BCC silently —
+   * the To: header doesn't list these.
+   */
+  bcc?: string | string[];
   subject: string;
   html: string;
   text?: string;
@@ -137,6 +144,10 @@ export async function sendMailgunEmail(
   const form = new FormData();
   form.append("from", `${fromName} <${fromEmail}>`);
   for (const r of recipients) form.append("to", formatAddress(r));
+  if (options.bcc) {
+    const bccList = Array.isArray(options.bcc) ? options.bcc : [options.bcc];
+    for (const b of bccList) form.append("bcc", b);
+  }
   if (replyTo) form.append("h:Reply-To", replyTo);
   form.append("subject", options.subject);
   form.append("html", options.html);

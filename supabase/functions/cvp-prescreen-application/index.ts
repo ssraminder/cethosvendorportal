@@ -23,6 +23,7 @@ import {
 import { buildPrescreenGuidance } from "../_shared/prescreen-guidance.ts";
 import { getSafeModeStatus } from "../_shared/safe-mode.ts";
 import { MODEL_BASELINE, MODEL_QUALITY } from "../_shared/ai-models.ts";
+import { shouldAutoSendTest } from "../_shared/red-flag-weights.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,8 +38,8 @@ const corsHeaders = {
 // residence, early-career, volunteer work, side-work in related fields).
 // Whether staff-guidance from verdicts is prepended is reflected in
 // ai_prescreening_result.staff_guidance_count (not the version string).
-const PROMPT_VERSION_BASE = "v3-assets-aware";
-const PROMPT_VERSION_GUIDED = "v3-assets-aware-staff-guided";
+const PROMPT_VERSION_BASE = "v4-cv-mismatch-tightened";
+const PROMPT_VERSION_GUIDED = "v4-cv-mismatch-tightened-staff-guided";
 const MAX_PDF_BYTES = 32 * 1024 * 1024; // Anthropic document input limit
 
 interface PrescreenResult {
@@ -187,7 +188,15 @@ relevant experience, certifications, or evidence of quality, surface them.
 
 SCORING GUIDELINES (0–100)
 - Weight CV evidence HEAVILY when it corroborates strong form claims.
-- PENALIZE HEAVILY when CV contradicts form (inflated seniority etc.)
+- PENALIZE HEAVILY only when the CV DIRECTLY contradicts the form (e.g.
+  applicant claims sworn-translator status but CV shows none, claims a
+  certification the CV omits and that would be impossible to omit, claims
+  a different professional identity altogether).
+- Minor numerical drift (e.g. form says 8 years, CV implies 6–7) is NOT a
+  direct contradiction. Set cv_corroborates_form="partially" and DO NOT add
+  it as a red_flag. Most applicants round up modestly; this is normal.
+- Reserve cv_corroborates_form="contradicts" for genuine identity-level or
+  credential-level contradictions, not numeric drift.
 - Score reflects likely FIT to the role, not how many boxes are ticked.
 - 70+ = strong candidate, proceed to testing
 - 50–69 = uncertain, flag for staff review
@@ -902,6 +911,72 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
       }
     } catch (emailError) {
       console.error("Error sending prescreen result email:", emailError);
+    }
+
+    // ---- Auto-send General test (April 2026 policy) ----
+    // Translator applicants whose AI score is ≥40 and who don't trip a critical
+    // flag get the General test sent automatically. Other domains stay
+    // staff-gated — admin (or vendor self-serve later) requests them on demand.
+    // CV-vs-application mismatches are LOW severity by policy and don't block
+    // here; only direct CV contradictions or fraud-type flags do. See
+    // _shared/red-flag-weights.ts.
+    try {
+      const aiFailed = aiResult.error === "ai_fallback";
+      const isTranslator = app.role_type === "translator";
+      const flags = (aiResult as Record<string, unknown>).red_flags as
+        | string[]
+        | undefined;
+      const cvCorroborates = (aiResult as Record<string, unknown>)
+        .cv_corroborates_form as string | undefined;
+
+      if (isTranslator && !aiFailed && newStatus !== "rejected") {
+        const decision = shouldAutoSendTest({
+          score: aiScore,
+          cvCorroborates,
+          flags,
+          safeMode: safeMode.active,
+        });
+        if (decision.allowed) {
+          // Fire-and-forget. cvp-send-tests handles its own retries / partial
+          // failures and writes per-combination status (test_sent /
+          // no_test_available). We don't await the result on the prescreen
+          // path because we don't want a slow test send to delay the
+          // prescreen response.
+          const fnUrl =
+            (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
+            "/functions/v1/cvp-send-tests";
+          fetch(fnUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${
+                Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+              }`,
+            },
+            body: JSON.stringify({
+              applicationId,
+              domainFilter: ["general"],
+            }),
+          }).catch((e) =>
+            console.error(
+              `Auto-send General failed for ${applicationId}:`,
+              e instanceof Error ? e.message : String(e),
+            ),
+          );
+          console.log(
+            `Auto-send General queued for ${applicationId} (score=${aiScore}, flags=${flags?.length ?? 0}, breakdown=${JSON.stringify(decision.breakdown)})`,
+          );
+        } else {
+          console.log(
+            `Auto-send General skipped for ${applicationId}: ${decision.reason} (score=${aiScore})`,
+          );
+        }
+      }
+    } catch (autoSendErr) {
+      console.error(
+        `Error in auto-send-General hook for ${applicationId}:`,
+        autoSendErr,
+      );
     }
 
     return jsonResponse({

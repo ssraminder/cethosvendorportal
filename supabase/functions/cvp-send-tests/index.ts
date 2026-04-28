@@ -87,10 +87,22 @@ serve(async (req: Request) => {
       applicationId?: string;
       /** Subset of combinations to send tests for. Default: all pending. */
       combinationIds?: string[];
+      /**
+       * Domain allowlist. When provided, only pending combinations whose
+       * `domain` is in this list are eligible. Used by auto-send paths that
+       * want to send the General test only and leave other domains for staff
+       * or vendor-self-serve later. When omitted, all domains are eligible.
+       */
+      domainFilter?: string[];
       /** Override AI's suggested_test_difficulty for this send. */
       difficulty?: "beginner" | "intermediate" | "advanced";
       /** Staff who triggered (for audit + outbound tracking). */
       staffId?: string;
+      /**
+       * BCC the V3 invitation to one or more email addresses (staff
+       * oversight). Applicants don't see these recipients.
+       */
+      bcc?: string | string[];
       /**
        * When true, run the selection logic + return the chosen test per
        * combination WITHOUT inserting submissions, flipping combination
@@ -146,6 +158,9 @@ serve(async (req: Request) => {
       .eq("status", "pending");
     if (body.combinationIds && body.combinationIds.length > 0) {
       comboQ = comboQ.in("id", body.combinationIds);
+    }
+    if (body.domainFilter && body.domainFilter.length > 0) {
+      comboQ = comboQ.in("domain", body.domainFilter);
     }
     const { data: combinations, error: combError } = await comboQ;
 
@@ -502,6 +517,7 @@ serve(async (req: Request) => {
       });
       await sendMailgunEmail({
         to: { email: app.email, name: app.full_name },
+        bcc: body.bcc,
         subject: tpl.subject,
         html: tpl.html,
         text: tpl.text,
