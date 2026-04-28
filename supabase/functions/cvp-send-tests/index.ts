@@ -413,7 +413,6 @@ serve(async (req: Request) => {
       submissionId: string;
       token: string;
       tmEmail: string;
-      tmPassword: string;
       tmJobUrl: string;
       tmSigninUrl: string | null;
       sourceLangName: string;
@@ -484,14 +483,12 @@ serve(async (req: Request) => {
     }
 
     // ---- Vendor account: one TM profile per applicant, reused across tests ----
-    // If we've never sent this vendor a test, the upsert mints an auth user +
-    // profile and returns a fresh password. We persist (tm_user_id,
-    // tm_initial_password) on cvp_applications so subsequent sends skip
-    // both the upsert call AND the password rotation.
+    // TM signs in via email OTP only — no password is ever exchanged or
+    // emailed. The upsert is purely "do you have a profile for this email,
+    // and if not, mint one." Once we have tm_user_id we cache it on
+    // cvp_applications so subsequent sends skip the upsert call.
     let vendorUserId: string | null =
       (app as Record<string, unknown>).tm_user_id as string | null ?? null;
-    let vendorPassword: string | null =
-      (app as Record<string, unknown>).tm_initial_password as string | null ?? null;
     let vendorIsNew = false;
 
     if (!vendorUserId && TM_API_KEY) {
@@ -517,26 +514,16 @@ serve(async (req: Request) => {
         const upsertResult = (await upsertResp.json()) as {
           idempotent: boolean;
           user_id: string;
-          applicant_password?: string;
         };
         vendorUserId = upsertResult.user_id;
         vendorIsNew = !upsertResult.idempotent;
-        if (upsertResult.applicant_password) {
-          vendorPassword = upsertResult.applicant_password;
-        }
-        // Persist on the application so subsequent calls don't hit TM again
-        // for account-creation — only for job-creation.
-        const appUpdate: Record<string, unknown> = {
-          tm_user_id: vendorUserId,
-          updated_at: new Date().toISOString(),
-        };
-        if (vendorPassword) {
-          appUpdate.tm_initial_password = vendorPassword;
-          appUpdate.tm_account_created_at = new Date().toISOString();
-        }
         await supabase
           .from("cvp_applications")
-          .update(appUpdate)
+          .update({
+            tm_user_id: vendorUserId,
+            tm_account_created_at: vendorIsNew ? new Date().toISOString() : null,
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", applicationId);
       } catch (vendorErr) {
         console.error(
@@ -688,14 +675,13 @@ serve(async (req: Request) => {
       const tmJobUrl = `${TM_BASE_URL}/translator/editor/${tmResult!.job_id}`;
 
       // Persist TM provisioning data on the submission for admin visibility
-      // and idempotency on retries. Email + password are sourced from the
-      // vendor account (cvp_applications.tm_initial_password) — they're the
-      // same across every test we send this vendor.
+      // and idempotency on retries. tm_user_password column is left NULL —
+      // sign-in is by email OTP only, no password is ever exchanged.
       await supabase
         .from("cvp_test_submissions")
         .update({
           tm_user_email: app.email,
-          tm_user_password: vendorPassword,
+          tm_user_password: null,
           tm_job_id: tmResult!.job_id,
           tm_job_url: tmJobUrl,
           tm_provisioned_at: new Date().toISOString(),
@@ -727,7 +713,6 @@ serve(async (req: Request) => {
         submissionId: submission.id,
         token: submission.token,
         tmEmail: app.email,
-        tmPassword: vendorPassword ?? "(see your prior invitation, or reset from tm.cethos.com/profile)",
         tmJobUrl,
         tmSigninUrl: tmResult!.signin_url,
         sourceLangName: srcInfo.name,
@@ -787,30 +772,20 @@ serve(async (req: Request) => {
         })
         .join("");
 
-      // Account block (shown once at the top, not per test). Different copy
-      // for first-time vendors vs returning vendors.
+      // Account block (shown once at the top, not per test). Auth is by
+      // email OTP only — no passwords. Different copy for first-time vs
+      // returning vendors.
       const accountBlockHtml = vendorIsNew
         ? `
           <div style="margin: 0 0 20px; padding: 14px 16px; background: #ECFDF5; border-left: 3px solid #10B981;">
             <div style="font-weight: 600; margin-bottom: 6px;">Your CETHOS translator account</div>
             <div style="font-size: 13px; color: #374151; margin-bottom: 10px;">
-              We've created an account at <a href="https://tm.cethos.com" style="color: #0891B2;">tm.cethos.com</a> so you can take this test and any future ones we send.
-            </div>
-            <div style="font-size: 13px; margin: 4px 0;">
-              <span style="color: #6B7280;">Email:</span>
-              <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(app.email)}</code>
-            </div>
-            <div style="font-size: 13px; margin: 4px 0;">
-              <span style="color: #6B7280;">Password:</span>
-              <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(vendorPassword ?? "")}</code>
-            </div>
-            <div style="font-size: 12px; color: #6B7280; margin-top: 10px;">
-              You can change this password any time from your <a href="https://tm.cethos.com/profile" style="color: #0891B2;">profile page</a>.
+              We've set up an account for you at <a href="https://tm.cethos.com" style="color: #0891B2;">tm.cethos.com</a>. There's no password — when you sign in, we'll email a 6-digit code to <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(app.email)}</code>. The "Open my test" button below uses a one-click link so you don't have to type the code today.
             </div>
           </div>`
         : `
           <div style="margin: 0 0 16px; font-size: 13px; color: #6B7280;">
-            Sign in with your existing CETHOS translator account at <a href="https://tm.cethos.com" style="color: #0891B2;">tm.cethos.com</a> (email: <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(app.email)}</code>). Forgot your password? <a href="https://tm.cethos.com/forgot-password" style="color: #0891B2;">Reset it here</a>.
+            Sign in at <a href="https://tm.cethos.com" style="color: #0891B2;">tm.cethos.com</a> with <code style="background: #fff; padding: 2px 6px; border: 1px solid #E5E7EB; border-radius: 3px;">${escHtml(app.email)}</code> — we'll email you a 6-digit code. Or use the one-click "Open my test" button below.
           </div>`;
 
       const fullBodyHtml = accountBlockHtml + testLinksHtml;
