@@ -477,8 +477,33 @@ serve(async (req: Request) => {
     const TM_BASE_URL = Deno.env.get("TM_BASE_URL") ?? "https://tm.cethos.com";
     const TM_API_KEY = Deno.env.get("TM_API_KEY") ?? "";
     if (!TM_API_KEY) {
+      // Hard-fail instead of silently letting every combo fall through the
+      // `!TM_API_KEY` guards below as `pending`. Without this we can't
+      // provision a vendor account or create a test job, so there's
+      // literally nothing to send. Mark every selected combo so staff sees
+      // the issue, then surface a 500 to the caller (the prescreen hook)
+      // so it logs the failure instead of swallowing it.
       console.error(
-        "TM_API_KEY not configured — cannot provision TM-Cethos test jobs.",
+        "TM_API_KEY not configured — aborting test send. Set TM_API_KEY in the vendor portal Supabase function secrets.",
+      );
+      for (const p of picks) {
+        await supabase
+          .from("cvp_test_combinations")
+          .update({
+            status: "no_test_available",
+            updated_at: new Date().toISOString(),
+            failure_reason:
+              "TM_API_KEY missing in vendor-portal Supabase secrets — set it and re-run cvp-send-tests for this application.",
+          })
+          .eq("id", p.combo.id);
+      }
+      return jsonResponse(
+        {
+          success: false,
+          error: "TM_API_KEY not configured",
+          combosMarked: picks.length,
+        },
+        500,
       );
     }
 
@@ -532,12 +557,14 @@ serve(async (req: Request) => {
         );
         // Without a vendor user_id we can't create jobs. Mark every pending
         // combination as no_test_available so staff sees it.
+        const reason = `Vendor-account upsert failed: ${vendorErr instanceof Error ? vendorErr.message : "unknown"}`;
         for (const p of picks) {
           await supabase
             .from("cvp_test_combinations")
             .update({
               status: "no_test_available",
               updated_at: new Date().toISOString(),
+              failure_reason: reason,
             })
             .eq("id", p.combo.id);
         }

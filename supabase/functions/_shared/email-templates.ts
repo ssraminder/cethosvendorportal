@@ -14,6 +14,7 @@ const BRAND = {
   muted: "#6B7280",
   border: "#E5E7EB",
   bg: "#F9FAFB",
+  logoUrl: "https://tm.cethos.com/cethos-logo.png",
 };
 
 function supportEmail(): string {
@@ -55,7 +56,10 @@ function shell({ preheader, heading, body, cta, footer }: ShellArgs): string {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="margin:0;background:${BRAND.bg};padding:24px 12px;">
 ${preheaderBlock}
-<div style="max-width:640px;margin:0 auto;background:#fff;padding:32px 28px;border:1px solid ${BRAND.border};border-radius:8px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:${BRAND.text};">
+<div style="max-width:640px;margin:0 auto;background:#fff;padding:24px 28px 32px;border:1px solid ${BRAND.border};border-radius:8px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:${BRAND.text};">
+  <div style="margin:0 0 20px;padding-bottom:16px;border-bottom:1px solid ${BRAND.border};">
+    <img src="${BRAND.logoUrl}" alt="Cethos" width="120" height="auto" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:120px;">
+  </div>
   <h1 style="color:${BRAND.teal};font-size:20px;margin:0 0 16px;">${esc(heading)}</h1>
   <div style="font-size:14px;line-height:1.55;">${body}</div>
   ${ctaBlock}
@@ -132,16 +136,39 @@ export interface V3Params {
   expiryHours: number;
 }
 export function buildV3TestInvitation(p: V3Params): RenderedEmail {
-  return render(`Your CETHOS test${p.testCount > 1 ? "s are" : " is"} ready · ${p.applicationNumber}`, {
-    preheader: `Open within ${p.expiryHours} hours.`,
-    heading: `Your test${p.testCount > 1 ? "s" : ""} ${p.testCount > 1 ? "are" : "is"} ready`,
+  const isMulti = p.testCount > 1;
+  const testWord = isMulti ? "tests" : "test";
+  const areOrIs = isMulti ? "are" : "is";
+  return render(`Your Cethos ${testWord} ${areOrIs} ready · ${p.applicationNumber}`, {
+    preheader: `Open within ${p.expiryHours} hours. One click signs you in — no password needed.`,
+    heading: `Your ${testWord} ${areOrIs} ready`,
     body: `
       <p>Hi ${esc(p.fullName)},</p>
-      <p>You have <strong>${p.testCount}</strong> test${p.testCount > 1 ? "s" : ""} to complete for application <strong>${esc(p.applicationNumber)}</strong>. The translator workspace below has your source text segmented into sentences — translate each one and click <strong>Confirm ✓</strong> as you finish. Your work saves automatically.</p>
+      <p>Welcome to the next step of your application <strong>${esc(p.applicationNumber)}</strong> with Cethos. You have <strong>${p.testCount}</strong> ${testWord} waiting in our translator workspace.</p>
+
+      <div style="margin:20px 0;padding:16px 18px;background:#F9FAFB;border:1px solid ${BRAND.border};border-radius:6px;">
+        <div style="font-weight:600;color:${BRAND.navy};margin-bottom:10px;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">How this works</div>
+        <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.6;color:${BRAND.text};">
+          <li style="margin-bottom:6px;"><strong>Click "Open my test"</strong> below — that signs you in to <a href="https://tm.cethos.com" style="color:${BRAND.teal};">tm.cethos.com</a> automatically. No password.</li>
+          <li style="margin-bottom:6px;"><strong>Translate each segment.</strong> The source is split into sentences on the left; type your translation on the right and click <strong style="color:${BRAND.teal};">Confirm ✓</strong> to lock each one in. Your work saves as you type.</li>
+          <li style="margin-bottom:6px;"><strong>Click <span style="color:${BRAND.navy};">Submit test</span></strong> in the top bar when every segment is confirmed. We'll email you when the result is in.</li>
+        </ol>
+      </div>
+
       ${p.testLinksHtml}
-      <p style="font-size: 13px; color: #6B7280; margin-top: 16px;">
-        These accounts and links expire in <strong>${p.expiryHours} hours</strong>. One submission per test. If you miss the window, reply and we'll issue a fresh one. The login above is single-use; please don't share it.
-      </p>
+
+      <div style="margin-top:24px;padding:14px 16px;background:#FFFBEB;border-left:3px solid #F59E0B;font-size:13px;color:#374151;">
+        <strong>Heads up:</strong> the one-click links expire in <strong>${p.expiryHours} hours</strong> and can only be used once each. If a link stops working, sign in directly at <a href="https://tm.cethos.com" style="color:${BRAND.teal};">tm.cethos.com</a> with this email — we'll send you a 6-digit code instead.
+      </div>
+
+      <div style="margin-top:20px;font-size:13px;color:${BRAND.muted};">
+        <strong style="color:${BRAND.text};">Need help?</strong>
+        <ul style="margin:6px 0 0;padding-left:18px;line-height:1.55;">
+          <li><strong>Lost the link?</strong> Just reply to this email and we'll resend.</li>
+          <li><strong>Sign-in code didn't arrive?</strong> Check spam, then reply with your application number above.</li>
+          <li><strong>Need more time?</strong> Tell us before the ${p.expiryHours}-hour window closes and we'll extend.</li>
+        </ul>
+      </div>
     `,
   });
 }
