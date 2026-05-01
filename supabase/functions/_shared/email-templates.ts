@@ -539,3 +539,37 @@ export function buildV21ApplicantReferenceReceived(p: V21Params): RenderedEmail 
     `,
   });
 }
+
+// ---- V22: Test feedback request — applicant reviews per-error AI findings ----
+// Sent after a test is graded, asking the applicant to Accept or Reject each
+// finding the AI flagged. 4-day window. Comments must be in English so our
+// review team (and the eventual auto-triage / paid reviewer pipeline) can
+// read them across language pairs.
+export interface V22Params {
+  fullName: string;
+  applicationNumber: string;
+  reviewUrl: string;
+  expiresInDays: number;
+  errorCount: number;
+  overallScore: number | null;
+  pair: string;
+}
+export function buildV22TestFeedbackRequest(p: V22Params): RenderedEmail {
+  const scoreLine = p.overallScore !== null
+    ? `Your test scored <strong>${p.overallScore}/100</strong>.`
+    : `Your test has been reviewed.`;
+  return render(`We graded your ${p.pair} test — share your perspective · ${p.applicationNumber}`, {
+    preheader: "Help us improve our review by responding to each finding.",
+    heading: "We graded your test",
+    body: `
+      <p>Hi ${esc(p.fullName.split(" ")[0])},</p>
+      <p>${scoreLine} Our AI reviewer flagged <strong>${p.errorCount}</strong> finding${p.errorCount === 1 ? "" : "s"} in your translation. We'd like your perspective on each one — agreeing where you do, and pushing back where you don't.</p>
+      <p>This isn't an appeal. The score stands. We use your responses to train our reviewer better, so we want your honest take.</p>
+      <p style="text-align: center; margin: 24px 0;">
+        <a href="${esc(p.reviewUrl)}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">Review the findings</a>
+      </p>
+      <p style="font-size: 13px; color: #475569;">Please write your comments in <strong>English</strong> — our review team handles many language pairs and reads everything in English.</p>
+      <p style="font-size: 13px; color: #475569;">The link expires in <strong>${p.expiresInDays} day${p.expiresInDays === 1 ? "" : "s"}</strong>. If you don't respond, no problem — we'll proceed with the assessment as-is.</p>
+    `,
+  });
+}

@@ -164,7 +164,10 @@ Output JSON schema:
       "category": "accuracy" | "fluency" | "terminology" | "formatting" | "certification_readiness",
       "severity": "minor" | "major" | "critical",
       "location": string,
-      "note": string
+      "source_segment": string,
+      "applicant_translation": string,
+      "revised_translation": string,
+      "comment": string
     }
   ],
   "strengths": string[],
@@ -172,6 +175,12 @@ Output JSON schema:
   "suggested_tier": "standard" | "senior" | "expert",
   "confidence": "high" | "medium" | "low"
 }
+
+Per-error LQA edit log — MANDATORY structure:
+- "source_segment": the relevant span from the SOURCE text, in the source language, verbatim.
+- "applicant_translation": the relevant span from the APPLICANT's translation, in the target language, verbatim.
+- "revised_translation": the corrected version of the applicant's span, in the target language. Wrap removed text in <del>…</del> and inserted text in <ins>…</ins> so the diff renders for the applicant. Example: "We <ins>are pleased</ins> to share <del>that we have</del> several updates".
+- "comment": EXPLANATION IN ENGLISH ONLY. Why the original is wrong, what the rule is, why the revision is preferred. The applicant's reviewer reads this in English regardless of the language pair. Never write the comment in the target language.
 
 Scoring guidelines:
 - >= 80: Pass — strong translation quality
@@ -185,9 +194,10 @@ Tier suggestion:
 
 Output budget — IMPORTANT for non-Latin scripts where each character costs more tokens:
 - Cap "errors" at the 12 most consequential (severity-weighted: critical first, then major, then minor).
-- Keep each error "note" under ~120 characters in the target language. Be specific but terse.
-- Keep "feedback_draft" under 1500 characters. Plain prose, no bullets needed.
-- Keep "strengths" to 5 items max, each under 80 characters.`;
+- Keep each "comment" (English) under ~150 characters. Be specific but terse.
+- Keep "source_segment" / "applicant_translation" / "revised_translation" each under ~200 characters — quote only the relevant span, not whole paragraphs.
+- Keep "feedback_draft" under 1500 characters. Plain prose, no bullets needed. Write in English.
+- Keep "strengths" to 5 items max, each under 80 characters, in English.`;
 
 const LQA_SYSTEM_PROMPT = `You are an expert LQA (Linguistic Quality Assurance) assessor for CETHOS, a Canadian certified translation company.
 
@@ -410,7 +420,7 @@ Evaluate the applicant's translation against the source text and reference trans
       // Stamp grader provenance so staff can see which model produced the
       // result. Prompt version bumps when the rubric/output budget changes.
       (aiResult as Record<string, unknown>).model_used = "claude-sonnet-4-6";
-      (aiResult as Record<string, unknown>).prompt_version = "2026-05-01";
+      (aiResult as Record<string, unknown>).prompt_version = "2026-05-01b-lqa-edit-log";
       (aiResult as Record<string, unknown>).assessed_at = new Date().toISOString();
     } catch (aiError) {
       // AI fallback — never block the pipeline

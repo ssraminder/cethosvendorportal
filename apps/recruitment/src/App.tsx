@@ -5,6 +5,7 @@ import { TestSubmission } from './pages/TestSubmission'
 import { PrivacyPolicy } from './pages/PrivacyPolicy'
 import { ReferencesEntry } from './pages/ReferencesEntry'
 import { ReferenceFeedback } from './pages/ReferenceFeedback'
+import { TestFeedback } from './pages/TestFeedback'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/apply/confirmation" element={<Confirmation />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/test/:token" element={<TestSubmission />} />
+        <Route path="/test-feedback/:token" element={<TestFeedback />} />
         <Route path="/references/:token" element={<ReferencesEntry />} />
         <Route path="/reference-feedback/:token" element={<ReferenceFeedback />} />
         <Route path="/" element={<Navigate to="/apply" replace />} />
