@@ -407,6 +407,11 @@ Evaluate the applicant's translation against the source text and reference trans
         const result = aiResult as unknown as TranslationAssessment;
         aiScore = result.overall_score;
       }
+      // Stamp grader provenance so staff can see which model produced the
+      // result. Prompt version bumps when the rubric/output budget changes.
+      (aiResult as Record<string, unknown>).model_used = "claude-sonnet-4-6";
+      (aiResult as Record<string, unknown>).prompt_version = "2026-05-01";
+      (aiResult as Record<string, unknown>).assessed_at = new Date().toISOString();
     } catch (aiError) {
       // AI fallback — never block the pipeline
       console.error("AI test assessment failed, falling back to staff_review:", aiError);
