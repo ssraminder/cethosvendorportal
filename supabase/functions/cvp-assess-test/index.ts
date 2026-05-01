@@ -342,12 +342,12 @@ Evaluate the applicant's error identification, categorisation, severity ratings,
 
         let rawResponse: string;
         try {
-          rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 2048);
+          rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 8192);
           aiResult = parseJsonResponse(rawResponse);
         } catch (firstErr) {
           console.error("First Claude call failed, retrying:", firstErr);
           try {
-            rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 2048);
+            rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 8192);
             aiResult = parseJsonResponse(rawResponse);
           } catch (retryErr) {
             console.error("Retry also failed:", retryErr);
@@ -383,12 +383,12 @@ Evaluate the applicant's translation against the source text and reference trans
 
         let rawResponse: string;
         try {
-          rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 2048);
+          rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 8192);
           aiResult = parseJsonResponse(rawResponse);
         } catch (firstErr) {
           console.error("First Claude call failed, retrying:", firstErr);
           try {
-            rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 2048);
+            rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 8192);
             aiResult = parseJsonResponse(rawResponse);
           } catch (retryErr) {
             console.error("Retry also failed:", retryErr);

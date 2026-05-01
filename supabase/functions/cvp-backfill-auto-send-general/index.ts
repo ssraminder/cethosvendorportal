@@ -64,7 +64,13 @@ serve(async (req: Request) => {
     return json({ success: false, error: "method_not_allowed" }, 405);
   }
 
-  let body: { dryRun?: boolean; limit?: number; bypassSafeMode?: boolean } = {};
+  let body: {
+    dryRun?: boolean;
+    limit?: number;
+    bypassSafeMode?: boolean;
+    bypassAllGates?: boolean;
+    applicationId?: string;
+  } = {};
   try {
     const raw = await req.text();
     if (raw) body = JSON.parse(raw);
@@ -73,7 +79,11 @@ serve(async (req: Request) => {
   }
   const dryRun = body.dryRun === true;
   const bypassSafeMode = body.bypassSafeMode === true;
+  const bypassAllGates = body.bypassAllGates === true;
   const limit = Math.min(Math.max(body.limit ?? 200, 1), 1000);
+  const applicationId = typeof body.applicationId === "string" && body.applicationId.length > 0
+    ? body.applicationId
+    : null;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -92,13 +102,20 @@ serve(async (req: Request) => {
   // NULL). Includes 'prescreened' (≥70 with safe mode off) AND 'staff_review'
   // (50–69 OR safe mode forced everything to manual). We don't pre-filter by
   // status because the auto-send decision only needs the score + flags.
-  const { data: rows, error: appErr } = await supabase
+  let appQ = supabase
     .from("cvp_applications")
     .select(
       "id, application_number, status, role_type, ai_prescreening_score, ai_prescreening_result",
     )
     .eq("role_type", "translator")
-    .not("ai_prescreening_score", "is", null)
+    .not("ai_prescreening_score", "is", null);
+  if (applicationId) {
+    // Smoke / single-applicant flush: caller passes one app id, we send to
+    // just that one. Useful for testing the auto-send path end-to-end
+    // without touching the full backlog.
+    appQ = appQ.eq("id", applicationId);
+  }
+  const { data: rows, error: appErr } = await appQ
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -153,13 +170,16 @@ serve(async (req: Request) => {
     // Decision: same logic as the live prescreen path. bypassSafeMode flips
     // the safe-mode input only — every other rule (score floor, critical
     // flags, contradictions) still applies.
+    // bypassAllGates short-circuits the policy check entirely — used when
+    // staff wants test results from EVERY applicant (including failures and
+    // cv_contradicts) to gather signal on what comes back.
     const decision = shouldAutoSendTest({
       score,
       cvCorroborates,
       flags,
       safeMode: safeModeForDecision,
     });
-    if (!decision.allowed) {
+    if (!bypassAllGates && !decision.allowed) {
       skipped += 1;
       details.push({
         id: app.id,
@@ -266,6 +286,7 @@ serve(async (req: Request) => {
       skipped,
       safeMode: safeModeStatus.active,
       bypassSafeMode,
+      bypassAllGates,
       details,
     },
   });
