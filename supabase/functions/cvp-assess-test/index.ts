@@ -49,7 +49,7 @@ interface TranslationAssessment {
     fluency: number;
     terminology: number;
     formatting: number;
-    certification_readiness: number;
+    certification_readiness?: number;
   };
   errors: {
     category: string;
@@ -134,16 +134,56 @@ function parseJsonResponse(raw: string): Record<string, unknown> {
   return JSON.parse(cleaned);
 }
 
-const TRANSLATION_SYSTEM_PROMPT = `You are an expert translation quality assessor for CETHOS, a Canadian certified translation company.
+// Domains that pull in certified-translation framing + certification_readiness
+// dimension. Anything else (general, medical, technical, business, ...) is
+// graded as general-purpose translation with 4 MQM dimensions only.
+const CERTIFIED_DOMAINS = new Set(["certified", "legal"]);
 
-You evaluate translation test submissions against a reference translation and the source document. Return ONLY valid JSON — no preamble, no markdown.
+function buildTranslationSystemPrompt(domain: string | null | undefined): string {
+  const isCertified = CERTIFIED_DOMAINS.has((domain ?? "").toLowerCase());
 
-Score on a 0-100 scale using MQM Core dimensions with these weights:
-- Accuracy (35%): Faithfulness to source, no omissions, no additions, correct meaning transfer
+  const intro = isCertified
+    ? `You are an expert translation quality assessor for CETHOS, a Canadian certified translation company.
+
+You evaluate certified translation test submissions against a reference translation and the source document. Return ONLY valid JSON — no preamble, no markdown.`
+    : `You are an expert translation quality assessor.
+
+You evaluate general-purpose translation test submissions against a reference translation and the source document. The test domain is "${domain ?? "general"}" — do NOT apply certified-translation, ATA, notarisation, or jurisdiction-specific standards. Return ONLY valid JSON — no preamble, no markdown.`;
+
+  const weights = isCertified
+    ? `- Accuracy (35%): Faithfulness to source, no omissions, no additions, correct meaning transfer
 - Fluency (25%): Natural target language, proper grammar, readability
 - Terminology (20%): Domain-specific terms used correctly, consistency
 - Formatting (10%): Layout, punctuation, number formatting, date formats
-- Certification-readiness (10%): Meets Canadian certified translation standards
+- Certification-readiness (10%): Meets Canadian certified translation standards`
+    : `- Accuracy (40%): Faithfulness to source, no omissions, no additions, correct meaning transfer
+- Fluency (28%): Natural target language, proper grammar, readability
+- Terminology (22%): Domain-specific terms used correctly, consistency
+- Formatting (10%): Layout, punctuation, number formatting, date formats`;
+
+  const dimensionScoresSchema = isCertified
+    ? `  "dimension_scores": {
+    "accuracy": number (0-100),
+    "fluency": number (0-100),
+    "terminology": number (0-100),
+    "formatting": number (0-100),
+    "certification_readiness": number (0-100)
+  },`
+    : `  "dimension_scores": {
+    "accuracy": number (0-100),
+    "fluency": number (0-100),
+    "terminology": number (0-100),
+    "formatting": number (0-100)
+  },`;
+
+  const errorCategories = isCertified
+    ? `"accuracy" | "fluency" | "terminology" | "formatting" | "certification_readiness"`
+    : `"accuracy" | "fluency" | "terminology" | "formatting"`;
+
+  return `${intro}
+
+Score on a 0-100 scale using MQM Core dimensions with these weights:
+${weights}
 
 Output JSON schema:
 {
@@ -152,16 +192,10 @@ Output JSON schema:
   "domain": string,
   "overall_score": number (0-100),
   "pass": boolean,
-  "dimension_scores": {
-    "accuracy": number (0-100),
-    "fluency": number (0-100),
-    "terminology": number (0-100),
-    "formatting": number (0-100),
-    "certification_readiness": number (0-100)
-  },
+${dimensionScoresSchema}
   "errors": [
     {
-      "category": "accuracy" | "fluency" | "terminology" | "formatting" | "certification_readiness",
+      "category": ${errorCategories},
       "severity": "minor" | "major" | "critical",
       "location": string,
       "source_segment": string,
@@ -198,6 +232,7 @@ Output budget — IMPORTANT for non-Latin scripts where each character costs mor
 - Keep "source_segment" / "applicant_translation" / "revised_translation" each under ~200 characters — quote only the relevant span, not whole paragraphs.
 - Keep "feedback_draft" under 1500 characters. Plain prose, no bullets needed. Write in English.
 - Keep "strengths" to 5 items max, each under 80 characters, in English.`;
+}
 
 const LQA_SYSTEM_PROMPT = `You are an expert LQA (Linguistic Quality Assurance) assessor for CETHOS, a Canadian certified translation company.
 
@@ -376,7 +411,10 @@ Evaluate the applicant's error identification, categorisation, severity ratings,
         const result = aiResult as unknown as LqaAssessment;
         aiScore = result.overall_score;
       } else {
-        // Translation or Translation+Review assessment
+        // Translation or Translation+Review assessment.
+        // Prompt is built per-domain so general-domain tests aren't graded
+        // against certified-translation standards.
+        const translationSystemPrompt = buildTranslationSystemPrompt(testData.domain);
         const userMessage = `Assess this translation test submission.
 
 Language pair: ${langPair}
@@ -401,12 +439,12 @@ Evaluate the applicant's translation against the source text and reference trans
 
         let rawResponse: string;
         try {
-          rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 16384);
+          rawResponse = await callClaude(translationSystemPrompt, userMessage, 16384);
           aiResult = parseJsonResponse(rawResponse);
         } catch (firstErr) {
           console.error("First Claude call failed, retrying:", firstErr);
           try {
-            rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 16384);
+            rawResponse = await callClaude(translationSystemPrompt, userMessage, 16384);
             aiResult = parseJsonResponse(rawResponse);
           } catch (retryErr) {
             console.error("Retry also failed:", retryErr);
@@ -420,7 +458,7 @@ Evaluate the applicant's translation against the source text and reference trans
       // Stamp grader provenance so staff can see which model produced the
       // result. Prompt version bumps when the rubric/output budget changes.
       (aiResult as Record<string, unknown>).model_used = "claude-sonnet-4-6";
-      (aiResult as Record<string, unknown>).prompt_version = "2026-05-01b-lqa-edit-log";
+      (aiResult as Record<string, unknown>).prompt_version = "2026-05-01c-domain-aware";
       (aiResult as Record<string, unknown>).assessed_at = new Date().toISOString();
     } catch (aiError) {
       // AI fallback — never block the pipeline
@@ -645,25 +683,61 @@ Evaluate the applicant's translation against the source text and reference trans
         .eq("id", sub.application_id);
     }
 
-    // Auto-send V22 feedback-request to the applicant for this combo. Fire-
-    // and-forget; cvp-send-test-feedback-request is idempotent and respects
-    // staff_skip if a round already exists. Skips silently if no errors,
-    // already sent, or staff disabled the round.
+    // Schedule V22 feedback-request for 24h from now. The cron job
+    // cvp-process-feedback-auto-send picks up due rows and fires the email.
+    // Admins can short-circuit via "Send V22 now" in the recruitment UI.
+    // Skips silently if there are no errors to review or a round already
+    // exists (idempotent — re-grading doesn't double-schedule).
     try {
-      const supabaseUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-      fetch(`${supabaseUrl}/functions/v1/cvp-send-test-feedback-request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${serviceKey}`,
-        },
-        body: JSON.stringify({ submissionId }),
-      }).catch((err) =>
-        console.error("auto-send V22 feedback request failed:", err),
-      );
+      const errorsForRound = Array.isArray(
+        (aiResult as { errors?: unknown }).errors,
+      )
+        ? ((aiResult as { errors: unknown[] }).errors as unknown[])
+        : [];
+
+      if (errorsForRound.length > 0) {
+        const { data: existingRound } = await supabase
+          .from("cvp_test_feedback_rounds")
+          .select("submission_id, status, auto_sent_at, staff_skip")
+          .eq("submission_id", submissionId)
+          .maybeSingle();
+
+        if (!existingRound) {
+          // Generate a token now so the smoke admin tools and the cron both
+          // have a stable URL to reference. cvp-send-test-feedback-request
+          // will reuse this token when forceResend is false.
+          const tokenBytes = new Uint8Array(32);
+          crypto.getRandomValues(tokenBytes);
+          const token = Array.from(tokenBytes)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          const autoSendAt = new Date(
+            Date.now() + 24 * 60 * 60 * 1000,
+          ).toISOString();
+          const expiresAt = new Date(
+            Date.now() + (24 + 4 * 24) * 60 * 60 * 1000,
+          ).toISOString(); // 24h delay + 4-day review window
+
+          const { error: insertErr } = await supabase
+            .from("cvp_test_feedback_rounds")
+            .insert({
+              submission_id: submissionId,
+              combination_id: combinationId,
+              token,
+              status: "pending",
+              auto_send_at: autoSendAt,
+              expires_at: expiresAt,
+            });
+          if (insertErr) {
+            console.error(
+              "Failed to schedule V22 feedback round:",
+              insertErr,
+            );
+          }
+        }
+      }
     } catch (e) {
-      console.error("auto-send V22 trigger error:", e);
+      console.error("Schedule V22 feedback round failed:", e);
     }
 
     return jsonResponse({
