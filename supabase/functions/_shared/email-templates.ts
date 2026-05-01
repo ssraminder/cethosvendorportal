@@ -14,7 +14,8 @@ const BRAND = {
   muted: "#6B7280",
   border: "#E5E7EB",
   bg: "#F9FAFB",
-  logoUrl: "https://tm.cethos.com/cethos-logo.png",
+  logoUrl:
+    "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/final_logo_light_bg_cethosAsset%201.svg",
 };
 
 function supportEmail(): string {
@@ -572,4 +573,36 @@ export function buildV22TestFeedbackRequest(p: V22Params): RenderedEmail {
       <p style="font-size: 13px; color: #475569;">The link expires in <strong>${p.expiresInDays} day${p.expiresInDays === 1 ? "" : "s"}</strong>. If you don't respond, no problem — we'll proceed with the assessment as-is.</p>
     `,
   });
+}
+
+// ---- V23: Grading reminder for admin/grader staff ----
+// Sent by cvp-check-grading-followups when a submission has been waiting on
+// human grading for 3+ days without progress.
+export interface V23Params {
+  graderName: string;
+  applicationNumber: string;
+  applicantName: string;
+  reminderIndex: 1 | 2 | 3;
+  daysWaiting: number;
+  reviewUrl: string;
+}
+export function buildV23GradingReminder(p: V23Params): RenderedEmail {
+  const finalChance = p.reminderIndex === 3
+    ? `<p><strong>This is the third and final reminder for this submission.</strong> If grading isn't completed, the submission will be re-routed.</p>`
+    : "";
+  return render(
+    `Reminder #${p.reminderIndex}: grade pending test · ${p.applicationNumber}`,
+    {
+      preheader: `${p.applicantName}'s test has been waiting ${p.daysWaiting} days for grading.`,
+      heading: `Grading reminder #${p.reminderIndex}`,
+      body: `
+        <p>Hi ${esc(p.graderName.split(" ")[0])},</p>
+        <p>${esc(p.applicantName)}'s test (application <strong>${esc(p.applicationNumber)}</strong>) has been waiting <strong>${p.daysWaiting} days</strong> for human grading.</p>
+        ${finalChance}
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${esc(p.reviewUrl)}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">Review submission</a>
+        </p>
+      `,
+    },
+  );
 }

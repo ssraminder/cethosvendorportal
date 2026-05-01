@@ -4,7 +4,6 @@ import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import {
   buildV4TestReminder24hr,
   buildV5TestExpired,
-  buildV6FinalChanceDay7,
 } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
@@ -21,9 +20,9 @@ interface TestSubmissionRow {
   token_expires_at: string;
   status: string;
   created_at: string;
-  reminder_day2_sent_at: string | null;
-  reminder_day3_sent_at: string | null;
-  reminder_day7_sent_at: string | null;
+  reminder_1_sent_at: string | null;
+  reminder_2_sent_at: string | null;
+  reminder_3_sent_at: string | null;
 }
 
 interface ApplicationRow {
@@ -42,134 +41,199 @@ function jsonResponse(body: Record<string, unknown>, status = 200): Response {
 /**
  * cvp-check-test-followups
  *
- * Cron job that runs every hour. Processes the test follow-up email sequence:
+ * Cron job (hourly). Test invitation lifecycle:
  *
- * | Timing                        | Template | Action                       |
- * |-------------------------------|----------|------------------------------|
- * | Day 1                         | V3       | Test invitation (already sent)|
- * | Day 2 (24hrs before expiry)   | V4       | Reminder email               |
- * | Day 3 (at expiry)             | V5       | Token expired notification   |
- * | Day 7                         | V6       | Final chance — request new link|
- * | Day 10                        | —        | Status → archived, no email  |
+ * | Timing                                | Template | Action                |
+ * |---------------------------------------|----------|-----------------------|
+ * | Day 0                                 | V3       | Test invitation       |
+ * | Day 3 (created_at <= now - 3d)        | V4       | Reminder #1           |
+ * | Day 6 (reminder_1 sent + 3d)          | V4       | Reminder #2           |
+ * | Day 9 (reminder_2 sent + 3d)          | V4       | Reminder #3 (final)   |
+ * | Day 10 (token_expires_at)             | V5       | Token expired         |
+ * | Day 12 (token expired + 2d)           | —        | Archive               |
  *
- * Each token has its own sequence tracked independently.
- * Processes in batches of 50. Idempotent — safe to run multiple times.
+ * Idempotent. Processes batches of 50 per tier per tick.
  */
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-
-  // Accept both POST (cron trigger) and GET (manual trigger)
   if (req.method !== "POST" && req.method !== "GET") {
-    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+    return jsonResponse({ success: false, error: "method_not_allowed" }, 405);
   }
 
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
-
     const now = new Date();
     const appUrl = Deno.env.get("APP_URL") ?? "https://join.cethos.com";
 
-    let day2Sent = 0;
-    let day3Sent = 0;
-    let day7Sent = 0;
+    let reminder1Sent = 0;
+    let reminder2Sent = 0;
+    let reminder3Sent = 0;
+    let expiredSent = 0;
     let archived = 0;
     let errors = 0;
 
-    // --- Day 2: 24hr reminder (24 hours after creation = 24 hours before expiry) ---
-    // Submissions that are sent/viewed/draft_saved, created >= 24hrs ago, not yet reminded
-    {
-      const twentyFourHoursAgo = new Date(
-        now.getTime() - 24 * 60 * 60 * 1000
-      ).toISOString();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const isoMinus = (days: number): string =>
+      new Date(now.getTime() - days * dayMs).toISOString();
 
-      const { data: day2Submissions } = await supabase
+    async function fetchApp(applicationId: string): Promise<ApplicationRow | null> {
+      const { data } = await supabase
+        .from("cvp_applications")
+        .select("email, full_name, application_number")
+        .eq("id", applicationId)
+        .single();
+      return data ? (data as unknown as ApplicationRow) : null;
+    }
+
+    function hoursLeft(row: TestSubmissionRow): number {
+      return Math.max(
+        0,
+        Math.floor(
+          (new Date(row.token_expires_at).getTime() - now.getTime()) / (1000 * 60 * 60),
+        ),
+      );
+    }
+
+    async function sendReminder(
+      row: TestSubmissionRow,
+      app: ApplicationRow,
+      tag: string,
+    ): Promise<void> {
+      const tpl = buildV4TestReminder24hr({
+        fullName: app.full_name,
+        applicationNumber: app.application_number,
+        testLink: `${appUrl}/test/${row.token}`,
+        hoursRemaining: hoursLeft(row),
+      });
+      await sendMailgunEmail({
+        to: { email: app.email, name: app.full_name },
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        respectDoNotContactFor: app.email,
+        tags: [tag, row.application_id],
+      });
+    }
+
+    // --- Reminder #1: Day 3 (created_at <= now - 3 days) ---
+    {
+      const { data: rows } = await supabase
         .from("cvp_test_submissions")
-        .select("id, application_id, token, token_expires_at, status, created_at, reminder_day2_sent_at, reminder_day3_sent_at, reminder_day7_sent_at")
+        .select(
+          "id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
+        )
         .in("status", ["sent", "viewed", "draft_saved"])
-        .is("reminder_day2_sent_at", null)
-        .lt("created_at", twentyFourHoursAgo)
+        .is("reminder_1_sent_at", null)
+        .lt("created_at", isoMinus(3))
         .limit(50);
 
-      for (const row of (day2Submissions ?? []) as unknown as TestSubmissionRow[]) {
-        // Only send if token hasn't expired yet
+      for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
         if (new Date(row.token_expires_at) <= now) continue;
-
         try {
-          const { data: appData } = await supabase
-            .from("cvp_applications")
-            .select("email, full_name, application_number")
-            .eq("id", row.application_id)
-            .single();
-
-          if (!appData) continue;
-          const app = appData as unknown as ApplicationRow;
-
-          const hoursLeft = Math.max(
-            0,
-            Math.floor(
-              (new Date(row.token_expires_at).getTime() - now.getTime()) /
-                (1000 * 60 * 60)
-            )
-          );
-
-          const tpl = buildV4TestReminder24hr({
-            fullName: app.full_name,
-            applicationNumber: app.application_number,
-            testLink: `${appUrl}/test/${row.token}`,
-            hoursRemaining: hoursLeft,
-          });
-          await sendMailgunEmail({
-            to: { email: app.email, name: app.full_name },
-            subject: tpl.subject,
-            html: tpl.html,
-            text: tpl.text,
-            respectDoNotContactFor: app.email,
-            tags: ["v4-test-reminder", row.application_id],
-          });
-
+          const app = await fetchApp(row.application_id);
+          if (!app) continue;
+          await sendReminder(row, app, "v4-test-reminder-1");
           await supabase
             .from("cvp_test_submissions")
             .update({
-              reminder_day2_sent_at: now.toISOString(),
+              reminder_1_sent_at: now.toISOString(),
               updated_at: now.toISOString(),
             })
             .eq("id", row.id);
-
-          day2Sent++;
+          reminder1Sent++;
         } catch (err) {
-          console.error(`Error processing Day 2 reminder for submission ${row.id}:`, err);
+          console.error(`Reminder #1 failed for submission ${row.id}:`, err);
           errors++;
         }
       }
     }
 
-    // --- Day 3: Token expired notification ---
-    // Submissions whose token has expired, not yet notified
+    // --- Reminder #2: 3+ days after reminder #1 ---
     {
-      const { data: day3Submissions } = await supabase
+      const { data: rows } = await supabase
         .from("cvp_test_submissions")
-        .select("id, application_id, token, token_expires_at, status, created_at, reminder_day2_sent_at, reminder_day3_sent_at, reminder_day7_sent_at")
+        .select(
+          "id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
+        )
         .in("status", ["sent", "viewed", "draft_saved"])
-        .is("reminder_day3_sent_at", null)
+        .not("reminder_1_sent_at", "is", null)
+        .is("reminder_2_sent_at", null)
+        .lt("reminder_1_sent_at", isoMinus(3))
+        .limit(50);
+
+      for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
+        if (new Date(row.token_expires_at) <= now) continue;
+        try {
+          const app = await fetchApp(row.application_id);
+          if (!app) continue;
+          await sendReminder(row, app, "v4-test-reminder-2");
+          await supabase
+            .from("cvp_test_submissions")
+            .update({
+              reminder_2_sent_at: now.toISOString(),
+              updated_at: now.toISOString(),
+            })
+            .eq("id", row.id);
+          reminder2Sent++;
+        } catch (err) {
+          console.error(`Reminder #2 failed for submission ${row.id}:`, err);
+          errors++;
+        }
+      }
+    }
+
+    // --- Reminder #3: 3+ days after reminder #2 ---
+    {
+      const { data: rows } = await supabase
+        .from("cvp_test_submissions")
+        .select(
+          "id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
+        )
+        .in("status", ["sent", "viewed", "draft_saved"])
+        .not("reminder_2_sent_at", "is", null)
+        .is("reminder_3_sent_at", null)
+        .lt("reminder_2_sent_at", isoMinus(3))
+        .limit(50);
+
+      for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
+        if (new Date(row.token_expires_at) <= now) continue;
+        try {
+          const app = await fetchApp(row.application_id);
+          if (!app) continue;
+          await sendReminder(row, app, "v4-test-reminder-3");
+          await supabase
+            .from("cvp_test_submissions")
+            .update({
+              reminder_3_sent_at: now.toISOString(),
+              updated_at: now.toISOString(),
+            })
+            .eq("id", row.id);
+          reminder3Sent++;
+        } catch (err) {
+          console.error(`Reminder #3 failed for submission ${row.id}:`, err);
+          errors++;
+        }
+      }
+    }
+
+    // --- Expired notification (token_expires_at passed) ---
+    {
+      const { data: rows } = await supabase
+        .from("cvp_test_submissions")
+        .select("id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at")
+        .in("status", ["sent", "viewed", "draft_saved"])
         .lt("token_expires_at", now.toISOString())
         .limit(50);
 
-      for (const row of (day3Submissions ?? []) as unknown as TestSubmissionRow[]) {
+      for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
         try {
-          const { data: appData } = await supabase
-            .from("cvp_applications")
-            .select("email, full_name, application_number")
-            .eq("id", row.application_id)
-            .single();
-
-          if (!appData) continue;
-          const app = appData as unknown as ApplicationRow;
-
+          const app = await fetchApp(row.application_id);
+          if (!app) continue;
           const tpl = buildV5TestExpired({
             fullName: app.full_name,
             applicationNumber: app.application_number,
@@ -187,169 +251,79 @@ serve(async (req: Request) => {
             .from("cvp_test_submissions")
             .update({
               status: "expired",
-              reminder_day3_sent_at: now.toISOString(),
               updated_at: now.toISOString(),
             })
             .eq("id", row.id);
 
-          // Update combination status
           const { data: subData } = await supabase
             .from("cvp_test_submissions")
             .select("combination_id")
             .eq("id", row.id)
             .single();
-
           if (subData) {
             await supabase
               .from("cvp_test_combinations")
               .update({
-                status: "test_sent", // Stays as test_sent but expired
+                status: "test_sent",
                 updated_at: now.toISOString(),
               })
               .eq("id", (subData as Record<string, unknown>).combination_id);
           }
 
-          day3Sent++;
+          expiredSent++;
         } catch (err) {
-          console.error(`Error processing Day 3 expiry for submission ${row.id}:`, err);
+          console.error(`Expiry notice failed for submission ${row.id}:`, err);
           errors++;
         }
       }
     }
 
-    // --- Day 7: Final chance email ---
-    // Submissions expired >= 4 days ago (created >= 7 days ago), day3 sent but not day7
+    // --- Archive: expired + 2 days, no submission ---
     {
-      const sevenDaysAgo = new Date(
-        now.getTime() - 7 * 24 * 60 * 60 * 1000
-      ).toISOString();
-
-      const { data: day7Submissions } = await supabase
-        .from("cvp_test_submissions")
-        .select("id, application_id, token, token_expires_at, status, created_at, reminder_day2_sent_at, reminder_day3_sent_at, reminder_day7_sent_at")
-        .eq("status", "expired")
-        .not("reminder_day3_sent_at", "is", null)
-        .is("reminder_day7_sent_at", null)
-        .lt("created_at", sevenDaysAgo)
-        .limit(50);
-
-      for (const row of (day7Submissions ?? []) as unknown as TestSubmissionRow[]) {
-        try {
-          const { data: appData } = await supabase
-            .from("cvp_applications")
-            .select("email, full_name, application_number")
-            .eq("id", row.application_id)
-            .single();
-
-          if (!appData) continue;
-          const app = appData as unknown as ApplicationRow;
-
-          const tpl = buildV6FinalChanceDay7({
-            fullName: app.full_name,
-            applicationNumber: app.application_number,
-          });
-          await sendMailgunEmail({
-            to: { email: app.email, name: app.full_name },
-            subject: tpl.subject,
-            html: tpl.html,
-            text: tpl.text,
-            respectDoNotContactFor: app.email,
-            tags: ["v6-final-chance", row.application_id],
-          });
-
-          await supabase
-            .from("cvp_test_submissions")
-            .update({
-              reminder_day7_sent_at: now.toISOString(),
-              updated_at: now.toISOString(),
-            })
-            .eq("id", row.id);
-
-          day7Sent++;
-        } catch (err) {
-          console.error(`Error processing Day 7 final chance for submission ${row.id}:`, err);
-          errors++;
-        }
-      }
-    }
-
-    // --- Day 10: Archive ---
-    // Submissions expired, day7 sent, created >= 10 days ago → archive
-    {
-      const tenDaysAgo = new Date(
-        now.getTime() - 10 * 24 * 60 * 60 * 1000
-      ).toISOString();
-
-      const { data: archiveSubmissions } = await supabase
+      const { data: rows } = await supabase
         .from("cvp_test_submissions")
         .select("id, application_id")
         .eq("status", "expired")
-        .not("reminder_day7_sent_at", "is", null)
-        .lt("created_at", tenDaysAgo)
+        .lt("token_expires_at", isoMinus(2))
         .limit(50);
 
-      for (const row of (archiveSubmissions ?? []) as { id: string; application_id: string }[]) {
+      for (const row of (rows ?? []) as { id: string; application_id: string }[]) {
         try {
-          // No email — just archive
-          // Check if all submissions for this application are expired/archived
           const { data: allSubs } = await supabase
             .from("cvp_test_submissions")
             .select("id, status")
             .eq("application_id", row.application_id);
-
-          const allExpiredOrDone = (allSubs ?? []).every(
-            (s: Record<string, unknown>) =>
-              s.status === "expired" ||
-              s.status === "submitted" ||
-              s.status === "assessed"
+          const subs = (allSubs ?? []) as { id: string; status: string }[];
+          const allArchivable = subs.every(
+            (s) => s.status === "expired" || s.status === "archived" || s.status === "submitted",
           );
-
-          if (allExpiredOrDone) {
-            // Check if any tests were actually submitted
-            const anySubmitted = (allSubs ?? []).some(
-              (s: Record<string, unknown>) =>
-                s.status === "submitted" || s.status === "assessed"
-            );
-
-            if (!anySubmitted) {
-              // No tests submitted at all — archive the application
-              await supabase
-                .from("cvp_applications")
-                .update({
-                  status: "archived",
-                  updated_at: now.toISOString(),
-                })
-                .eq("id", row.application_id);
-            }
+          if (allArchivable) {
+            await supabase
+              .from("cvp_test_submissions")
+              .update({ status: "archived", updated_at: now.toISOString() })
+              .eq("id", row.id);
+            archived++;
           }
-
-          archived++;
         } catch (err) {
-          console.error(`Error archiving submission ${row.id}:`, err);
+          console.error(`Archive failed for submission ${row.id}:`, err);
           errors++;
         }
       }
     }
 
-    console.log(
-      `cvp-check-test-followups: Day2=${day2Sent}, Day3=${day3Sent}, Day7=${day7Sent}, Archived=${archived}, Errors=${errors}`
-    );
-
     return jsonResponse({
       success: true,
       data: {
-        day2Sent,
-        day3Sent,
-        day7Sent,
+        reminder1Sent,
+        reminder2Sent,
+        reminder3Sent,
+        expiredSent,
         archived,
         errors,
       },
     });
   } catch (err) {
-    console.error("Unhandled error in cvp-check-test-followups:", err);
-    return jsonResponse(
-      { success: false, error: "An unexpected error occurred." },
-      500
-    );
+    console.error("cvp-check-test-followups unhandled:", err);
+    return jsonResponse({ success: false, error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
