@@ -157,6 +157,25 @@ serve(async (req: Request) => {
     })
     .eq("submission_id", round.submission_id);
 
+  // Fire-and-forget Tier 1 auto-triage. Runs Sonnet over each rejection
+  // and writes verdict + confidence + reasoning back to the rows. Will
+  // queue HITL review for low-confidence applicant-correct/partial/unclear
+  // outcomes. Doesn't block the response — applicant moves on either way.
+  try {
+    const supabaseUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    fetch(`${supabaseUrl}/functions/v1/cvp-triage-test-feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ submissionId: round.submission_id }),
+    }).catch((err) => console.error("auto-triage trigger failed:", err));
+  } catch (e) {
+    console.error("auto-triage error:", e);
+  }
+
   return json({
     success: true,
     data: {

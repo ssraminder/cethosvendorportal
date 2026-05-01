@@ -645,6 +645,27 @@ Evaluate the applicant's translation against the source text and reference trans
         .eq("id", sub.application_id);
     }
 
+    // Auto-send V22 feedback-request to the applicant for this combo. Fire-
+    // and-forget; cvp-send-test-feedback-request is idempotent and respects
+    // staff_skip if a round already exists. Skips silently if no errors,
+    // already sent, or staff disabled the round.
+    try {
+      const supabaseUrl = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      fetch(`${supabaseUrl}/functions/v1/cvp-send-test-feedback-request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ submissionId }),
+      }).catch((err) =>
+        console.error("auto-send V22 feedback request failed:", err),
+      );
+    } catch (e) {
+      console.error("auto-send V22 trigger error:", e);
+    }
+
     return jsonResponse({
       success: true,
       data: {
