@@ -181,7 +181,13 @@ Scoring guidelines:
 Tier suggestion:
 - standard: Acceptable quality with some errors
 - senior: Good quality, strong domain knowledge
-- expert: Excellent quality, publication-ready`;
+- expert: Excellent quality, publication-ready
+
+Output budget — IMPORTANT for non-Latin scripts where each character costs more tokens:
+- Cap "errors" at the 12 most consequential (severity-weighted: critical first, then major, then minor).
+- Keep each error "note" under ~120 characters in the target language. Be specific but terse.
+- Keep "feedback_draft" under 1500 characters. Plain prose, no bullets needed.
+- Keep "strengths" to 5 items max, each under 80 characters.`;
 
 const LQA_SYSTEM_PROMPT = `You are an expert LQA (Linguistic Quality Assurance) assessor for CETHOS, a Canadian certified translation company.
 
@@ -222,7 +228,9 @@ Output JSON schema:
 Scoring guidelines:
 - >= 80: Pass — competent reviewer
 - 65-79: Borderline — staff review needed
-- < 65: Fail — insufficient review skills`;
+- < 65: Fail — insufficient review skills
+
+Output budget — keep "detailed_feedback" under 1500 characters and "strengths"/"weaknesses" to 5 items each, each under 80 characters.`;
 
 /**
  * cvp-assess-test
@@ -342,12 +350,12 @@ Evaluate the applicant's error identification, categorisation, severity ratings,
 
         let rawResponse: string;
         try {
-          rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 8192);
+          rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 16384);
           aiResult = parseJsonResponse(rawResponse);
         } catch (firstErr) {
           console.error("First Claude call failed, retrying:", firstErr);
           try {
-            rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 8192);
+            rawResponse = await callClaude(LQA_SYSTEM_PROMPT, userMessage, 16384);
             aiResult = parseJsonResponse(rawResponse);
           } catch (retryErr) {
             console.error("Retry also failed:", retryErr);
@@ -383,12 +391,12 @@ Evaluate the applicant's translation against the source text and reference trans
 
         let rawResponse: string;
         try {
-          rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 8192);
+          rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 16384);
           aiResult = parseJsonResponse(rawResponse);
         } catch (firstErr) {
           console.error("First Claude call failed, retrying:", firstErr);
           try {
-            rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 8192);
+            rawResponse = await callClaude(TRANSLATION_SYSTEM_PROMPT, userMessage, 16384);
             aiResult = parseJsonResponse(rawResponse);
           } catch (retryErr) {
             console.error("Retry also failed:", retryErr);
