@@ -23,5 +23,5 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Rationale:** Continuity context for recurring business work without exposing client-supplied identifiers.
 - **Implementation:** `vendor-get-job-detail` edge function (v29) fetches `internal_projects.project_number` + `vendor_notes` and counts sibling orders when the underlying order has `internal_project_id`. Returned as a top-level `project` field on the response. JobDetailModal renders a teal banner section between Order Info and Language & Rate.
 - **Status:** active — deployed to `lmzoyezvsjgsxveoakdr` 2026-05-05.
-- **Pending:** glossary / style guide file surfacing once portal-side asset upload exists; customer-name anonymization audit (parked, see `cethos_app_figma_design_v1/memory/decisions.md`).
+- **Pending:** glossary / style guide file surfacing once portal-side asset upload exists. (Customer-name anonymization is explicitly not pursued — confirmed 2026-05-05; see `cethos_app_figma_design_v1/memory/decisions.md`.)
 - **Affects:** `vendor-get-job-detail` edge function, `apps/vendor/src/api/vendorJobs.ts`, `apps/vendor/src/components/jobs/JobDetailModal.tsx`.
