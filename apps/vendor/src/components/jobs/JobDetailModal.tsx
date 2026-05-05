@@ -24,6 +24,7 @@ import {
   EyeOff,
   ChevronDown,
   ChevronUp,
+  Briefcase,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
@@ -286,6 +287,41 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                     )}
                   </div>
                 </section>
+
+                {/* 1.5 PROJECT — continuation context for recurring client work */}
+                {detail?.project && (
+                  <section className="rounded-lg border border-teal-200 bg-teal-50 p-4">
+                    <h4 className="text-xs font-semibold text-teal-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                      <Briefcase className="w-3.5 h-3.5" />
+                      Project
+                    </h4>
+                    <div className="flex items-center gap-3 flex-wrap text-sm">
+                      <span className="font-semibold text-teal-900">
+                        {detail.project.project_number}
+                      </span>
+                      <span className="text-teal-700">
+                        {detail.project.prior_task_count === 0
+                          ? "First task in this project"
+                          : `${detail.project.prior_task_count} prior task${detail.project.prior_task_count === 1 ? "" : "s"} delivered for this project`}
+                      </span>
+                    </div>
+                    {detail.project.vendor_notes && (
+                      <div className="mt-3 p-3 bg-white border border-teal-200 rounded text-sm">
+                        <div className="text-xs font-medium text-teal-800 mb-1">
+                          Notes for vendors
+                        </div>
+                        <div className="text-gray-800 whitespace-pre-wrap">
+                          {detail.project.vendor_notes}
+                        </div>
+                      </div>
+                    )}
+                    {detail.project.prior_task_count > 0 && !detail.project.vendor_notes && (
+                      <p className="mt-2 text-xs text-teal-700 italic">
+                        Maintain consistency with prior deliveries — terminology, style, tone.
+                      </p>
+                    )}
+                  </section>
+                )}
 
                 {/* 2. LANGUAGE & RATE */}
                 <section className="rounded-lg border border-gray-200 p-4">

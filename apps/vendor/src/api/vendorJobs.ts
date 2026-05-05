@@ -124,9 +124,16 @@ export interface JobDetailFile {
   source?: string;
 }
 
+export interface JobDetailProject {
+  project_number: string;
+  vendor_notes: string | null;
+  prior_task_count: number;
+}
+
 export interface JobDetailResponse {
   success: boolean;
   job: JobDetailJob;
+  project?: JobDetailProject | null;
   volume: JobDetailVolume | null;
   source_files: JobDetailFile[];
   reference_files: JobDetailFile[];

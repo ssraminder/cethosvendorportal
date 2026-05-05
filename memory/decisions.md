@@ -18,8 +18,10 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
-### 2026-05-05 — Vendor display of internal project numbers (incoming work)
-- **Decision:** Vendors will see Cethos-generated `PRJ-YYYY-NNNNN` numbers grouping related tasks for the same client. The client-supplied `client_project_number` stays internal-only and never reaches vendor-facing surfaces.
+### 2026-05-05 — Vendor job detail surfaces internal project number
+- **Decision:** Vendors see `PRJ-YYYY-NNNNN`, prior task count for the same project, and project-level vendor notes on the job detail. The client-supplied `client_project_number` stays internal-only and never reaches vendor-facing surfaces.
 - **Rationale:** Continuity context for recurring business work without exposing client-supplied identifiers.
-- **Status:** schema + order-creation hooks deployed in the portal app (full decision logged in `cethos_app_figma_design_v1/memory/decisions.md`). Vendor portal display work pending — needs job detail to show `PRJ-YYYY-NNNNN`, prior tasks count, and project assets (glossary, style guide, vendor notes).
-- **Affects:** vendor job detail view, messaging templates, file naming visible to vendors.
+- **Implementation:** `vendor-get-job-detail` edge function (v29) fetches `internal_projects.project_number` + `vendor_notes` and counts sibling orders when the underlying order has `internal_project_id`. Returned as a top-level `project` field on the response. JobDetailModal renders a teal banner section between Order Info and Language & Rate.
+- **Status:** active — deployed to `lmzoyezvsjgsxveoakdr` 2026-05-05.
+- **Pending:** glossary / style guide file surfacing once portal-side asset upload exists; customer-name anonymization audit (parked, see `cethos_app_figma_design_v1/memory/decisions.md`).
+- **Affects:** `vendor-get-job-detail` edge function, `apps/vendor/src/api/vendorJobs.ts`, `apps/vendor/src/components/jobs/JobDetailModal.tsx`.
