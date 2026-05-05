@@ -595,21 +595,37 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   </section>
                 )}
 
-                {/* 8. REFERENCE FILES (green section) */}
+                {/* 8. REFERENCE FILES (green section) — project assets surface
+                       here too, tagged with their source so vendors can spot
+                       the project-level glossary / style guide at a glance. */}
                 {detail.reference_files.length > 0 && (
                   <section className="rounded-lg bg-green-50 border border-green-200 p-4">
                     <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Reference Materials</h4>
-                    <div className="space-y-1">
-                      {detail.reference_files.map((file, i) => (
-                        <FileRowWithPreview
-                          key={i}
-                          file={file}
-                          previewFileId={previewFileId}
-                          onTogglePreview={togglePreview}
-                          onDownload={handleDownload}
-                          tintColor="green"
-                        />
-                      ))}
+                    <div className="space-y-1.5">
+                      {detail.reference_files.map((file, i) => {
+                        const sourceLabel =
+                          file.source === "project_glossary"
+                            ? "Project glossary"
+                            : file.source === "project_style_guide"
+                              ? "Project style guide"
+                              : null;
+                        return (
+                          <div key={i}>
+                            {sourceLabel && (
+                              <div className="inline-block text-xs font-medium text-green-900 bg-green-200 px-2 py-0.5 rounded mb-0.5">
+                                {sourceLabel}
+                              </div>
+                            )}
+                            <FileRowWithPreview
+                              file={file}
+                              previewFileId={previewFileId}
+                              onTogglePreview={togglePreview}
+                              onDownload={handleDownload}
+                              tintColor="green"
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   </section>
                 )}
