@@ -48,6 +48,8 @@ interface SessionResponse {
   session?: { expires_at: string; last_seen_at: string };
   is_first_login?: boolean;
   needs_password?: boolean;
+  is_impersonation?: boolean;
+  impersonator?: { email: string; full_name: string | null } | null;
   error?: string;
 }
 

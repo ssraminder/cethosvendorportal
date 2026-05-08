@@ -29,10 +29,13 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Look up session
+    // Look up session — also pull impersonation flags so the vendor
+    // portal can show a banner when staff is "viewing as" this vendor.
     const { data: session, error: sessionErr } = await supabase
       .from("vendor_sessions")
-      .select("id, vendor_id, expires_at, last_seen_at")
+      .select(
+        "id, vendor_id, expires_at, last_seen_at, is_impersonation, impersonator_staff_id",
+      )
       .eq("session_token", token)
       .gt("expires_at", new Date().toISOString())
       .single();
@@ -83,6 +86,20 @@ serve(async (req: Request) => {
 
     const isFirstLogin = translator ? !translator.invite_accepted_at : false;
 
+    // If impersonation, surface the staff member's email + name so the
+    // banner can show "Viewing as <vendor> — Joe (staff) impersonating".
+    let impersonator: { email: string; full_name: string | null } | null = null;
+    if ((session as any).is_impersonation && (session as any).impersonator_staff_id) {
+      const { data: staff } = await supabase
+        .from("staff_users")
+        .select("email, full_name")
+        .eq("id", (session as any).impersonator_staff_id)
+        .maybeSingle();
+      if (staff) {
+        impersonator = { email: staff.email, full_name: staff.full_name ?? null };
+      }
+    }
+
     return new Response(
       JSON.stringify({
         vendor,
@@ -92,6 +109,8 @@ serve(async (req: Request) => {
         },
         needs_password: !auth,
         is_first_login: isFirstLogin,
+        is_impersonation: !!(session as any).is_impersonation,
+        impersonator,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
