@@ -42,11 +42,13 @@ const SIGN_TTL = 3600; // 1 hour
 
 interface FileRow {
   storage_path: string;
-  original_filename: string;
+  // The vendor portal client (JobDetailFile) reads { filename, download_url };
+  // keep field names aligned so the modal renders without an extra mapping.
+  filename: string;
   file_size: number | null;
   mime_type: string | null;
   source: string;
-  signed_url: string | null;
+  download_url: string | null;
   word_count?: number;
   page_count?: number;
 }
@@ -288,11 +290,11 @@ serve(async (req: Request) => {
           const pc = aiByFile[f.id]?.pc ?? 0;
           sourceFiles.push({
             storage_path: f.storage_path,
-            original_filename: f.original_filename,
+            filename: f.original_filename,
             file_size: f.file_size,
             mime_type: f.mime_type,
             source: "order",
-            signed_url: signed,
+            download_url: signed,
             word_count: wc,
             page_count: pc,
           });
@@ -313,22 +315,22 @@ serve(async (req: Request) => {
       const signed = await signQuoteFile(sb, "project-assets", glossaryPath);
       referenceFiles.push({
         storage_path: glossaryPath,
-        original_filename: glossaryPath.split("/").pop() || "Glossary",
+        filename: glossaryPath.split("/").pop() || "Glossary",
         file_size: null,
         mime_type: null,
         source: "project_glossary",
-        signed_url: signed,
+        download_url: signed,
       });
     }
     if (styleGuidePath) {
       const signed = await signQuoteFile(sb, "project-assets", styleGuidePath);
       referenceFiles.push({
         storage_path: styleGuidePath,
-        original_filename: styleGuidePath.split("/").pop() || "Style guide",
+        filename: styleGuidePath.split("/").pop() || "Style guide",
         file_size: null,
         mime_type: null,
         source: "project_style_guide",
-        signed_url: signed,
+        download_url: signed,
       });
     }
 
@@ -348,11 +350,11 @@ serve(async (req: Request) => {
       const signed = await signQuoteFile(sb, "step-deliveries", f.storage_path);
       deliveredFiles.push({
         storage_path: f.storage_path,
-        original_filename: f.original_filename || f.filename || "delivered_file",
+        filename: f.original_filename || f.filename || "delivered_file",
         file_size: f.file_size ?? null,
         mime_type: f.mime_type ?? null,
         source: "delivered",
-        signed_url: signed,
+        download_url: signed,
       });
     }
 
