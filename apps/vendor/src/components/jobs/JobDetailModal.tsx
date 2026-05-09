@@ -93,7 +93,20 @@ function isExpired(expiresAt: string | null): boolean {
 }
 
 function isPdf(file: JobDetailFile): boolean {
-  return file.mime_type === "application/pdf";
+  if (file.mime_type === "application/pdf") return true;
+  return /\.pdf$/i.test(file.filename);
+}
+
+function isImage(file: JobDetailFile): boolean {
+  if (file.mime_type?.startsWith("image/")) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|svg|tiff?)$/i.test(file.filename);
+}
+
+// Preview is supported for PDF and images. Anything else (Word, Excel,
+// ZIP, audio, etc.) gets a "Preview not available" hint instead of a
+// Preview button — vendor must Download to view.
+function isPreviewable(file: JobDetailFile): boolean {
+  return isPdf(file) || isImage(file);
 }
 
 interface JobDetailModalProps {
@@ -519,7 +532,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                               {matchedFile && (
                                 <div className="ml-6">
                                   <div className="flex items-center gap-2">
-                                    {isPdf(matchedFile) && (
+                                    {isPreviewable(matchedFile) ? (
                                       <button
                                         onClick={() => togglePreview(matchedFile.storage_path)}
                                         className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
@@ -530,6 +543,13 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                                           <><Eye className="h-3.5 w-3.5" /> Preview</>
                                         )}
                                       </button>
+                                    ) : (
+                                      <span
+                                        className="inline-flex items-center gap-1 text-xs text-gray-400 italic"
+                                        title="Inline preview is only supported for PDF and image files. Click Download to open this file locally."
+                                      >
+                                        Preview not available
+                                      </span>
                                     )}
                                     <button
                                       onClick={() => handleDownload(matchedFile)}
@@ -539,12 +559,20 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                                       Download
                                     </button>
                                   </div>
-                                  {isPdf(matchedFile) && previewFileId === matchedFile.storage_path && (
-                                    <iframe
-                                      src={matchedFile.download_url}
-                                      className="w-full h-96 border border-gray-200 rounded mt-2"
-                                      title={`Preview: ${matchedFile.filename}`}
-                                    />
+                                  {isPreviewable(matchedFile) && previewFileId === matchedFile.storage_path && (
+                                    isImage(matchedFile) ? (
+                                      <img
+                                        src={matchedFile.download_url}
+                                        alt={`Preview: ${matchedFile.filename}`}
+                                        className="max-w-full max-h-96 object-contain border border-gray-200 rounded mt-2 bg-gray-50"
+                                      />
+                                    ) : (
+                                      <iframe
+                                        src={matchedFile.download_url}
+                                        className="w-full h-96 border border-gray-200 rounded mt-2"
+                                        title={`Preview: ${matchedFile.filename}`}
+                                      />
+                                    )
                                   )}
                                 </div>
                               )}
@@ -798,7 +826,7 @@ function FileRowWithPreview({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {isPdf(file) && (
+          {isPreviewable(file) ? (
             <button
               onClick={() => onTogglePreview(file.storage_path)}
               className={`inline-flex items-center gap-1 text-xs font-medium ${colors.icon} ${colors.hover}`}
@@ -809,6 +837,13 @@ function FileRowWithPreview({
                 <><Eye className="h-3.5 w-3.5" /> Preview</>
               )}
             </button>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-gray-400 italic"
+              title="Inline preview is only supported for PDF and image files. Click Download to open this file locally."
+            >
+              Preview not available
+            </span>
           )}
           <button
             onClick={() => onDownload(file)}
@@ -819,12 +854,20 @@ function FileRowWithPreview({
           </button>
         </div>
       </div>
-      {isPdf(file) && isPreviewOpen && (
-        <iframe
-          src={file.download_url}
-          className="w-full h-96 border border-gray-200 rounded mt-2"
-          title={`Preview: ${file.filename}`}
-        />
+      {isPreviewable(file) && isPreviewOpen && (
+        isImage(file) ? (
+          <img
+            src={file.download_url}
+            alt={`Preview: ${file.filename}`}
+            className="max-w-full max-h-96 object-contain border border-gray-200 rounded mt-2 bg-gray-50"
+          />
+        ) : (
+          <iframe
+            src={file.download_url}
+            className="w-full h-96 border border-gray-200 rounded mt-2"
+            title={`Preview: ${file.filename}`}
+          />
+        )
       )}
     </div>
   );
