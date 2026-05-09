@@ -299,11 +299,12 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                       <span className="font-semibold text-teal-900">
                         {detail.project.project_number}
                       </span>
-                      <span className="text-teal-700">
-                        {detail.project.prior_task_count === 0
-                          ? "First task in this project"
-                          : `${detail.project.prior_task_count} prior task${detail.project.prior_task_count === 1 ? "" : "s"} delivered for this project`}
-                      </span>
+                      {detail.project.prior_task_count > 0 && (
+                        <span className="text-teal-700">
+                          {detail.project.prior_task_count} prior task
+                          {detail.project.prior_task_count === 1 ? "" : "s"} delivered for this project
+                        </span>
+                      )}
                     </div>
                     {detail.project.vendor_notes && (
                       <div className="mt-3 p-3 bg-white border border-teal-200 rounded text-sm">
