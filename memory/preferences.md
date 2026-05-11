@@ -10,17 +10,15 @@ How the user wants you to approach work in this project. Add any time the user c
 ## Code & implementation
 _(Naming, structure, patterns, libraries to prefer or avoid)_
 
-- **QMS tables live in the `qms` Postgres schema, not under `cvp_` prefix.**
-  - **Why:** Decision 2026-05-11. ISO 17100 / 18587 / 18841 / NSGCIS conformance is a distinct domain from the CVP pipeline; dedicated schema gives clean RLS scoping for the auditor's time-bounded read role (June 29-30, 2026 pharma sponsor audit and Dec 2026 Orion Stage 2). CLAUDE.md's "all new tables MUST use cvp_ prefix" rule scopes to CVP work.
-  - **How to apply:** New tables that record ISO clause conformance, evidence verification, NDAs, audit-log entries, or anything an external auditor would query as evidence go in `qms.*`. New tables that are part of the applicant / test / vendor-portal pipeline keep the `cvp_` prefix in `public`.
+- **Before designing a new schema or major feature, query the live database first.** The repo's `supabase/migrations/` is not always in sync with prod — migrations can be applied via MCP `apply_migration` without being back-filled into the repo (e.g., the entire `qms` schema, 10 migrations dated 2026-04-28 to 2026-04-30, was in prod but not in repo until 2026-05-11).
+  - **Why:** PR #65 on 2026-05-11 designed and merged a Phase 1 vendor-qualification schema from scratch without realizing Phase 1 had already shipped two weeks earlier in a more sophisticated form. The work had to be reverted.
+  - **How to apply:** First step when picking up any non-trivial schema work — `list_tables` + `list_migrations` via Supabase MCP against the project, compare against `supabase/migrations/`, ask if there's drift.
 
-- **`qms.qualification_audit_log` is append-only at the database privilege level.**
-  - **Why:** Briefing §7.7 — auditor-grade tamper resistance is non-negotiable. Application-level append-only is not enough.
-  - **How to apply:** Never write a migration that grants UPDATE or DELETE on this table. The REVOKE in `20260511150000_qms_schema_foundation.sql` is the canonical state. Any new role added later must also be REVOKE'd from UPDATE/DELETE on this table.
+- **When applying DDL via Supabase MCP `apply_migration`, always commit the same SQL body to `supabase/migrations/<version>_<name>.sql` as part of the same PR.** Migration history and repo files are dual sources that must agree.
+  - **Why:** Silent drift between prod and repo causes future sessions to design against an outdated picture of reality. Cost: one fully wasted session and a revert PR on 2026-05-11.
+  - **How to apply:** Either (a) use `supabase db push` (which writes both at once), or (b) if using MCP `apply_migration` directly, include the migration file in the commit.
 
-- **QMS evidence files are served only through `qms-evidence-fetch`.**
-  - **Why:** Bucket is private; the function checks `qms.staff_role_assignments` or vendor self-match before issuing a signed URL.
-  - **How to apply:** Never grant direct storage RLS access to the `qms-evidence` bucket. New UIs/edge functions that need to surface evidence call `qms-evidence-fetch`.
+- **Treat planning documents dated *today* with the same skepticism as code:** when a doc describes work as "to be built," verify by querying the running system, not by trusting the doc. Documents-folder briefings can be authored without awareness of recent shipping.
 
 ## Communication
 _(Response length, format, when to ask vs. proceed, summary style)_
