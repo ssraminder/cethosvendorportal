@@ -106,7 +106,6 @@ export function LoginPage() {
         setError(result.error);
       } else if (result.success && result.session_token && result.vendor) {
         login(result.session_token, result.vendor, {
-          needsPassword: result.needs_password,
           isFirstLogin: result.is_first_login,
         });
       }

@@ -6,7 +6,6 @@ import { WelcomePage } from "./components/onboarding/WelcomePage";
 import { VendorShell } from "./components/layout/VendorShell";
 import { VendorDashboard } from "./components/dashboard/VendorDashboard";
 import { VendorProfile } from "./components/profile/VendorProfile";
-import { SetPasswordForm } from "./components/profile/SetPasswordForm";
 import { LanguagePairs } from "./components/profile/LanguagePairs";
 import { VendorRates } from "./components/profile/VendorRates";
 import { PaymentInfo } from "./components/profile/PaymentInfo";
@@ -27,7 +26,6 @@ function App() {
           <Route path="/" element={<VendorShell />}>
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />
-            <Route path="security" element={<SetPasswordForm />} />
             <Route path="languages" element={<LanguagePairs />} />
             <Route path="rates" element={<VendorRates />} />
             <Route path="payment" element={<PaymentInfo />} />

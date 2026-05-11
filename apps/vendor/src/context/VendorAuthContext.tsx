@@ -20,7 +20,6 @@ interface Impersonator {
 interface VendorAuthState {
   vendor: VendorProfile | null;
   sessionToken: string | null;
-  needsPassword: boolean;
   isFirstLogin: boolean;
   isImpersonation: boolean;
   impersonator: Impersonator | null;
@@ -28,7 +27,7 @@ interface VendorAuthState {
   login: (
     sessionToken: string,
     vendor: VendorProfile,
-    options?: { needsPassword?: boolean; isFirstLogin?: boolean }
+    options?: { isFirstLogin?: boolean }
   ) => void;
   setVendor: (vendor: VendorProfile) => void;
   markWelcomeComplete: () => void;
@@ -73,7 +72,6 @@ function consumeImpersonateTokenFromUrl(): string | null {
 export function VendorAuthProvider({ children }: { children: ReactNode }) {
   const [vendor, setVendor] = useState<VendorProfile | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [needsPassword, setNeedsPassword] = useState(false);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
   const [isImpersonation, setIsImpersonation] = useState(false);
   const [impersonator, setImpersonator] = useState<Impersonator | null>(null);
@@ -82,7 +80,6 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
   const clearAuth = useCallback(() => {
     setVendor(null);
     setSessionToken(null);
-    setNeedsPassword(false);
     setIsFirstLogin(false);
     setIsImpersonation(false);
     setImpersonator(null);
@@ -94,7 +91,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
     (
       token: string,
       vendorData: VendorProfile,
-      options?: { needsPassword?: boolean; isFirstLogin?: boolean }
+      options?: { isFirstLogin?: boolean }
     ) => {
       localStorage.setItem(STORAGE_KEY, token);
       // A fresh interactive login is never impersonation. Clear the flag
@@ -106,7 +103,6 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
       }
       setSessionToken(token);
       setVendor(vendorData);
-      setNeedsPassword(!!options?.needsPassword);
       setIsFirstLogin(!!options?.isFirstLogin);
       setIsImpersonation(false);
       setImpersonator(null);
@@ -152,7 +148,6 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
         // On refresh, first login is determined by localStorage flag
         const welcomeCompleted = localStorage.getItem(WELCOME_KEY) === "true";
         setIsFirstLogin(!welcomeCompleted && !!result.is_first_login);
-        setNeedsPassword(!!result.needs_password);
 
         // Trust the server: if vendor-auth-session says the row has
         // is_impersonation=true, we render the banner. The localStorage
@@ -196,7 +191,6 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
       value={{
         vendor,
         sessionToken,
-        needsPassword,
         isFirstLogin,
         isImpersonation,
         impersonator,

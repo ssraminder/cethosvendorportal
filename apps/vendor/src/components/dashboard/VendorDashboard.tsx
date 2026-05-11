@@ -7,12 +7,10 @@ import { getInvoices } from "../../api/vendorInvoices";
 import { LANGUAGES } from "../../data/languages";
 import {
   User,
-  Shield,
   Mail,
   Globe,
   Phone,
   CircleDot,
-  KeyRound,
   Briefcase,
   DollarSign,
   Clock,
@@ -64,7 +62,7 @@ const PROFILE_STEPS = [
 ] as const;
 
 export function VendorDashboard() {
-  const { vendor, sessionToken, needsPassword, setVendor } = useVendorAuth();
+  const { vendor, sessionToken, setVendor } = useVendorAuth();
   const [languagePairCount, setLanguagePairCount] = useState<number | null>(null);
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
   const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
@@ -128,17 +126,8 @@ export function VendorDashboard() {
     }
   };
 
-  const alerts: { icon: typeof KeyRound; message: string; link: string; linkText: string; color: string }[] = [];
+  const alerts: { icon: typeof Phone; message: string; link: string; linkText: string; color: string }[] = [];
 
-  if (needsPassword) {
-    alerts.push({
-      icon: KeyRound,
-      message: "Set up a password for faster sign-in (optional)",
-      link: "/security",
-      linkText: "Set password",
-      color: "amber",
-    });
-  }
   if (!vendor.phone) {
     alerts.push({
       icon: Phone,
@@ -404,24 +393,6 @@ export function VendorDashboard() {
                   My Profile
                 </p>
                 <p className="text-xs text-gray-400">View your account details</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
-            </Link>
-
-            <Link
-              to="/security"
-              className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer group transition-colors"
-            >
-              <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
-                <Shield className="w-4.5 h-4.5 text-teal-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 group-hover:text-teal-600 transition-colors">
-                  Security
-                </p>
-                <p className="text-xs text-gray-400">
-                  {needsPassword ? "Set up your password" : "Manage password"}
-                </p>
               </div>
               <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
             </Link>

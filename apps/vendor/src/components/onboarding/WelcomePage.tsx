@@ -4,14 +4,12 @@ import { CethosLogo } from "../shared/CethosLogo";
 import {
   PartyPopper,
   User,
-  KeyRound,
   ChevronRight,
   Briefcase,
 } from "lucide-react";
 
 export function WelcomePage() {
-  const { vendor, needsPassword, isFirstLogin, markWelcomeComplete } =
-    useVendorAuth();
+  const { vendor, isFirstLogin, markWelcomeComplete } = useVendorAuth();
   const navigate = useNavigate();
 
   if (!vendor) {
@@ -31,11 +29,6 @@ export function WelcomePage() {
   function handleGoToProfile() {
     markWelcomeComplete();
     navigate("/profile");
-  }
-
-  function handleGoToSecurity() {
-    markWelcomeComplete();
-    navigate("/security");
   }
 
   return (
@@ -85,26 +78,6 @@ export function WelcomePage() {
               </div>
               <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
             </button>
-
-            {needsPassword && (
-              <button
-                onClick={handleGoToSecurity}
-                className="w-full px-6 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
-                  <KeyRound className="w-5 h-5 text-amber-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
-                    Set up a password
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Optional &mdash; for faster sign-in next time
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-              </button>
-            )}
 
             <div className="px-6 py-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center shrink-0">

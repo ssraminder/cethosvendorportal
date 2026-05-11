@@ -73,7 +73,6 @@ export function ActivatePage() {
 
           if (result.success && result.session_token && result.vendor) {
             login(result.session_token, result.vendor, {
-              needsPassword: result.needs_password,
               isFirstLogin: result.is_first_login,
             });
           }
@@ -134,7 +133,6 @@ export function ActivatePage() {
         setError(result.error);
       } else if (result.success && result.session_token && result.vendor) {
         login(result.session_token, result.vendor, {
-          needsPassword: result.needs_password,
           isFirstLogin: result.is_first_login,
         });
       }

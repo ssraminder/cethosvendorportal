@@ -2,7 +2,6 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutGrid,
   User,
-  Shield,
   Globe,
   DollarSign,
   CreditCard,
@@ -27,10 +26,6 @@ const mainNavItems = [
   { to: "/request-test", label: "Request test", icon: GraduationCap },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },
-] as const;
-
-const accountNavItems = [
-  { to: "/security", label: "Security", icon: Shield },
 ] as const;
 
 export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
@@ -88,26 +83,6 @@ export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSideba
                       {jobOfferedCount}
                     </span>
                   )}
-                </>
-              )}
-            </NavLink>
-          ))}
-
-          <p className="px-4 pt-4 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
-            Account
-          </p>
-
-          {accountNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onClose}
-              className={navLinkClass}
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon className={iconClass(isActive)} />
-                  {label}
                 </>
               )}
             </NavLink>
