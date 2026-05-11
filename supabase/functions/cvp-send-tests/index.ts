@@ -152,11 +152,11 @@ serve(async (req: Request) => {
     }
 
     const app = application as unknown as ApplicationRow;
-    // Staff override wins; fall back to AI's suggestion; then intermediate.
-    const suggestedDifficulty =
-      body.difficulty ??
-      app.ai_prescreening_result?.suggested_test_difficulty ??
-      "intermediate";
+    // Default to intermediate for everyone — the AI's per-applicant
+    // `suggested_test_difficulty` is intentionally ignored so we score the
+    // whole pool against a consistent difficulty bar. Staff explicit override
+    // (body.difficulty from the admin UI) still wins.
+    const suggestedDifficulty = body.difficulty ?? "intermediate";
 
     // Fetch pending combinations for this application (optionally filtered to
     // the subset staff explicitly selected).
