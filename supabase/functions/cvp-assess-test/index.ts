@@ -151,15 +151,15 @@ You evaluate certified translation test submissions against a reference translat
 You evaluate general-purpose translation test submissions against a reference translation and the source document. The test domain is "${domain ?? "general"}" — do NOT apply certified-translation, ATA, notarisation, or jurisdiction-specific standards. Return ONLY valid JSON — no preamble, no markdown.`;
 
   const weights = isCertified
-    ? `- Accuracy (35%): Faithfulness to source, no omissions, no additions, correct meaning transfer
-- Fluency (25%): Natural target language, proper grammar, readability
+    ? `- Accuracy (45%): Faithfulness to source, no omissions, no additions, correct meaning transfer
+- Fluency (25%): Grammar, agreement, tense, syntax correctness (NOT stylistic preferences — see below)
 - Terminology (20%): Domain-specific terms used correctly, consistency
-- Formatting (10%): Layout, punctuation, number formatting, date formats
-- Certification-readiness (10%): Meets Canadian certified translation standards`
-    : `- Accuracy (40%): Faithfulness to source, no omissions, no additions, correct meaning transfer
-- Fluency (28%): Natural target language, proper grammar, readability
-- Terminology (22%): Domain-specific terms used correctly, consistency
-- Formatting (10%): Layout, punctuation, number formatting, date formats`;
+- Certification-readiness (10%): Meets Canadian certified translation standards
+- Formatting (informational, 0% weight): Reported for applicant awareness but does NOT affect overall_score`
+    : `- Accuracy (50%): Faithfulness to source, no omissions, no additions, correct meaning transfer
+- Fluency (30%): Grammar, agreement, tense, syntax correctness (NOT stylistic preferences — see below)
+- Terminology (20%): Domain-specific terms used correctly, consistency
+- Formatting (informational, 0% weight): Reported for applicant awareness but does NOT affect overall_score`;
 
   const dimensionScoresSchema = isCertified
     ? `  "dimension_scores": {
@@ -216,10 +216,19 @@ Per-error LQA edit log — MANDATORY structure:
 - "revised_translation": the corrected version of the applicant's span, in the target language. Wrap removed text in <del>…</del> and inserted text in <ins>…</ins> so the diff renders for the applicant. Example: "We <ins>are pleased</ins> to share <del>that we have</del> several updates".
 - "comment": EXPLANATION IN ENGLISH ONLY. Why the original is wrong, what the rule is, why the revision is preferred. The applicant's reviewer reads this in English regardless of the language pair. Never write the comment in the target language.
 
+Penalty exclusions — DO NOT count any of the following toward dimension or overall scores:
+- Stylistic preferences: word-choice synonyms, register/tone shifts that don't change meaning, sentence-ordering preferences, optional connectives, voice choice (active vs passive) when both are grammatical, idiomatic phrasing alternatives.
+- Surface polishing: extra/missing trailing spaces, optional Oxford commas, optional hyphenation, capitalization conventions that don't violate locale rules, optional punctuation choices.
+- Formatting nits: layout cosmetics, number/date format variations that don't change the value, paragraph-break choices that don't affect comprehension.
+
+You MAY still record stylistic/formatting observations in "errors" with severity = "minor" so the applicant sees them as feedback, but DO NOT lower the corresponding dimension score for these items. Reserve fluency penalties for actual grammar/agreement/tense/syntax errors that a native speaker would mark wrong. Reserve formatting penalties for layout failures that affect meaning or usability (missing paragraphs, garbled tables, broken numbering that changes values) — and even then, formatting only enters the feedback, not the overall_score (formatting weight is 0%).
+
+When computing overall_score, use ONLY the weighted dimensions above. If formatting issues are the only weakness, overall_score should still be in the pass band.
+
 Scoring guidelines:
-- >= 80: Pass — strong translation quality
-- 65-79: Borderline — send to staff review
-- < 65: Fail — below minimum quality
+- >= 75: Pass — strong translation quality
+- 60-74: Borderline — send to staff review
+- < 60: Fail — below minimum quality
 
 Tier suggestion:
 - standard: Acceptable quality with some errors
@@ -251,6 +260,13 @@ Evaluate:
 - Whether the reviewer missed critical errors (heavy penalty)
 - False positives (identified non-existent errors — moderate penalty)
 
+Penalty exclusions — DO NOT penalize the applicant for any of the following:
+- Errors in the answer key whose MQM category is "Style" or "Design" — if the applicant missed them, they do NOT count as errors_missed and do NOT lower category_accuracy or overall_score. Treat these as informational items only.
+- Applicant findings categorized as "Style" or "Design" that are not in the answer key — do NOT count as false_positives. Note them in detailed_feedback if useful, but do NOT lower the score.
+- Surface polishing observations (whitespace, capitalization that follows locale conventions, optional punctuation) — never count as missed errors or false positives.
+
+Score the applicant only on their detection of Accuracy, Fluency (grammar/syntax), Terminology, Locale Conventions, and Non-translation errors. The applicant's awareness of Style/Design issues is a bonus that may be mentioned in strengths but never penalized.
+
 Output JSON schema:
 {
   "test_type": "lqa_review",
@@ -271,9 +287,9 @@ Output JSON schema:
 }
 
 Scoring guidelines:
-- >= 80: Pass — competent reviewer
-- 65-79: Borderline — staff review needed
-- < 65: Fail — insufficient review skills
+- >= 75: Pass — competent reviewer
+- 60-74: Borderline — staff review needed
+- < 60: Fail — insufficient review skills
 
 Output budget — keep "detailed_feedback" under 1500 characters and "strengths"/"weaknesses" to 5 items each, each under 80 characters.`;
 
@@ -458,7 +474,7 @@ Evaluate the applicant's translation against the source text and reference trans
       // Stamp grader provenance so staff can see which model produced the
       // result. Prompt version bumps when the rubric/output budget changes.
       (aiResult as Record<string, unknown>).model_used = "claude-sonnet-4-6";
-      (aiResult as Record<string, unknown>).prompt_version = "2026-05-01c-domain-aware";
+      (aiResult as Record<string, unknown>).prompt_version = "2026-05-11-style-polish-excluded";
       (aiResult as Record<string, unknown>).assessed_at = new Date().toISOString();
     } catch (aiError) {
       // AI fallback — never block the pipeline
@@ -512,11 +528,15 @@ Evaluate the applicant's translation against the source text and reference trans
       });
     }
 
-    // Determine routing based on score
+    // Determine routing based on score. Thresholds aligned with the prompt's
+    // eased pass band (2026-05-11 — style/polish excluded from penalties):
+    //   >= 75: auto-approved
+    //   60-74: staff review (borderline)
+    //   < 60:  auto-rejected
     let combinationStatus: string;
-    if (aiScore >= 80) {
+    if (aiScore >= 75) {
       combinationStatus = "approved";
-    } else if (aiScore >= 65) {
+    } else if (aiScore >= 60) {
       combinationStatus = "assessed"; // Staff review needed
     } else {
       combinationStatus = "rejected";
@@ -598,7 +618,7 @@ Evaluate the applicant's translation against the source text and reference trans
     }
 
     // Update test library pass/fail stats
-    if (aiScore >= 80) {
+    if (aiScore >= 75) {
       const { data: testRow } = await supabase
         .from("cvp_test_library")
         .select("total_pass_count")
@@ -611,7 +631,7 @@ Evaluate the applicant's translation against the source text and reference trans
           updated_at: now,
         })
         .eq("id", sub.test_id);
-    } else if (aiScore < 65) {
+    } else if (aiScore < 60) {
       const { data: testRow } = await supabase
         .from("cvp_test_library")
         .select("total_fail_count")
@@ -747,7 +767,7 @@ Evaluate the applicant's translation against the source text and reference trans
         combinationId,
         score: aiScore,
         status: combinationStatus,
-        pass: aiScore >= 80,
+        pass: aiScore >= 75,
       },
     });
   } catch (err) {
