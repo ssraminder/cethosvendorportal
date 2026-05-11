@@ -14,6 +14,42 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — May 11, 2026 (Revert PR #65 + backfill QMS Phase 1 migrations into repo)
+
+Cleanup pass. PR #65 (merged earlier today) added three QMS migration files + an edge function + a seeder + docs that **conflicted with the QMS Phase 1 layer already live in production**. The conflict was discovered while attempting to apply PR #65's migrations: the `qms` schema already existed (10 migrations dated 2026-04-28 to 2026-04-30), the eligibility gate was actively running in `warn` mode (142 events), the audit log carried a sha256 hash chain on top of REVOKE + trigger, and key column names differed (`withdrawn_reason` vs `withdrawal_reason`, `proficiency` vs `proficiency_level`, `revoked_reason` vs `revoke_reason`, `employer_or_client` vs `employer_client`). The prod schema is more sophisticated than the briefing in `Documents/claude-code-prompt-cethos-qms-phase-1.md` describes — adds `qms.config`, `qms.policy_versions`, `qms.language_code_aliases`, `qms.service_iso_requirements`, `qms.assignment_eligibility_events`.
+
+### What was wrong
+- The audit-readiness Documents (dated 2026-05-11) were written without awareness that Phase 1 had shipped 2 weeks earlier.
+- PR #65 acted on those Documents and produced a regressed Phase 1 design.
+- The repo's `supabase/migrations/` did not contain the 10 prod-applied migrations — anyone running `supabase db push` from a fresh checkout would have been blind to half the schema.
+
+### What this session did
+- Reverted [PR #65](https://github.com/ssraminder/cethosvendorportal/pull/65) via git revert of merge commit `c4bd252` on a new branch.
+- Pulled all 10 `qms_phase1_*` migrations from prod into the repo with their original timestamps:
+  - `20260428152239` 01 schema_enums_reference
+  - `20260428152332` 02 core_qualification_tables
+  - `20260428152447` 03 audit_log_and_performance
+  - `20260428152512` 04 language_aliases_and_cvp_bridge
+  - `20260428152605` 05 auditor_views
+  - `20260428152704` 06 rls_and_grants
+  - `20260428152902` 07 fix_digest_search_path
+  - `20260428153839` 08 fix_function_search_paths
+  - `20260430183506` 09 assignment_gating_infrastructure
+  - `20260430183709` 10 public_rpc_wrapper
+- Added [docs/qms/README.md](qms/README.md) — developer reference for the actually-deployed QMS layer (migrations index, role model, gating modes, audit-log tamper-resistance verification, sample auditor queries, repo/prod alignment note, stale-Documents flag, gaps deferred to Phase 2+).
+- Files migration files are no-ops on `supabase db push` (matching version strings already present in `supabase_migrations.schema_migrations`).
+
+### Decisions resolved
+- The QMS schema lives in `qms.*` not `cvp_*` — confirmed by prod reality, captured in [memory/decisions.md](../memory/decisions.md).
+- The Phase 1 design in `Documents/claude-code-prompt-cethos-qms-phase-1.md` is **superseded** by what's actually in prod — flagged in `docs/qms/README.md`.
+
+### Pre-audit followups (separate work, not in this PR)
+- Qualified COA pool seeding — Fayza Week 1 deliverable, Amrita evidence collection Weeks 2-5. Prior `scripts/seed-coa-pool.ts` was reverted because it referenced wrong column names; a new seeder needs to be written against the actual schema (proficiency / withdrawn_reason / revoked_reason / employer_or_client / re_qualification_due timestamptz / audit log id bigint).
+- Auditor JWT provisioning — create auth account, insert `qms.role_assignments` row with `qms_role='qms_auditor'` and `expires_at = '2026-07-07'`.
+- Flip `qms.config.assignment_gating_mode` from `"warn"` to `"block"` once the qualified COA pool is loaded and the auditor session is approaching — currently 142 warn-mode events recorded with 0 blocks.
+
+---
+
 ## Session — April 24, 2026 (Phase E: References system end-to-end)
 
 Completes the references-system phase scheduled earlier today. Two-step flow: staff requests, applicant fills contacts, references fill questionnaire, Opus analyses each response, staff reviews in admin.
