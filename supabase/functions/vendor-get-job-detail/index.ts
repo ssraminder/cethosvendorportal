@@ -185,7 +185,7 @@ serve(async (req: Request) => {
       sb
         .from("orders")
         .select(
-          "id, order_number, internal_project_id, quote_id, is_rush, estimated_delivery_date",
+          "id, order_number, internal_project_id, quote_id, is_rush, estimated_delivery_date, estimated_delivery_at",
         )
         .eq("id", step.order_id)
         .maybeSingle(),
@@ -391,6 +391,7 @@ serve(async (req: Request) => {
         order_number: order?.order_number ?? null,
         is_rush: !!order?.is_rush,
         estimated_delivery_date: order?.estimated_delivery_date ?? null,
+        estimated_delivery_at: order?.estimated_delivery_at ?? null,
         service_name: service?.name ?? null,
         source_language: resolveLang(step.source_language),
         target_language: resolveLang(step.target_language),

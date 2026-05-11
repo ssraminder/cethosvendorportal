@@ -67,23 +67,52 @@ function formatRelativeTime(dateStr: string): { text: string; urgent: boolean; o
   return { text: `in ${days} days`, urgent: false, overdue: false };
 }
 
+// Cethos HQ runs on Mountain time. Offers + deadlines were entered by
+// staff in that timezone, so when a vendor in a different region views
+// them we show their own local time alongside the Cethos reference so
+// it's unambiguous which moment is meant.
+const CETHOS_TIMEZONE = "America/Edmonton";
+const VENDOR_TIMEZONE = typeof Intl !== "undefined"
+  ? Intl.DateTimeFormat().resolvedOptions().timeZone
+  : CETHOS_TIMEZONE;
+
+function tzAbbrev(date: Date, tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, timeZoneName: "short" }).formatToParts(date);
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+  } catch {
+    return tz;
+  }
+}
+
 function formatFullDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-CA", {
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  const d = new Date(dateStr);
+  const local = d.toLocaleString("en-CA", {
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+    timeZone: VENDOR_TIMEZONE,
   });
+  return `${local} ${tzAbbrev(d, VENDOR_TIMEZONE)}`;
+}
+
+// Cethos-time companion line. Returns "" when viewer is already in
+// America/Edmonton so we don't show redundant info.
+function formatCethosTime(dateStr: string): string {
+  if (VENDOR_TIMEZONE === CETHOS_TIMEZONE) return "";
+  const d = new Date(dateStr);
+  const cethos = d.toLocaleString("en-CA", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+    timeZone: CETHOS_TIMEZONE,
+  });
+  return `${cethos} ${tzAbbrev(d, CETHOS_TIMEZONE)}`;
 }
 
 function formatShortDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString("en-CA", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  const d = new Date(dateStr);
+  return d.toLocaleString("en-CA", {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    timeZone: VENDOR_TIMEZONE,
   });
 }
 
@@ -373,46 +402,68 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   <div className="space-y-1.5 text-sm">
                     {job.deadline && (() => {
                       const rel = formatRelativeTime(job.deadline);
+                      const cethos = formatCethosTime(job.deadline);
                       return (
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                        <div className="flex items-start gap-2">
+                          <Clock className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
                           <span className="text-gray-700">
                             Deadline: <span className="font-medium text-gray-900">{formatFullDate(job.deadline)}</span>
-                          </span>
-                          <span className={`text-xs font-medium ${rel.overdue ? "text-red-600" : rel.urgent ? "text-amber-600" : "text-gray-500"}`}>
-                            ({rel.text})
+                            <span className={`ml-1 text-xs font-medium ${rel.overdue ? "text-red-600" : rel.urgent ? "text-amber-600" : "text-gray-500"}`}>
+                              ({rel.text})
+                            </span>
+                            {cethos && (
+                              <span className="block text-xs text-gray-400 mt-0.5">= {cethos} (Cethos)</span>
+                            )}
                           </span>
                         </div>
                       );
                     })()}
-                    {job.estimated_delivery_date && (
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-gray-400 shrink-0" />
+                    {(job.estimated_delivery_at || job.estimated_delivery_date) && (
+                      <div className="flex items-start gap-2">
+                        <Calendar className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
                         <span className="text-gray-700">
-                          Est. delivery: <span className="font-medium text-gray-900">
-                            {/* estimated_delivery_date is a DATE (YYYY-MM-DD).
-                                Parse as UTC midnight + format in UTC so the
-                                displayed day matches the stored calendar day
-                                regardless of viewer timezone. */}
-                            {new Date(job.estimated_delivery_date + "T00:00:00Z")
-                              .toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
-                          </span>
+                          Est. delivery:{" "}
+                          {job.estimated_delivery_at ? (
+                            <>
+                              <span className="font-medium text-gray-900">
+                                {formatFullDate(job.estimated_delivery_at)}
+                              </span>
+                              {(() => {
+                                const cethos = formatCethosTime(job.estimated_delivery_at!);
+                                return cethos ? (
+                                  <span className="block text-xs text-gray-400 mt-0.5">= {cethos} (Cethos)</span>
+                                ) : null;
+                              })()}
+                            </>
+                          ) : (
+                            <span className="font-medium text-gray-900">
+                              {/* DATE-only fallback for legacy orders.
+                                  Parse as UTC midnight + format in UTC so the
+                                  displayed day matches the stored calendar day. */}
+                              {new Date(job.estimated_delivery_date! + "T00:00:00Z")
+                                .toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
+                            </span>
+                          )}
                         </span>
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <Timer className="h-4 w-4 text-gray-400 shrink-0" />
+                    <div className="flex items-start gap-2">
+                      <Timer className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
                       {job.expires_at ? (() => {
                         if (isExpired(job.expires_at)) {
                           return <span className="text-red-600 font-medium">Offer expired</span>;
                         }
                         const rel = formatRelativeTime(job.expires_at);
+                        const cethos = formatCethosTime(job.expires_at);
                         return (
                           <span className="text-gray-700">
                             Offer expires: <span className="font-medium text-gray-900">{formatFullDate(job.expires_at)}</span>
                             <span className={`ml-1 text-xs font-medium ${rel.urgent ? "text-amber-600" : "text-gray-500"}`}>
                               ({rel.text})
                             </span>
+                            {cethos && (
+                              <span className="block text-xs text-gray-400 mt-0.5">= {cethos} (Cethos)</span>
+                            )}
                           </span>
                         );
                       })() : (
