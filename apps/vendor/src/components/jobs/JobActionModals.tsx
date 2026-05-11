@@ -77,7 +77,19 @@ export function AcceptConfirmModal({ step, onClose, onSuccess }: AcceptConfirmPr
           </p>
           <div className="text-sm text-gray-500 space-y-1">
             <p>Deadline: <span className="font-medium text-gray-700">{deadlineStr}</span></p>
-            {step.vendor_total != null && (
+            {step.pricing_mode === "target" ? (
+              <p>
+                Total:{" "}
+                <span className="font-medium text-gray-700">
+                  {step.vendor_total != null && step.vendor_total > 0
+                    ? `${new Intl.NumberFormat("en-CA", {
+                        style: "currency",
+                        currency: step.vendor_currency || "CAD",
+                      }).format(step.vendor_total)} (indicative — target)`
+                    : "Pricing TBD (target)"}
+                </span>
+              </p>
+            ) : step.vendor_total != null && (
               <p>
                 Total:{" "}
                 <span className="font-medium text-gray-700">

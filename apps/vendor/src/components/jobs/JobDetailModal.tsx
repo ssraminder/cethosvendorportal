@@ -374,30 +374,28 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                       {getLanguageName(job.source_language)} &rarr; {getLanguageName(job.target_language)}
                     </p>
                   )}
-                  {job.vendor_rate != null ? (
+                  {job.pricing_mode === "target" ? (
                     <div className="flex items-center gap-4 flex-wrap text-sm">
-                      {job.pricing_mode === "target" ? (
-                        <>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-700">
-                            Target amount
-                          </span>
-                          {job.vendor_total != null && (
-                            <span className="text-gray-700">
-                              Total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
-                            </span>
-                          )}
-                        </>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-700">
+                        Target
+                      </span>
+                      {job.vendor_total != null && job.vendor_total > 0 ? (
+                        <span className="text-gray-700">
+                          Indicative total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
+                        </span>
                       ) : (
-                        <>
-                          <span className="text-gray-700">
-                            Rate: <span className="font-medium text-gray-900">{fmt(job.vendor_rate)} / {job.vendor_rate_unit?.replace("_", " ") ?? "unit"}</span>
-                          </span>
-                          {job.vendor_total != null && (
-                            <span className="text-gray-700">
-                              Total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
-                            </span>
-                          )}
-                        </>
+                        <span className="text-gray-500 italic">Pricing TBD &mdash; settle with the project manager</span>
+                      )}
+                    </div>
+                  ) : job.vendor_rate != null ? (
+                    <div className="flex items-center gap-4 flex-wrap text-sm">
+                      <span className="text-gray-700">
+                        Rate: <span className="font-medium text-gray-900">{fmt(job.vendor_rate)} / {job.vendor_rate_unit?.replace("_", " ") ?? "unit"}</span>
+                      </span>
+                      {job.vendor_total != null && (
+                        <span className="text-gray-700">
+                          Total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
+                        </span>
                       )}
                     </div>
                   ) : (
@@ -405,7 +403,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   )}
                   {job.pricing_mode === "target" && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Flat amount &mdash; no per-word/page rate. Deliver the agreed scope for the target total.
+                      No per-word/page rate &mdash; this task was assigned without a payable. The project manager will confirm pricing before invoicing.
                     </p>
                   )}
                   {job.negotiation_allowed && (

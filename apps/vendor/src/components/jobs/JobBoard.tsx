@@ -337,15 +337,17 @@ export function JobBoard() {
                     {/* Rate + deadline row */}
                     <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 flex-wrap">
                       {step.service_name && <span>{step.service_name}</span>}
-                      {step.pricing_mode === "target" && step.vendor_total != null ? (
+                      {step.pricing_mode === "target" ? (
                         <span className="flex items-center gap-1.5">
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
                             Target
                           </span>
-                          {new Intl.NumberFormat("en-CA", {
-                            style: "currency",
-                            currency: step.vendor_currency || "CAD",
-                          }).format(step.vendor_total)}
+                          {step.vendor_total != null && step.vendor_total > 0
+                            ? new Intl.NumberFormat("en-CA", {
+                                style: "currency",
+                                currency: step.vendor_currency || "CAD",
+                              }).format(step.vendor_total)
+                            : "Pricing TBD"}
                         </span>
                       ) : step.vendor_rate != null && step.vendor_rate_unit ? (
                         <span>
