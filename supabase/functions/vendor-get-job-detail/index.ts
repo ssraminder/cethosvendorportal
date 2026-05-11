@@ -134,7 +134,7 @@ serve(async (req: Request) => {
       .select(
         `id, workflow_id, step_number, name, actor_type, status, service_id,
          order_id, vendor_id, source_language, target_language,
-         vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
+         vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode,
          deadline, offered_at, accepted_at, started_at, delivered_at,
          approved_at, instructions, rejection_reason, revision_count,
          requires_file_upload, notes_from_vendor`,
@@ -153,7 +153,7 @@ serve(async (req: Request) => {
       const { data: offer } = await sb
         .from("vendor_step_offers")
         .select(
-          "id, status, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, deadline, expires_at, instructions, offered_at, negotiation_allowed",
+          "id, status, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode, deadline, expires_at, instructions, offered_at, negotiation_allowed",
         )
         .eq("step_id", stepId)
         .eq("vendor_id", vendorId)
@@ -399,6 +399,7 @@ serve(async (req: Request) => {
         vendor_rate_unit: step.vendor_rate_unit,
         vendor_total: step.vendor_total,
         vendor_currency: step.vendor_currency,
+        pricing_mode: (stepOffer?.pricing_mode ?? step.pricing_mode ?? "per_unit"),
         deadline: step.deadline,
         expires_at: stepOffer?.expires_at ?? null,
         offered_at: step.offered_at,

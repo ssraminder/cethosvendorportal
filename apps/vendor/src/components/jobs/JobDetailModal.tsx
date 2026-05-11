@@ -376,17 +376,37 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                   )}
                   {job.vendor_rate != null ? (
                     <div className="flex items-center gap-4 flex-wrap text-sm">
-                      <span className="text-gray-700">
-                        Rate: <span className="font-medium text-gray-900">{fmt(job.vendor_rate)} / {job.vendor_rate_unit?.replace("_", " ") ?? "unit"}</span>
-                      </span>
-                      {job.vendor_total != null && (
-                        <span className="text-gray-700">
-                          Total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
-                        </span>
+                      {job.pricing_mode === "target" ? (
+                        <>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-700">
+                            Target amount
+                          </span>
+                          {job.vendor_total != null && (
+                            <span className="text-gray-700">
+                              Total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-700">
+                            Rate: <span className="font-medium text-gray-900">{fmt(job.vendor_rate)} / {job.vendor_rate_unit?.replace("_", " ") ?? "unit"}</span>
+                          </span>
+                          {job.vendor_total != null && (
+                            <span className="text-gray-700">
+                              Total: <span className="font-semibold text-teal-700">{currency} {fmt(job.vendor_total)}</span>
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   ) : (
                     <p className="text-sm text-gray-400 italic">Rate to be discussed</p>
+                  )}
+                  {job.pricing_mode === "target" && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Flat amount &mdash; no per-word/page rate. Deliver the agreed scope for the target total.
+                    </p>
                   )}
                   {job.negotiation_allowed && (
                     <div className="text-xs text-teal-600 mt-2">This offer is open to negotiation</div>

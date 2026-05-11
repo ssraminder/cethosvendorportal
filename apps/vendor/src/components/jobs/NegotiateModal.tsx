@@ -160,10 +160,23 @@ export function NegotiateModal({ job, onClose, onSuccess }: NegotiateModalProps)
 
           {/* Current Offer summary */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-            <div className="text-xs font-medium text-gray-500 mb-1">Current Offer</div>
+            <div className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-2">
+              Current Offer
+              {job.pricing_mode === "target" && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
+                  Target amount
+                </span>
+              )}
+            </div>
             <div className="text-sm text-gray-800">
-              ${originalRate}/{unitStr} × {formattedUnits} {unitStr}{units !== 1 ? "s" : ""} ={" "}
-              <span className="font-semibold">{currency} ${originalTotal.toFixed(2)}</span>
+              {job.pricing_mode === "target" ? (
+                <span className="font-semibold">{currency} ${originalTotal.toFixed(2)} (flat)</span>
+              ) : (
+                <>
+                  ${originalRate}/{unitStr} × {formattedUnits} {unitStr}{units !== 1 ? "s" : ""} ={" "}
+                  <span className="font-semibold">{currency} ${originalTotal.toFixed(2)}</span>
+                </>
+              )}
             </div>
             {job.deadline && (
               <div className="text-sm text-gray-600 mt-1">
@@ -172,10 +185,12 @@ export function NegotiateModal({ job, onClose, onSuccess }: NegotiateModalProps)
             )}
           </div>
 
-          {/* Rate input */}
+          {/* Rate / target input */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Your Proposed Rate ({currency})
+              {job.pricing_mode === "target"
+                ? `Your Proposed Target Total (${currency})`
+                : `Your Proposed Rate (${currency})`}
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -187,19 +202,23 @@ export function NegotiateModal({ job, onClose, onSuccess }: NegotiateModalProps)
                 placeholder="0.00"
                 className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
-              <span className="text-sm text-gray-500">
-                / {unitStr} × {formattedUnits} {unitStr}{units !== 1 ? "s" : ""}
-              </span>
+              {job.pricing_mode !== "target" && (
+                <span className="text-sm text-gray-500">
+                  / {unitStr} × {formattedUnits} {unitStr}{units !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Auto-calculated total (read-only) */}
+          {/* Auto-calculated total (read-only) — for target mode it equals the input */}
           <div className="text-sm">
             <span className="text-gray-500">Proposed Total: </span>
             <span className="font-semibold text-gray-800">
               {currency} ${calculatedTotal.toFixed(2)}
             </span>
-            <span className="text-gray-400 text-xs ml-2">(auto-calculated)</span>
+            {job.pricing_mode !== "target" && (
+              <span className="text-gray-400 text-xs ml-2">(auto-calculated)</span>
+            )}
           </div>
 
           {/* Deadline with date + time */}

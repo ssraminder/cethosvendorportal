@@ -19,6 +19,7 @@ export interface VendorStep {
   vendor_rate_unit: string | null;
   vendor_total: number | null;
   vendor_currency: string;
+  pricing_mode?: "per_unit" | "target";
   source_language: string | null;
   target_language: string | null;
   offered_at: string;
@@ -86,6 +87,7 @@ export interface JobDetailJob {
   vendor_rate_unit: string | null;
   vendor_total: number | null;
   vendor_currency: string;
+  pricing_mode?: "per_unit" | "target";
   deadline: string | null;
   expires_at: string | null;
   offered_at: string | null;
