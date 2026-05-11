@@ -390,7 +390,12 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                         <Calendar className="h-4 w-4 text-gray-400 shrink-0" />
                         <span className="text-gray-700">
                           Est. delivery: <span className="font-medium text-gray-900">
-                            {new Date(job.estimated_delivery_date).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}
+                            {/* estimated_delivery_date is a DATE (YYYY-MM-DD).
+                                Parse as UTC midnight + format in UTC so the
+                                displayed day matches the stored calendar day
+                                regardless of viewer timezone. */}
+                            {new Date(job.estimated_delivery_date + "T00:00:00Z")
+                              .toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
                           </span>
                         </span>
                       </div>
