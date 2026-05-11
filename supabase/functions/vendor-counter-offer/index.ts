@@ -30,6 +30,10 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  notifyAdminCounterProposed,
+  notifyCounterAutoAccepted,
+} from "../_shared/notify-counter.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -190,6 +194,12 @@ serve(async (req: Request) => {
         }
       }
 
+      // Fire-and-forget email notifications.
+      await fireCounterEmails(sb, "auto_accepted", offer, stepId, vendorId, {
+        counterRate, counterRateUnit, counterTotal, counterCurrency,
+        counterDeadline, counterNote,
+      });
+
       return json({ success: true, auto_accepted: true, auto_assigned: true });
     }
 
@@ -207,9 +217,79 @@ serve(async (req: Request) => {
       })
       .eq("id", offer.id);
 
+    await fireCounterEmails(sb, "proposed", offer, stepId, vendorId, {
+      counterRate, counterRateUnit, counterTotal, counterCurrency,
+      counterDeadline, counterNote,
+    });
+
     return json({ success: true, auto_accepted: false, auto_assigned: false });
   } catch (err: any) {
     console.error("vendor-counter-offer error:", err?.message || err);
     return json({ success: false, error: err?.message || "Internal server error" }, 500);
   }
 });
+
+// ── Email fan-out ───────────────────────────────────────────────────────────
+// Loads the vendor + order + step records and hands them off to the shared
+// notify-counter helpers. Wrapped in try/catch so a Brevo or DB hiccup
+// never fails the counter-offer write.
+async function fireCounterEmails(
+  sb: any,
+  kind: "proposed" | "auto_accepted",
+  offer: any,
+  stepId: string,
+  vendorId: string,
+  counter: {
+    counterRate: number | null;
+    counterRateUnit: string | null;
+    counterTotal: number | null;
+    counterCurrency: string;
+    counterDeadline: string | null;
+    counterNote: string;
+  },
+): Promise<void> {
+  try {
+    const [{ data: vendor }, { data: step }] = await Promise.all([
+      sb.from("vendors").select("id, full_name, email, additional_emails").eq("id", vendorId).maybeSingle(),
+      sb.from("order_workflow_steps").select("id, name, order_id").eq("id", stepId).maybeSingle(),
+    ]);
+    if (!vendor?.email || !step) return;
+    const { data: order } = await sb.from("orders").select("id, order_number").eq("id", step.order_id).maybeSingle();
+    if (!order) return;
+
+    const ctx = {
+      supabase: sb,
+      offerId: offer.id,
+      stepId,
+      vendor: {
+        id: vendor.id,
+        full_name: vendor.full_name,
+        email: vendor.email,
+        additional_emails: Array.isArray(vendor.additional_emails) ? vendor.additional_emails : [],
+      },
+      order: { id: order.id, order_number: order.order_number },
+      step: { id: step.id, name: step.name },
+      counter: {
+        rate: counter.counterRate,
+        rate_unit: counter.counterRateUnit,
+        total: counter.counterTotal,
+        currency: counter.counterCurrency,
+        deadline: counter.counterDeadline,
+        note: counter.counterNote,
+      },
+      original: {
+        rate: offer.vendor_rate == null ? null : Number(offer.vendor_rate),
+        total: offer.vendor_total == null ? null : Number(offer.vendor_total),
+        deadline: offer.deadline ?? null,
+      },
+    };
+
+    if (kind === "proposed") {
+      await notifyAdminCounterProposed(ctx);
+    } else {
+      await notifyCounterAutoAccepted(ctx);
+    }
+  } catch (err: any) {
+    console.error("fireCounterEmails threw:", err?.message || err);
+  }
+}
