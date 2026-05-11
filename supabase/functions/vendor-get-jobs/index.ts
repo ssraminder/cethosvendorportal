@@ -43,6 +43,10 @@ serve(async (req: Request) => {
     let jobs: any[] = [];
 
     if (tab === "offered") {
+      // Admin's update-workflow-step writes status='pending' on insert (see
+      // admin repo: supabase/functions/update-workflow-step/index.ts:123, :178).
+      // 'sent' was never written by any code path. Production distribution
+      // confirms: pending/retracted/accepted/expired only.
       const { data: offers, error: offersErr } = await sb
         .from("vendor_step_offers")
         .select(`
@@ -53,7 +57,7 @@ serve(async (req: Request) => {
           counter_responded_at, counter_rejection_reason, negotiation_allowed
         `)
         .eq("vendor_id", vendorId)
-        .eq("status", "sent")
+        .eq("status", "pending")
         .order("offered_at", { ascending: false });
 
       if (offersErr) return jsonResp({ error: offersErr.message }, 500);
@@ -198,7 +202,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const { data: sentOffers } = await sb.from("vendor_step_offers").select("id").eq("vendor_id", vendorId).eq("status", "sent");
+    const { data: sentOffers } = await sb.from("vendor_step_offers").select("id").eq("vendor_id", vendorId).eq("status", "pending");
     const { data: activeSteps } = await sb.from("order_workflow_steps").select("status").eq("vendor_id", vendorId).in("status", ["accepted", "in_progress", "delivered", "revision_requested"]);
     const { data: completedSteps } = await sb.from("order_workflow_steps").select("status").eq("vendor_id", vendorId).in("status", ["approved", "cancelled"]);
 
