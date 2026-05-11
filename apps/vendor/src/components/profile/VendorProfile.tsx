@@ -20,7 +20,6 @@ import {
   Phone,
   Globe,
   CircleDot,
-  Shield,
   Pencil,
   Check,
   X,
@@ -910,20 +909,6 @@ export function VendorProfile() {
         </div>
       )}
 
-      {/* Security */}
-      <div className="mt-5 bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
-            <Shield className="w-4 h-4 text-gray-400" />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Security</p>
-            <p className="text-sm font-medium text-gray-900 mt-0.5">
-              Manage your password and sign-in settings
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
