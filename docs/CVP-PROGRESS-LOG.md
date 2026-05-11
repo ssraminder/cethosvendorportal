@@ -14,48 +14,6 @@ Format: newest sessions at the top.
 
 ---
 
-## Session — May 11, 2026 (QMS Phase 1 — Audit-readiness sprint, narrowed Track A scope)
-
-Builds the ISO 17100 / 18587 / 18841 / NSGCIS conformance layer prescribed in the new audit docs at `D:\cethos-vendor\Documents\` (audit-readiness roadmap v0.2, 5-week sprint plan, Phase 1 Claude Code briefing, methodology pack, four role training plans). Target: clear the **June 29-30, 2026 pharma sponsor vendor QA audit** and feed the December 2026 Orion Stage 2 audit. This session covers the software work scheduled for Week 2 (May 18-22) of the sprint — schema, RLS, auditor views, storage bucket, edge function, seeding script. SOP authoring, ISMS-lite, mock audit, marketing scrub, NAP cleanup remain non-software work.
-
-### Architectural pivot
-`public.vendors` is the canonical linguist record. CVP is the qualification pipeline that feeds it. The new `qms` schema is the conformance layer that does **not** duplicate vendors or cvp_* — it adds FKs back. Every record in `qms.*` is evidence for a specific ISO clause.
-
-### Migrations (apply order)
-- **NEW** [`20260511150000_qms_schema_foundation.sql`](../supabase/migrations/20260511150000_qms_schema_foundation.sql) — `qms` schema; 7 enums; 5 lookup tables seeded inline (role_types ×4, competence_bases ×7 mapped to ISO 17100 §3.1.4(a)(b)(c)/§3.1.5 + ISO 18587 §3.1 + ISO 18841 §6/§6-alt, subject_matters as 6 parents + 24 children, interpreter_modes ×6, evidence_types ×18); 8 record tables (role_qualifications, competence_evidence, subject_matter_qualifications, interpreter_mode_qualifications, language_pair_qualifications, nda_agreements, professional_experience, performance_events); audit log with **`REVOKE UPDATE, DELETE ... FROM PUBLIC, authenticated, anon, service_role`** (non-negotiable per briefing §7.7); partial indexes; `updated_at` triggers.
-- **NEW** [`20260511150100_qms_rls_and_views.sql`](../supabase/migrations/20260511150100_qms_rls_and_views.sql) — postgres roles `qms_admin / qms_vendor_manager / qms_project_manager / qms_linguist / qms_auditor`; `qms.staff_role_assignments` mapping `staff_users.id` → role; helper functions (`is_qms_admin`, `is_vendor_manager`, `is_project_manager`, `is_auditor`, `is_self_vendor`); RLS policies on every qms.* table; `v_role_qualifications_public` / `v_competence_evidence_public` / `v_nda_agreements_public` hiding `internal_notes`; four auditor-facing views — `v_qualified_translators_by_pair_and_subject`, `v_qualified_revisers_by_pair_and_subject`, `v_qualified_post_editors_by_pair_and_subject`, `v_qualified_interpreters_by_mode_and_domain`; materialised view `qms.linguist_performance_snapshot` with `refresh_linguist_performance_snapshot()` helper.
-- **NEW** [`20260511150200_qms_evidence_storage.sql`](../supabase/migrations/20260511150200_qms_evidence_storage.sql) — private `qms-evidence` Supabase Storage bucket.
-
-### Edge function
-- **NEW** [`qms-evidence-fetch`](../supabase/functions/qms-evidence-fetch/index.ts) — issues short-lived signed URLs for evidence files and NDAs after verifying the caller has a `qms_admin` / `qms_vendor_manager` / `qms_auditor` assignment in `qms.staff_role_assignments`, or that the caller is the vendor themselves (`vendors.auth_user_id` match). Service-role storage access behind the authorisation gate. Pattern mirrors [`cvp-get-cv-url`](../supabase/functions/cvp-get-cv-url/index.ts).
-
-### Seeding
-- **NEW** [`scripts/seed-coa-pool.ts`](../scripts/seed-coa-pool.ts) — reads a CSV (Fayza+Amrita maintain in Week 1) and creates per linguist: role_qualification, competence_evidence stubs, subject_matter_qualifications, language_pair_qualifications, nda_agreement, plus a `qualified` row in `qms.qualification_audit_log`. Idempotent on the (vendor_id, role_type_id) unique constraint and the partial unique NDA index. Re-qualification due set to qualified_at + 365 days.
-- **NEW** [`scripts/coa-pool.template.csv`](../scripts/coa-pool.template.csv) — schema reference for the CSV (vendor_email, role, competence_basis, competence_basis_notes, subject_matter_codes, language_pairs, nda_template_version, nda_signed_date, nda_expiry_date, evidence_titles, evidence_types, notes).
-
-### Documentation
-- **NEW** [`docs/qms/phase-1-vendor-qualification-schema.md`](qms/phase-1-vendor-qualification-schema.md) — developer reference covering schema, lookup seeds, RLS model, auditor views, verification checklist, sequenced apply order, and gaps explicitly deferred to Track B.
-- Updated [`memory/decisions.md`](../memory/decisions.md) with the four open decisions resolved (schema location = `qms` dedicated schema; language-code normalization deferred; default eligibility = no role_qualifications until documented; cvp_translators↔vendors bridge deferred).
-- Updated [`memory/preferences.md`](../memory/preferences.md) with the QMS naming convention.
-
-### Decisions resolved in this session
-1. **Schema location** — `qms` dedicated schema (not `cvp_`-prefixed in `public`). Conflict with CLAUDE.md's "all new tables must use cvp_ prefix" rule was resolved on the basis that the rule scopes to CVP work; QMS is a distinct conformance domain. CLAUDE.md may need an explicit carve-out next time it's edited.
-2. Language normalization → Track B.
-3. Default eligibility → none (no `qms.role_qualifications` for the 1,468 existing vendors until documented).
-4. cvp_translators ↔ vendors bridge → Track B; QMS FKs straight to `public.vendors`.
-
-### Verified
-- File-by-file write-only at this stage. Migrations are not yet `db push`-applied — that's scheduled for Week 2 of the sprint after Raminder confirms the four decisions match.
-- Duplicate audit doc `training-fayza-quality-manager-v0.1 (1).md` confirmed byte-identical to canonical via `diff` (exit 0, no output). Safe to delete from Documents folder.
-
-### Deferred (Track B post-June-audit, per roadmap §4.2)
-- Full vendor-base migration of all 1,468 linguists.
-- `vendor_language_pairs` text → FK normalization.
-- DB-backed CAPA register, customer complaint register, internal audit findings register, management review records, document register + 3-signature workflow, staff training records.
-- Auditor JWT provisioning workflow (auditor account + time-bounded `staff_role_assignments` row).
-
----
-
 ## Session — April 24, 2026 (Phase E: References system end-to-end)
 
 Completes the references-system phase scheduled earlier today. Two-step flow: staff requests, applicant fills contacts, references fill questionnaire, Opus analyses each response, staff reviews in admin.
