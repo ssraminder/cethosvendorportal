@@ -76,6 +76,9 @@ export interface JobDetailJob {
   order_number: string;
   is_rush: boolean;
   estimated_delivery_date: string | null;
+  // Full-instant promised delivery (TIMESTAMPTZ). Preferred over the
+  // DATE-only field when present; legacy orders still only carry the date.
+  estimated_delivery_at: string | null;
   service_name: string;
   source_language: string | null;
   target_language: string | null;
