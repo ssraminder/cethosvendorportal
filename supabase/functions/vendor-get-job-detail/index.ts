@@ -68,6 +68,24 @@ async function signQuoteFile(
   }
 }
 
+// Resilient source-file signer for quote_files. Some files end up in
+// `ocr-uploads` instead of `quote-files` (older upload paths that didn't
+// migrate the object). Heuristic: paths without a `/` separator are the
+// flat `timestamp-id-name.ext` shape used by the OCR uploader and live in
+// `ocr-uploads`; paths with `/` are the standard `<quote_id>/file.ext`
+// shape and live in `quote-files`.
+async function signSourceFile(
+  sb: any,
+  storagePath: string,
+): Promise<string | null> {
+  const isFlatPath = !storagePath.includes("/");
+  const primaryBucket = isFlatPath ? "ocr-uploads" : "quote-files";
+  const fallbackBucket = isFlatPath ? "quote-files" : "ocr-uploads";
+  const primary = await signQuoteFile(sb, primaryBucket, storagePath);
+  if (primary) return primary;
+  return signQuoteFile(sb, fallbackBucket, storagePath);
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
@@ -285,7 +303,7 @@ serve(async (req: Request) => {
         }
 
         for (const f of qfiles) {
-          const signed = await signQuoteFile(sb, "quote-files", f.storage_path);
+          const signed = await signSourceFile(sb, f.storage_path);
           const wc = aiByFile[f.id]?.wc ?? 0;
           const pc = aiByFile[f.id]?.pc ?? 0;
           sourceFiles.push({
