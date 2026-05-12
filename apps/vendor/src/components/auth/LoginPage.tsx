@@ -1,11 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { Navigate } from "react-router-dom";
-import { checkVendor, sendOtp, verifyOtp } from "../../api/vendorAuth";
+import {
+  checkVendor,
+  sendOtp,
+  verifyOtp,
+  testConnectivity,
+  NetworkUnreachableError,
+  type ConnectivityProbe,
+} from "../../api/vendorAuth";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { OtpInput } from "./OtpInput";
 import { CethosLogo } from "../shared/CethosLogo";
 import { maskEmail } from "../../utils/mask";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Wifi, Loader2 } from "lucide-react";
 
 // Email OTP is the only login method. The previous password and SMS
 // branches are intentionally gone — vendors don't set up passwords and
@@ -23,7 +30,10 @@ export function LoginPage() {
   const [otpValue, setOtpValue] = useState<string[]>(["", "", "", "", "", ""]);
   const [resendCountdown, setResendCountdown] = useState(0);
   const [error, setError] = useState("");
+  const [networkError, setNetworkError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<ConnectivityProbe | null>(null);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -60,6 +70,8 @@ export function LoginPage() {
       return;
     }
     setError("");
+    setNetworkError(false);
+    setProbeResult(null);
     setLoading(true);
     try {
       const result = await checkVendor(email.trim());
@@ -73,9 +85,30 @@ export function LoginPage() {
       }
       await doSendOtp();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      if (err instanceof NetworkUnreachableError) {
+        // Two real-world cases hit this: vendors in China and Egypt where
+        // Supabase / Cloudflare endpoints get throttled, plus aggressive
+        // browser extensions that block tracker-shaped requests. The
+        // generic "Failed to fetch" string is useless for either; replace
+        // with something actionable.
+        setNetworkError(true);
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runConnectivityTest() {
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const result = await testConnectivity();
+      setProbeResult(result);
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -147,7 +180,50 @@ export function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && !networkError && <p className="text-sm text-red-600">{error}</p>}
+
+          {networkError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+              <div className="font-semibold">Can't reach the Cethos server</div>
+              <p className="text-amber-800">
+                Your network blocked the connection. Common causes:
+              </p>
+              <ul className="list-disc pl-5 text-xs text-amber-800 space-y-0.5">
+                <li>Some regions (e.g. China, parts of MENA) restrict cloud endpoints — try a VPN</li>
+                <li>A privacy/ad-blocker extension may be blocking requests</li>
+                <li>Corporate firewall or proxy filtering</li>
+              </ul>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={runConnectivityTest}
+                  disabled={probing}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {probing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+                  Test connection
+                </button>
+                <a
+                  href="mailto:support@cethos.com?subject=Vendor%20Portal%20login%20%E2%80%94%20can%27t%20reach%20server"
+                  className="text-xs text-amber-900 underline hover:text-amber-950"
+                >
+                  Email support
+                </a>
+                {probeResult && (
+                  <span className="text-xs text-amber-800 font-mono">
+                    {probeResult.reachable
+                      ? `✓ Reached server (${probeResult.duration_ms}ms, status ${probeResult.status})`
+                      : `✗ Blocked: ${probeResult.error || "no response"} (${probeResult.duration_ms}ms)`}
+                  </span>
+                )}
+              </div>
+              {probeResult && probeResult.reachable && (
+                <p className="text-xs text-amber-800">
+                  Connection works now — try the Continue button again.
+                </p>
+              )}
+            </div>
+          )}
 
           <button
             onClick={handleEmailContinue}
