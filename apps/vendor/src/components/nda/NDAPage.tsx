@@ -204,44 +204,43 @@ export function NDAPage() {
     const versionLabel = status.template.version_label;
     setDownloading(true);
     try {
-      const [{ default: jsPDF }] = await Promise.all([import("jspdf")]);
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import("jspdf"),
+        import("html2canvas"),
+      ]);
 
-      // Fetch logo + measure its native aspect ratio so we don't squash
-      // it. The hardcoded 90x32 size in the previous version produced a
-      // visibly skewed logo when the actual asset is closer to 4:1.
       const logo = await fetchLogo();
 
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pageWidth = pdf.internal.pageSize.getWidth();   // 595pt
+      const pageHeight = pdf.internal.pageSize.getHeight(); // 842pt
 
-      // Page layout: 80pt top header band, 56pt bottom footer band,
-      // 40pt side margins for the body.
-      const HEADER_H = 80;
-      const FOOTER_H = 56;
+      // Layout in points. Side 40, header 60, footer 50 → body 692pt tall.
+      const HEADER_H = 60;
+      const FOOTER_H = 50;
       const SIDE = 40;
+      const bodyTop = HEADER_H + 6;          // gap below header rule
+      const bodyHeightPt = pageHeight - bodyTop - FOOTER_H - 6;
+      const bodyWidthPt = pageWidth - SIDE * 2;
 
-      // jsPDF.html() handles pagination natively, including page breaks
-      // through long content. We feed it a styled DOM and it slices
-      // intelligently across pages using its margin args. The previous
-      // implementation tried to slice a tall html2canvas image manually
-      // and got the math wrong, producing 100+ blank-tail pages.
+      // Render body off-DOM at a fixed CSS-pixel width. html2canvas
+      // handles `position: absolute; left: -10000px` correctly as long
+      // as the element has explicit dimensions.
+      const renderWidthPx = 800;
       const wrap = document.createElement("div");
-      wrap.style.cssText = `position:absolute;left:-10000px;top:0;width:${pageWidth - SIDE * 2}pt;background:#fff;color:#1f2937;padding:0`;
+      wrap.style.cssText = `position:absolute;left:-10000px;top:0;width:${renderWidthPx}px;background:#fff;color:#1f2937`;
       wrap.innerHTML = `
         <style>
-          .nda-pdf-body { font-family: 'Times New Roman', Georgia, serif; font-size: 11pt; line-height: 1.55; color: #1f2937; }
+          .nda-pdf-body { font-family: 'Times New Roman', Georgia, serif; font-size: 15px; line-height: 1.6; color: #1f2937; }
           .nda-pdf-body h1, .nda-pdf-body h2, .nda-pdf-body h3 {
-            font-family: Helvetica, Arial, sans-serif;
-            color: #111827; line-height: 1.25;
-            page-break-after: avoid; break-after: avoid;
+            font-family: Helvetica, Arial, sans-serif; color: #111827; line-height: 1.25;
           }
-          .nda-pdf-body h1 { font-size: 16pt; margin: 14pt 0 8pt; }
-          .nda-pdf-body h2 { font-size: 13pt; margin: 14pt 0 6pt; }
-          .nda-pdf-body h3 { font-size: 11.5pt; margin: 12pt 0 4pt; }
-          .nda-pdf-body p { margin: 0 0 8pt; }
-          .nda-pdf-body ul, .nda-pdf-body ol { margin: 0 0 8pt 18pt; padding: 0; }
-          .nda-pdf-body li { margin: 3pt 0; }
+          .nda-pdf-body h1 { font-size: 22px; margin: 18px 0 10px; }
+          .nda-pdf-body h2 { font-size: 18px; margin: 18px 0 8px; }
+          .nda-pdf-body h3 { font-size: 15.5px; margin: 14px 0 6px; }
+          .nda-pdf-body p { margin: 0 0 10px; }
+          .nda-pdf-body ul, .nda-pdf-body ol { margin: 0 0 10px 22px; padding: 0; }
+          .nda-pdf-body li { margin: 4px 0; }
           .nda-pdf-body strong { color: #111827; font-weight: bold; }
         </style>
         <div class="nda-pdf-body">${sig.signed_html_snapshot}</div>
@@ -249,18 +248,32 @@ export function NDAPage() {
       document.body.appendChild(wrap);
 
       try {
-        await pdf.html(wrap, {
-          x: SIDE,
-          y: HEADER_H,
-          width: pageWidth - SIDE * 2,
-          windowWidth: wrap.offsetWidth,
-          margin: [HEADER_H, SIDE, FOOTER_H, SIDE],
-          autoPaging: "text",
-          html2canvas: { scale: 0.75, useCORS: true, backgroundColor: "#ffffff" },
-        });
+        const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+        // pt-per-px ratio: bodyWidthPt mapped over canvas.width pixels.
+        const pxToPt = bodyWidthPt / canvas.width;
+        const bodyHeightPx = Math.floor(bodyHeightPt / pxToPt);
 
-        // Append an audit page that travels with the signature: factors
-        // verified, signer fingerprint, timestamps. Auditor-friendly.
+        let consumedPx = 0;
+        let isFirstPage = true;
+        while (consumedPx < canvas.height) {
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+
+          const sliceHeightPx = Math.min(bodyHeightPx, canvas.height - consumedPx);
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceHeightPx;
+          const ctx = sliceCanvas.getContext("2d");
+          ctx?.drawImage(canvas, 0, -consumedPx);
+
+          const sliceImg = sliceCanvas.toDataURL("image/png");
+          const sliceHeightPt = sliceHeightPx * pxToPt;
+          pdf.addImage(sliceImg, "PNG", SIDE, bodyTop, bodyWidthPt, sliceHeightPt);
+
+          consumedPx += sliceHeightPx;
+        }
+
+        // Audit page after the body.
         pdf.addPage();
         drawAuditPage(pdf, {
           sig,
@@ -272,8 +285,7 @@ export function NDAPage() {
           side: SIDE,
         });
 
-        // Header + footer overlays on every page — native PDF text so
-        // they stay crisp.
+        // Header + footer overlays on every page (native PDF text).
         const pageCount = pdf.getNumberOfPages();
         for (let p = 1; p <= pageCount; p++) {
           pdf.setPage(p);
@@ -647,31 +659,47 @@ interface HeaderArgs {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function drawHeader(pdf: any, args: HeaderArgs) {
   const { logo, versionLabel, pageWidth, headerH, side } = args;
-  // Logo target height: 36pt; width derived from native aspect ratio.
+  // Logo: cap at 24pt high AND 70pt wide so it never crowds the title.
+  // The previous 36pt-high free-aspect version produced a logo wider
+  // than half the page which overlapped the centered title.
   if (logo) {
     try {
-      const targetH = 36;
-      const targetW = (logo.width / logo.height) * targetH;
+      const maxH = 24;
+      const maxW = 70;
+      const aspect = logo.width / logo.height;
+      let targetH = maxH;
+      let targetW = aspect * maxH;
+      if (targetW > maxW) {
+        targetW = maxW;
+        targetH = maxW / aspect;
+      }
       pdf.addImage(logo.dataUrl, "PNG", side, (headerH - targetH) / 2, targetW, targetH);
     } catch {
       /* logo failed — fall back silently to text-only header */
     }
   }
 
+  // Title block — right-aligned, sits on the same horizontal band as
+  // the logo on the left so they balance instead of overlapping.
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(11);
   pdf.setTextColor(31, 41, 55);
-  pdf.text("Confidentiality & Non-Disclosure Agreement", pageWidth / 2, headerH / 2 - 2, { align: "center" });
+  pdf.text(
+    "Confidentiality & Non-Disclosure Agreement",
+    pageWidth - side,
+    headerH / 2 - 2,
+    { align: "right" },
+  );
 
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
   pdf.setTextColor(107, 114, 128);
-  pdf.text(`Version ${versionLabel}`, pageWidth / 2, headerH / 2 + 12, { align: "center" });
+  pdf.text(`Version ${versionLabel}`, pageWidth - side, headerH / 2 + 12, { align: "right" });
 
-  // Underline rule beneath the header band.
+  // Hairline under the header band.
   pdf.setDrawColor(229, 231, 235);
   pdf.setLineWidth(0.5);
-  pdf.line(side, headerH - 6, pageWidth - side, headerH - 6);
+  pdf.line(side, headerH - 4, pageWidth - side, headerH - 4);
 }
 
 interface FooterArgs {
@@ -793,22 +821,22 @@ function drawFooter(pdf: any, args: FooterArgs) {
   const { sig, pageWidth, pageHeight, footerH, side, pageNum, pageCount } = args;
   const y0 = pageHeight - footerH;
 
+  // Hairline above the footer band.
   pdf.setDrawColor(229, 231, 235);
   pdf.setLineWidth(0.5);
-  pdf.line(side, y0 + 8, pageWidth - side, y0 + 8);
+  pdf.line(side, y0 + 6, pageWidth - side, y0 + 6);
 
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(8.5);
+  pdf.setFontSize(8);
   pdf.setTextColor(107, 114, 128);
 
-  // Left: company address. Two lines.
-  pdf.text("Cethos Solutions Inc.", side, y0 + 22);
-  pdf.text("Calgary, Alberta, Canada · support@cethos.com", side, y0 + 34);
+  // Row 1: company on left, page numbers on right.
+  pdf.text("Cethos Solutions Inc. · Calgary, Alberta, Canada · support@cethos.com", side, y0 + 18);
+  pdf.text(`Page ${pageNum} of ${pageCount}`, pageWidth - side, y0 + 18, { align: "right" });
 
-  // Centre: page numbers.
-  pdf.text(`Page ${pageNum} of ${pageCount}`, pageWidth / 2, y0 + 28, { align: "center" });
-
-  // Right: signature ID + signer.
-  pdf.text(`Signed by ${sig.signed_full_name}`, pageWidth - side, y0 + 22, { align: "right" });
-  pdf.text(`Signature ID: ${sig.id.slice(0, 8)}…`, pageWidth - side, y0 + 34, { align: "right" });
+  // Row 2: full signature ID, left-aligned, smaller. Width-of-the-page so
+  // even a 36-char UUID fits without truncation.
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(156, 163, 175);
+  pdf.text(`Signed by ${sig.signed_full_name}  ·  Signature ID: ${sig.id}`, side, y0 + 32);
 }
