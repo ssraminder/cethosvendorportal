@@ -178,6 +178,7 @@ export function NDAPage() {
   const downloadSnapshot = async () => {
     if (!status?.current_signature) return;
     const sig = status.current_signature;
+    const versionLabel = status.template.version_label;
     setDownloading(true);
     try {
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
@@ -185,42 +186,83 @@ export function NDAPage() {
         import("html2canvas"),
       ]);
 
+      // Pull the Cethos logo as a data URL. The web-assets bucket is
+      // public so no auth is needed; running through FileReader avoids
+      // CORS surprises later when jsPDF embeds the image.
+      const logoDataUrl = await fetchLogoAsDataUrl();
+
+      // Render the NDA body offscreen with proper typography. We
+      // intentionally exclude the audit/header info from this DOM —
+      // that goes onto every page as native PDF text so it stays crisp
+      // and isn't subject to html2canvas rasterisation artifacts.
       const wrap = document.createElement("div");
-      wrap.style.cssText = "position:fixed;left:-99999px;top:0;width:794px;padding:48px 56px;background:#fff;font-family:Georgia,serif;line-height:1.55;color:#222";
+      wrap.style.cssText = "position:fixed;left:-99999px;top:0;width:794px;padding:0;background:#fff;color:#1f2937";
       wrap.innerHTML = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f6f6f6;padding:14px 18px;border-left:3px solid #888;margin:0 0 24px;font-size:12px">
-          <div><b style="display:inline-block;width:140px">Signed by:</b> ${escapeHtml(sig.signed_full_name)}</div>
-          <div><b style="display:inline-block;width:140px">Email:</b> ${escapeHtml(sig.signed_email ?? "—")}</div>
-          <div><b style="display:inline-block;width:140px">Signed at:</b> ${new Date(sig.signed_at).toUTCString()}</div>
-          <div><b style="display:inline-block;width:140px">Signer IP:</b> ${escapeHtml(sig.signer_ip ?? "—")}</div>
-          <div><b style="display:inline-block;width:140px">Signature ID:</b> ${sig.id}</div>
-        </div>
-        ${sig.signed_html_snapshot}
+        <style>
+          .nda-pdf-body { font-family: Georgia, 'Times New Roman', serif; font-size: 13.5px; line-height: 1.65; }
+          .nda-pdf-body h1, .nda-pdf-body h2, .nda-pdf-body h3 {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #111827; line-height: 1.3; margin: 22px 0 10px;
+          }
+          .nda-pdf-body h1 { font-size: 22px; }
+          .nda-pdf-body h2 { font-size: 17px; }
+          .nda-pdf-body h3 { font-size: 14.5px; }
+          .nda-pdf-body p { margin: 0 0 12px; }
+          .nda-pdf-body ul, .nda-pdf-body ol { margin: 0 0 14px 22px; padding: 0; }
+          .nda-pdf-body li { margin: 4px 0; }
+          .nda-pdf-body strong { color: #111827; }
+        </style>
+        <div class="nda-pdf-body">${sig.signed_html_snapshot}</div>
       `;
       document.body.appendChild(wrap);
+
       try {
         const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
         const pdf = new jsPDF({ unit: "pt", format: "a4" });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const imgWidth = pageWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-        const imgData = canvas.toDataURL("image/png");
-        if (imgHeight <= pageHeight) {
-          pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
-        } else {
-          let heightLeft = imgHeight;
-          let position = 0;
-          pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
-          while (heightLeft > 0) {
-            position -= pageHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
+
+        // Layout: 80pt header band + 56pt footer band, 32pt side margins.
+        const HEADER_H = 80;
+        const FOOTER_H = 56;
+        const SIDE = 32;
+        const bodyTop = HEADER_H;
+        const bodyHeight = pageHeight - HEADER_H - FOOTER_H;
+        const bodyWidth = pageWidth - SIDE * 2;
+        const scaledImgWidth = bodyWidth;
+        const scaledImgHeight = (canvas.height * scaledImgWidth) / canvas.width;
+
+        // Render body slice-by-slice into per-page canvases. Slicing on
+        // pre-rendered canvas (rather than re-anchoring a tall image
+        // with negative Y) means each PDF page only carries its own
+        // visible bytes — keeps the file small for long NDAs.
+        const totalPages = Math.max(1, Math.ceil(scaledImgHeight / bodyHeight));
+        const sliceHeightPx = Math.ceil((bodyHeight / scaledImgHeight) * canvas.height);
+
+        for (let page = 0; page < totalPages; page++) {
+          if (page > 0) pdf.addPage();
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = Math.min(sliceHeightPx, canvas.height - page * sliceHeightPx);
+          const ctx = sliceCanvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(canvas, 0, -page * sliceHeightPx);
           }
+          const sliceImg = sliceCanvas.toDataURL("image/png");
+          const sliceImgHeightPt = (sliceCanvas.height / canvas.width) * scaledImgWidth;
+          pdf.addImage(sliceImg, "PNG", SIDE, bodyTop, scaledImgWidth, sliceImgHeightPt);
         }
-        pdf.save(`cethos-nda-${sig.signed_at.slice(0, 10)}.pdf`);
+
+        // Header + footer overlays on every page (added last so they
+        // sit on top, though body area never overlaps).
+        const pageCount = pdf.getNumberOfPages();
+        for (let p = 1; p <= pageCount; p++) {
+          pdf.setPage(p);
+          drawHeader(pdf, { logoDataUrl, versionLabel, pageWidth, headerH: HEADER_H, side: SIDE });
+          drawFooter(pdf, { sig, pageWidth, pageHeight, footerH: FOOTER_H, side: SIDE, pageNum: p, pageCount });
+        }
+
+        pdf.save(`cethos-nda-${versionLabel}-${sig.signed_at.slice(0, 10)}.pdf`);
       } finally {
         document.body.removeChild(wrap);
       }
@@ -488,6 +530,94 @@ function OtpRow({ icon, label, state, setter, onSend, onVerify }: OtpRowProps) {
   );
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const CETHOS_LOGO_URL = "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
+
+async function fetchLogoAsDataUrl(): Promise<string | null> {
+  try {
+    const res = await fetch(CETHOS_LOGO_URL);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+interface HeaderArgs {
+  logoDataUrl: string | null;
+  versionLabel: string;
+  pageWidth: number;
+  headerH: number;
+  side: number;
+}
+
+// Disabling explicit jsPDF type for the helpers below — the dynamic
+// import gives us a typed instance at the call site, and forwarding
+// that type adds a lot of generic noise for no real benefit.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function drawHeader(pdf: any, args: HeaderArgs) {
+  const { logoDataUrl, versionLabel, pageWidth, headerH, side } = args;
+  // Logo: 90 x 32pt, left-aligned, vertically centred in the band.
+  if (logoDataUrl) {
+    try {
+      pdf.addImage(logoDataUrl, "PNG", side, (headerH - 32) / 2, 90, 32);
+    } catch {
+      /* logo failed — fall back silently to text-only header */
+    }
+  }
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(11);
+  pdf.setTextColor(31, 41, 55);
+  pdf.text("Confidentiality & Non-Disclosure Agreement", pageWidth / 2, headerH / 2 - 2, { align: "center" });
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(107, 114, 128);
+  pdf.text(`Version ${versionLabel}`, pageWidth / 2, headerH / 2 + 12, { align: "center" });
+
+  // Underline rule beneath the header band.
+  pdf.setDrawColor(229, 231, 235);
+  pdf.setLineWidth(0.5);
+  pdf.line(side, headerH - 6, pageWidth - side, headerH - 6);
+}
+
+interface FooterArgs {
+  sig: { id: string; signed_full_name: string; signed_at: string };
+  pageWidth: number;
+  pageHeight: number;
+  footerH: number;
+  side: number;
+  pageNum: number;
+  pageCount: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function drawFooter(pdf: any, args: FooterArgs) {
+  const { sig, pageWidth, pageHeight, footerH, side, pageNum, pageCount } = args;
+  const y0 = pageHeight - footerH;
+
+  pdf.setDrawColor(229, 231, 235);
+  pdf.setLineWidth(0.5);
+  pdf.line(side, y0 + 8, pageWidth - side, y0 + 8);
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(107, 114, 128);
+
+  // Left: company address. Two lines.
+  pdf.text("Cethos Solutions Inc.", side, y0 + 22);
+  pdf.text("Calgary, Alberta, Canada · support@cethos.com", side, y0 + 34);
+
+  // Centre: page numbers.
+  pdf.text(`Page ${pageNum} of ${pageCount}`, pageWidth / 2, y0 + 28, { align: "center" });
+
+  // Right: signature ID + signer.
+  pdf.text(`Signed by ${sig.signed_full_name}`, pageWidth - side, y0 + 22, { align: "right" });
+  pdf.text(`Signature ID: ${sig.id.slice(0, 8)}…`, pageWidth - side, y0 + 34, { align: "right" });
 }
