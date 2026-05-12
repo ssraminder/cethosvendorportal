@@ -3,6 +3,17 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Explicit bundler + Node version. Netlify's auto-detect can miss TS
+# functions in monorepo subdirs; this nails it down.
+[functions]
+  node_bundler = "esbuild"
+  # Files prefixed with _ are helper modules, not functions. Excluding
+  # them avoids Netlify trying to deploy _lib/*.ts as separate endpoints.
+  included_files = ["netlify/functions/_lib/**"]
+
+[build.environment]
+  NODE_VERSION = "20"
+
 # Same-origin auth proxy via Netlify Function (Lambda) → direct Postgres.
 # Bypasses Supabase HTTPS edge entirely; the browser only ever talks to
 # vendor.cethos.com, and the Lambda connects to Supabase Postgres on
