@@ -108,15 +108,28 @@ export const handler = async (event: {
     let jobs: unknown[] = [];
 
     if (tab === "offered") {
+      // Drop offers whose step has already been assigned to someone else
+      // (the step.vendor_id is set and isn't us). Once another vendor
+      // claims a step, leftover pending offers shouldn't clutter the
+      // Offered tab — the vendor can't act on them anyway.
+      //
+      // Cancelled/completed steps are also filtered. Expired offers
+      // (offers.expires_at < now()) stay visible but are dimmed and
+      // labelled "Deadline passed" client-side so the vendor can see
+      // what happened.
       const offers = await query<OfferRow>(
-        `SELECT id, step_id, status, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency,
-                pricing_mode, deadline, expires_at, instructions, offered_at, offered_by,
-                counter_rate, counter_rate_unit, counter_total, counter_currency,
-                counter_deadline, counter_note, counter_status, counter_at,
-                counter_responded_at, counter_rejection_reason, negotiation_allowed
-         FROM vendor_step_offers
-         WHERE vendor_id = $1 AND status = 'pending'
-         ORDER BY offered_at DESC`,
+        `SELECT o.id, o.step_id, o.status, o.vendor_rate, o.vendor_rate_unit, o.vendor_total, o.vendor_currency,
+                o.pricing_mode, o.deadline, o.expires_at, o.instructions, o.offered_at, o.offered_by,
+                o.counter_rate, o.counter_rate_unit, o.counter_total, o.counter_currency,
+                o.counter_deadline, o.counter_note, o.counter_status, o.counter_at,
+                o.counter_responded_at, o.counter_rejection_reason, o.negotiation_allowed
+         FROM vendor_step_offers o
+         JOIN order_workflow_steps s ON s.id = o.step_id
+         WHERE o.vendor_id = $1
+           AND o.status = 'pending'
+           AND (s.vendor_id IS NULL OR s.vendor_id = $1)
+           AND s.status NOT IN ('cancelled', 'approved', 'completed', 'skipped')
+         ORDER BY o.offered_at DESC`,
         [vendor_id],
       );
 
