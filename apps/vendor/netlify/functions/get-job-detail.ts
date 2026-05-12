@@ -214,15 +214,19 @@ export const handler = async (event: {
 
       if (qfiles.length > 0) {
         const fileIds = qfiles.map((f) => f.id);
-        const aiRows = await query<{ file_id: string; word_count: number | null; page_count: number | null }>(
-          `SELECT file_id, word_count, page_count
+        // ai_analysis_results.quote_file_id references quote_files.id. The
+        // original Supabase function had this as `file_id` which silently
+        // failed against PostgREST; surfacing it via direct SQL forced the
+        // correct column name here.
+        const aiRows = await query<{ quote_file_id: string; word_count: number | null; page_count: number | null }>(
+          `SELECT quote_file_id, word_count, page_count
            FROM ai_analysis_results
-           WHERE file_id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+           WHERE quote_file_id = ANY($1::uuid[]) AND deleted_at IS NULL`,
           [fileIds],
         );
         const aiByFile: Record<string, { wc: number; pc: number }> = {};
         for (const a of aiRows) {
-          aiByFile[a.file_id] = { wc: Number(a.word_count) || 0, pc: Number(a.page_count) || 0 };
+          aiByFile[a.quote_file_id] = { wc: Number(a.word_count) || 0, pc: Number(a.page_count) || 0 };
         }
 
         for (const f of qfiles) {
