@@ -115,6 +115,22 @@ interface VendorFullProfile {
   tax_rate: number | null;
   preferred_rate_currency: string | null;
   native_languages: string[] | null;
+  contractor_type: "individual" | "business";
+}
+
+interface ContractorUpgradeRequest {
+  id: string;
+  from_type: string;
+  to_type: string;
+  status: "pending" | "approved" | "rejected" | "withdrawn";
+  requested_at: string;
+  vendor_justification: string | null;
+  reviewed_at: string | null;
+  reviewer_notes: string | null;
+}
+
+interface ContractorUpgradeResponse extends SimpleResponse {
+  request?: ContractorUpgradeRequest;
 }
 
 interface FullProfileResponse {
@@ -125,6 +141,7 @@ interface FullProfileResponse {
   translator_profile: TranslatorProfile | null;
   profile_completeness: number;
   completed_steps?: Record<string, boolean>;
+  contractor_upgrade_request?: ContractorUpgradeRequest | null;
   error?: string;
 }
 
@@ -227,6 +244,8 @@ export type {
   CertificationEntry,
   VendorFullProfile,
   FullProfileResponse,
+  ContractorUpgradeRequest,
+  ContractorUpgradeResponse,
   AvailabilityResponse,
   PaymentInfoResponse,
   LanguagePairsResponse,
@@ -338,6 +357,16 @@ export async function lookupTaxRate(provinceCode: string): Promise<TaxLookupResp
 }
 
 // --- Manage Rates (CRUD) ---
+
+export async function requestContractorUpgrade(
+  token: string,
+  data: { action: "submit" | "withdraw"; justification?: string },
+): Promise<ContractorUpgradeResponse> {
+  return postSb<ContractorUpgradeResponse>("request-contractor-upgrade", {
+    session_token: token,
+    ...data,
+  });
+}
 
 export async function manageRates(
   token: string,

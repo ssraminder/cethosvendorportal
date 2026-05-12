@@ -168,6 +168,13 @@
   status = 200
   force = true
 
+# Contractor type upgrade request (individual → business).
+[[redirects]]
+  from = "/sb/request-contractor-upgrade"
+  to = "/.netlify/functions/request-contractor-upgrade"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"

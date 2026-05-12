@@ -37,6 +37,18 @@ interface VendorRow {
   tax_rate: number | null;
   preferred_rate_currency: string | null;
   native_languages: string[] | null;
+  contractor_type: string;
+}
+
+interface UpgradeRequest {
+  id: string;
+  from_type: string;
+  to_type: string;
+  status: string;
+  requested_at: string;
+  vendor_justification: string | null;
+  reviewed_at: string | null;
+  reviewer_notes: string | null;
 }
 
 export const handler = async (event: {
@@ -53,12 +65,26 @@ export const handler = async (event: {
       `SELECT id, full_name, email, phone, status, vendor_type, country, province_state,
               city, availability_status, certifications, years_experience, rate_per_page,
               rate_currency, specializations, minimum_rate, total_projects, last_project_date,
-              rating, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages
+              rating, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages,
+              contractor_type
        FROM vendors WHERE id = $1 LIMIT 1`,
       [vendor_id],
     );
     const vendor = vendors[0];
     if (!vendor) return err("Vendor not found", 404);
+
+    // Most recent upgrade request (pending OR resolved — UI uses this
+    // to show "Pending review" vs "Rejected — submit another" states).
+    const upgradeRequests = await query<UpgradeRequest>(
+      `SELECT id, from_type, to_type, status, requested_at, vendor_justification,
+              reviewed_at, reviewer_notes
+       FROM vendor_contractor_upgrade_requests
+       WHERE vendor_id = $1
+       ORDER BY requested_at DESC
+       LIMIT 1`,
+      [vendor_id],
+    );
+    const latestUpgradeRequest = upgradeRequests[0] ?? null;
 
     const languagePairs = await query<{
       id: string; source_language: string; target_language: string;
@@ -135,6 +161,7 @@ export const handler = async (event: {
       translator_profile: translatorProfile,
       profile_completeness: completeness,
       completed_steps: completedSteps,
+      contractor_upgrade_request: latestUpgradeRequest,
     });
   } catch (e) {
     console.error("get-profile error:", e);
