@@ -77,21 +77,37 @@ interface SendRawEmailOptions {
   to: { email: string; name: string }[];
   subject: string;
   htmlContent: string;
+  textContent?: string;
   sender?: { email: string; name: string };
+  replyTo?: { email: string; name?: string };
+  /** Brevo tags for analytics / log filtering. */
+  tags?: string[];
+  /**
+   * Custom email headers (e.g. List-Unsubscribe). Brevo forwards these to
+   * the recipient mail server. Keys are case-insensitive per RFC; common
+   * use cases: List-Unsubscribe, List-Unsubscribe-Post, X-Mailin-custom.
+   */
+  headers?: Record<string, string>;
+}
+
+export interface BrevoSendResult {
+  sent: boolean;
+  messageId?: string;
+  reason?: string;
 }
 
 /**
  * Send a raw (non-template) transactional email via Brevo.
- * Used for one-off operational/admin emails like daily status digests.
- * Returns true on success, false on failure (non-throwing).
+ * Used for one-off operational/admin emails like daily status digests and
+ * broadcast announcements. Returns a result object (non-throwing).
  */
 export async function sendBrevoRawEmail(
   options: SendRawEmailOptions,
-): Promise<boolean> {
+): Promise<BrevoSendResult> {
   const apiKey = Deno.env.get("BREVO_API_KEY");
   if (!apiKey) {
     console.error("BREVO_API_KEY not configured — skipping email send");
-    return false;
+    return { sent: false, reason: "config_missing" };
   }
 
   const sender = options.sender ?? {
@@ -99,19 +115,28 @@ export async function sendBrevoRawEmail(
     name: Deno.env.get("BREVO_SENDER_NAME") ?? "CETHOS Vendor Portal",
   };
 
+  const payload: Record<string, unknown> = {
+    sender,
+    to: options.to,
+    subject: options.subject,
+    htmlContent: options.htmlContent,
+  };
+  if (options.textContent) payload.textContent = options.textContent;
+  if (options.replyTo) payload.replyTo = options.replyTo;
+  if (options.tags?.length) payload.tags = options.tags.slice(0, 10);
+  if (options.headers && Object.keys(options.headers).length > 0) {
+    payload.headers = options.headers;
+  }
+
   try {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         "api-key": apiKey,
         "Content-Type": "application/json",
+        Accept: "application/json",
       },
-      body: JSON.stringify({
-        sender,
-        to: options.to,
-        subject: options.subject,
-        htmlContent: options.htmlContent,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -119,12 +144,13 @@ export async function sendBrevoRawEmail(
       console.error(
         `Brevo raw send failed (${options.subject}): ${response.status} — ${errorBody}`,
       );
-      return false;
+      return { sent: false, reason: `http_${response.status}` };
     }
 
-    return true;
+    const json = (await response.json().catch(() => ({}))) as { messageId?: string };
+    return { sent: true, messageId: json.messageId };
   } catch (err) {
     console.error(`Brevo raw send error (${options.subject}):`, err);
-    return false;
+    return { sent: false, reason: "exception" };
   }
 }

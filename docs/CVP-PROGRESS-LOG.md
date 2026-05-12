@@ -14,6 +14,42 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — May 11, 2026 (TMS-migration announcement broadcast — queue + 20/hr cron sender)
+
+One-time outreach to past-working vendors announcing the XTRF → Vendor Portal move. Three sequential waves: **Dutch → English**, **Arabic**, **CCJK**. Sender identity is `Vendor Manager <recruiting@vendors.cethos.com>` with reply-to `vm@cethos.com`; legal footer is **Cethos Solutions Inc.** Sends are paced at exactly **20 / hour** via pg_cron. Transport is **Brevo** (Mailgun's current From identity is bound to a different address — Brevo supports per-send sender override, and `_shared/notify-counter.ts` is already shipping Brevo sends to vendors in production).
+
+### What was added
+- **Migration** `supabase/migrations/20260511120000_cvp_tms_migration_announcement.sql`
+  - New table `cvp_tms_migration_queue` (one row per `(vendor_id, wave)`, unique).
+  - Statuses: `pending → claimed → sent` (or `failed` after 3 attempts, or `suppressed`).
+  - `provider_message_id` column stores the Brevo `messageId` so we can reconcile deliveries against Brevo's logs.
+  - RLS: staff SELECT only; INSERT/UPDATE via service role (edge functions).
+  - pg_cron job `cvp-tms-migration-send` on `*/3 * * * *` (= 20 ticks/hour).
+- **Shared helper** `supabase/functions/_shared/brevo.ts`
+  - Extended `sendBrevoRawEmail()` with `replyTo`, `tags`, `textContent` options.
+  - Return type widened from `boolean` to `{ sent, messageId?, reason? }` so callers can persist the provider id. Safe — `sendBrevoRawEmail` had no existing callers.
+- **Edge function** `supabase/functions/cvp-tms-migration-enqueue/index.ts`
+  - Admin POST. Body: `{ wave: "dutch_to_english" | "arabic" | "ccjk", dry_run?: boolean }`.
+  - Filters `vendors` to past-working (`total_projects > 0 OR last_project_date IS NOT NULL`, `email` non-null) intersected with `vendor_language_pairs` matching the wave (ILIKE prefixes — handles `"Chinese (Simplified)"`, `"Mandarin"`, etc.).
+  - Idempotent via the `(vendor_id, wave)` unique index — re-running the same wave is a no-op.
+- **Edge function** `supabase/functions/cvp-tms-migration-send/index.ts`
+  - Cron worker. Claims the oldest `pending` row (or one with a stale claim > 5 min), sends via Brevo with `sender: { recruiting@vendors.cethos.com, "Vendor Manager" }` and `replyTo: vm@cethos.com`, marks `sent` with the returned Brevo messageId. Failed sends revert to `pending` and retry up to 3× before `failed`.
+  - 1 send per invocation × every 3 min = **20 / hour** as requested.
+
+### How to trigger a wave
+1. Confirm `BREVO_API_KEY` is set in Supabase Edge Function secrets and `recruiting@vendors.cethos.com` is a verified sender in the Brevo account (Brevo → Senders & IP → Senders → Add a sender). The reply-to `vm@cethos.com` does NOT need to be verified in Brevo — only the From address does.
+2. Dry-run first: `POST /functions/v1/cvp-tms-migration-enqueue` with `{ "wave": "dutch_to_english", "dry_run": true }` — returns match count + sample of 5.
+3. Real run: same call with `dry_run` omitted/false. The cron starts draining at 20/hr.
+4. Monitor: `SELECT send_status, count(*) FROM cvp_tms_migration_queue GROUP BY 1;` and tail `cvp-tms-migration-send` function logs.
+5. Wait until Wave 1 is fully `sent` before enqueuing Wave 2 (Arabic), then Wave 3 (CCJK).
+
+### Notes / follow-ups
+- Founder voice was downgraded to "Vendor Manager" per session decision; the original founder-signed draft is still in `~/.claude/plans/write-an-email-for-iterative-snowflake.md` if we want it back.
+- No do-not-contact gate is applied — `cvp_applications.do_not_contact` is keyed to recruitment-pipeline emails, not the vendor pool. If we want a vendor-level opt-out, add a `vendors.do_not_contact` boolean and gate in the dispatcher before the Mailgun call.
+- CCJK pool may have language pairs stored as `"Mandarin"` rather than `"Chinese"` — the ILIKE list includes both. If we discover other variants in prod (e.g. `"Cantonese"`), extend `waveFilter()` in the enqueue function.
+
+---
+
 ## Session — May 11, 2026 (Revert PR #65 + backfill QMS Phase 1 migrations into repo)
 
 Cleanup pass. PR #65 (merged earlier today) added three QMS migration files + an edge function + a seeder + docs that **conflicted with the QMS Phase 1 layer already live in production**. The conflict was discovered while attempting to apply PR #65's migrations: the `qms` schema already existed (10 migrations dated 2026-04-28 to 2026-04-30), the eligibility gate was actively running in `warn` mode (142 events), the audit log carried a sha256 hash chain on top of REVOKE + trigger, and key column names differed (`withdrawn_reason` vs `withdrawal_reason`, `proficiency` vs `proficiency_level`, `revoked_reason` vs `revoke_reason`, `employer_or_client` vs `employer_client`). The prod schema is more sophisticated than the briefing in `Documents/claude-code-prompt-cethos-qms-phase-1.md` describes — adds `qms.config`, `qms.policy_versions`, `qms.language_code_aliases`, `qms.service_iso_requirements`, `qms.assignment_eligibility_events`.
