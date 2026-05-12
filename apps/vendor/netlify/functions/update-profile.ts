@@ -90,7 +90,17 @@ export const handler = async (event: {
     if (body.preferred_rate_currency !== undefined) {
       push("preferred_rate_currency", body.preferred_rate_currency.trim() || "CAD");
     }
-    if (body.native_languages !== undefined) push("native_languages", body.native_languages);
+    if (body.native_languages !== undefined) {
+      if (!Array.isArray(body.native_languages)) {
+        return err("native_languages must be an array", 400);
+      }
+      // Mirror the client-side cap. Three is the upper bound for someone
+      // truthfully claiming native-level fluency; defends against UI bypass.
+      if (body.native_languages.length > 3) {
+        return err("Maximum of 3 native languages", 400);
+      }
+      push("native_languages", body.native_languages);
+    }
 
     if (sets.length === 0) return err("No fields to update", 400);
 

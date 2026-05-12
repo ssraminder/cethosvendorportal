@@ -554,9 +554,15 @@ interface NativeLanguagesFieldProps {
   onSave: (codes: string[]) => Promise<string | null>;
 }
 
+// A translator can have at most three native languages — anything beyond
+// that signals data quality issues (or someone bluffing). We cap here.
+const MAX_NATIVE_LANGUAGES = 3;
+
 function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const atLimit = value.length >= MAX_NATIVE_LANGUAGES;
 
   const langOptions: SelectOption[] = LANGUAGES
     .filter((l) => !value.includes(l.code))
@@ -564,6 +570,10 @@ function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
 
   async function addLanguage(code: string) {
     if (!code || value.includes(code)) return;
+    if (atLimit) {
+      setError(`You can select up to ${MAX_NATIVE_LANGUAGES} native languages.`);
+      return;
+    }
     setSaving(true);
     setError("");
     const err = await onSave([...value, code]);
@@ -590,9 +600,14 @@ function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
           <Languages className="w-4 h-4 text-gray-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
-            Native Language(s)
-          </p>
+          <div className="flex items-baseline justify-between mb-1.5">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Native Language(s)
+            </p>
+            <span className="text-[11px] text-gray-400">
+              {value.length}/{MAX_NATIVE_LANGUAGES}
+            </span>
+          </div>
           {value.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {value.map((code) => (
@@ -613,13 +628,20 @@ function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
               ))}
             </div>
           )}
-          <SearchableSelect
-            options={langOptions}
-            value=""
-            onChange={addLanguage}
-            placeholder={value.length === 0 ? "Select your native language(s)..." : "Add another language..."}
-            disabled={saving}
-          />
+          {!atLimit && (
+            <SearchableSelect
+              options={langOptions}
+              value=""
+              onChange={addLanguage}
+              placeholder={value.length === 0 ? "Select your native language(s)..." : "Add another language..."}
+              disabled={saving}
+            />
+          )}
+          {atLimit && (
+            <p className="text-xs text-gray-500 italic">
+              Maximum of {MAX_NATIVE_LANGUAGES} languages reached. Remove one to add another.
+            </p>
+          )}
           {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
         </div>
       </div>
