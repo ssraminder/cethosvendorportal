@@ -1,20 +1,8 @@
 [build]
   command = "npm run build"
   publish = "dist"
-  functions = "netlify/functions"
 
-# Same-origin auth proxy. /sb/<fn> rewrites to the Lambda-backed Netlify
-# Function which forwards to Supabase. Lambda's network egress is
-# different from Netlify Edge's, so the CF-to-CF peer block we hit with
-# the Edge Function doesn't apply. Same-origin → no CORS preflight →
-# bypasses state-level filters that drop OPTIONS.
-[[redirects]]
-  from = "/sb/*"
-  to = "/.netlify/functions/sb/:splat"
-  status = 200
-  force = true
-
-# SPA catch-all — must come AFTER the /sb redirect.
+# SPA catch-all.
 [[redirects]]
   from = "/*"
   to = "/index.html"
