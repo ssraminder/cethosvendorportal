@@ -4,21 +4,19 @@
 
 # Same-origin proxy to Supabase edge functions. Hosting at
 # vendor.cethos.com/sb/* eliminates the cross-origin CORS preflight that
-# state-level filters (Egypt, China) drop. Netlify edge silently fetches
-# from api.cethos.com (Supabase Pro Custom Domain) and returns the response
-# as if it came from this origin.
+# state-level filters (Egypt, China) drop.
 #
-# We use /sb/ instead of /api/ because /api/ is reserved by Netlify for
-# its built-in Functions auto-routing — that intercepts before user
-# rewrites and breaks the proxy.
-[[redirects]]
-  from = "/sb/*"
-  to = "https://api.cethos.com/functions/v1/:splat"
-  status = 200
-  force = true
+# Implemented via an Edge Function (not a [[redirects]] rule) because
+# Netlify's redirect :splat placeholder doesn't expand for external URL
+# destinations — the literal string `:splat` gets forwarded, which makes
+# Supabase return NOT_FOUND for every call. The Edge Function does the
+# rewrite programmatically.
+[[edge_functions]]
+  function = "sb-proxy"
+  path = "/sb/*"
 
-# SPA catch-all — must come AFTER the /api rewrite so /api requests are
-# proxied, not served the React shell.
+# SPA catch-all — every other path returns index.html so client-side
+# routing works.
 [[redirects]]
   from = "/*"
   to = "/index.html"
