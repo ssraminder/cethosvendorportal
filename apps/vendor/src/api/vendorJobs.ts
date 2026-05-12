@@ -1,4 +1,6 @@
-const BASE = import.meta.env.VITE_SUPABASE_URL + "/functions/v1";
+import { FUNCTIONS_BASE } from "./functionsBase";
+
+const BASE = FUNCTIONS_BASE;
 
 // --- Types ---
 

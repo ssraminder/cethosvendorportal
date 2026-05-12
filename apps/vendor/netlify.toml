@@ -2,6 +2,20 @@
   command = "npm run build"
   publish = "dist"
 
+# Same-origin proxy to Supabase edge functions. Hosting auth at
+# vendor.cethos.com/api/* eliminates the cross-origin CORS preflight that
+# state-level filters (Egypt, China) drop. Netlify edge silently fetches
+# from api.cethos.com (Supabase Pro Custom Domain) and returns the response
+# as if it came from this origin. force=true so the rewrite wins over the
+# SPA catch-all below.
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.cethos.com/functions/v1/:splat"
+  status = 200
+  force = true
+
+# SPA catch-all — must come AFTER the /api rewrite so /api requests are
+# proxied, not served the React shell.
 [[redirects]]
   from = "/*"
   to = "/index.html"

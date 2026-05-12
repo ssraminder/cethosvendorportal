@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { X, Loader2, AlertTriangle } from "lucide-react";
+import { FUNCTIONS_BASE } from "../../api/functionsBase";
 
-const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL + "/functions/v1";
+const FUNCTIONS_URL = FUNCTIONS_BASE;
 
 function renderMarkdown(md: string): string {
   return md
