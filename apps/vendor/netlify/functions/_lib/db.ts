@@ -1,21 +1,12 @@
 /**
  * Shared Postgres pool for Netlify Functions. Connects directly to
- * Supabase Postgres via the pooler endpoint (port 6543, native postgres
- * protocol). Bypasses Supabase's HTTPS edge entirely.
+ * Supabase Postgres via the pooler endpoint, native postgres protocol.
+ * Bypasses Supabase's HTTPS edge entirely.
  *
- * Two ways to configure (choose whichever is easier):
- *
- *   Option A — single env var:
- *     DATABASE_URL = postgresql://postgres.<ref>:<pw>@aws-X-<region>.pooler.supabase.com:6543/postgres
- *
- *   Option B — separate env vars (no URL-encoding headaches):
- *     DB_HOST     = aws-1-us-east-1.pooler.supabase.com
- *     DB_PORT     = 6543
- *     DB_USER     = postgres.lmzoyezvsjgsxveoakdr
- *     DB_PASSWORD = <your-password-raw-no-encoding-needed>
- *     DB_NAME     = postgres
- *
- * If both are set, Option B (separate vars) wins.
+ * Configure via either DATABASE_URL or a set of DB_HOST/DB_PORT/DB_USER/
+ * DB_PASSWORD/DB_NAME env vars. If both are set, the separate vars win.
+ * Get the values from Supabase Dashboard → Project Settings → Database
+ * → Transaction pooler.
  */
 
 import { Pool } from "pg";

@@ -13,6 +13,12 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # DB_HOST/PORT/USER/NAME and MAILGUN_DOMAIN/SENDER_* aren't secrets —
+  # they're connection metadata. Netlify's secret scanner flags them
+  # because their literal values also appear in source as defaults /
+  # docstrings. Only DB_PASSWORD, MAILGUN_API_KEY, and the database URL
+  # are real secrets and stay scanned.
+  SECRETS_SCAN_OMIT_KEYS = "DB_HOST,DB_PORT,DB_USER,DB_NAME,MAILGUN_DOMAIN,MAILGUN_SENDER_EMAIL,MAILGUN_SENDER_NAME"
 
 # Same-origin auth proxy via Netlify Function (Lambda) → direct Postgres.
 # Bypasses Supabase HTTPS edge entirely; the browser only ever talks to
