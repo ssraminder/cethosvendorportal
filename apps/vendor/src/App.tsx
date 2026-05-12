@@ -15,6 +15,7 @@ import { JobDetail } from "./components/jobs/JobDetail";
 import { InvoiceList } from "./components/invoices/InvoiceList";
 import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
 import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
+import { NDAPage } from "./components/nda/NDAPage";
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
             <Route path="languages" element={<LanguagePairs />} />
             <Route path="rates" element={<VendorRates />} />
             <Route path="payment" element={<PaymentInfo />} />
+            <Route path="nda" element={<NDAPage />} />
             <Route path="request-test" element={<RequestTest />} />
             <Route path="jobs" element={<JobBoard />} />
             <Route path="jobs/:id" element={<JobDetail />} />
