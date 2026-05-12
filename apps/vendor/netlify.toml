@@ -77,6 +77,50 @@
   status = 200
   force = true
 
+# Phase 3: profile + services & rates endpoints. Same /sb/* pattern,
+# session_token in body, text/plain content-type to skip CORS preflight.
+[[redirects]]
+  from = "/sb/get-profile"
+  to = "/.netlify/functions/get-profile"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/update-profile"
+  to = "/.netlify/functions/update-profile"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/update-availability"
+  to = "/.netlify/functions/update-availability"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/update-language-pairs"
+  to = "/.netlify/functions/update-language-pairs"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/manage-rates"
+  to = "/.netlify/functions/manage-rates"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/update-payment-info"
+  to = "/.netlify/functions/update-payment-info"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/lookup-tax-rate"
+  to = "/.netlify/functions/lookup-tax-rate"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"

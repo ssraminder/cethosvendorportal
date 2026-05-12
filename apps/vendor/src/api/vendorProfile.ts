@@ -2,6 +2,32 @@ import { FUNCTIONS_BASE } from "./functionsBase";
 
 const BASE = FUNCTIONS_BASE;
 
+// Profile + rates endpoints route through the same-origin /sb/* proxy
+// (Netlify Function → Postgres). session_token in the body keeps it a
+// CORS simple-request and bypasses regions where *.supabase.co (or
+// api.cethos.com, same CF backend) is blocked.
+const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "localhost"
+  ? "/sb"
+  : null;
+
+async function postSb<T>(sbPath: string, body: unknown): Promise<T> {
+  if (SB_BASE) {
+    const res = await fetch(`${SB_BASE}/${sbPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(body),
+    });
+    return (await res.json()) as T;
+  }
+  // Local dev: hit Supabase Edge Function directly.
+  const res = await fetch(`${BASE}/${sbPath}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as T;
+}
+
 // --- Types ---
 
 interface LanguagePair {
@@ -218,25 +244,17 @@ export type {
 // --- API Functions ---
 
 export async function getFullProfile(token: string): Promise<FullProfileResponse> {
-  const res = await fetch(`${BASE}/vendor-get-profile`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return res.json();
+  return postSb<FullProfileResponse>("get-profile", { session_token: token });
 }
 
 export async function updateAvailability(
   token: string,
   availability_status: string
 ): Promise<AvailabilityResponse> {
-  const res = await fetch(`${BASE}/vendor-update-availability`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ availability_status }),
+  return postSb<AvailabilityResponse>("update-availability", {
+    session_token: token,
+    availability_status,
   });
-  return res.json();
 }
 
 export async function updatePaymentInfo(
@@ -248,15 +266,7 @@ export async function updatePaymentInfo(
     invoice_notes?: string;
   }
 ): Promise<PaymentInfoResponse> {
-  const res = await fetch(`${BASE}/vendor-update-payment-info`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
-  return res.json();
+  return postSb<PaymentInfoResponse>("update-payment-info", { session_token: token, ...data });
 }
 
 export async function updateLanguagePairs(
@@ -269,15 +279,7 @@ export async function updateLanguagePairs(
     notes?: string;
   }
 ): Promise<LanguagePairsResponse> {
-  const res = await fetch(`${BASE}/vendor-update-language-pairs`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
-  return res.json();
+  return postSb<LanguagePairsResponse>("update-language-pairs", { session_token: token, ...data });
 }
 
 export async function updateRates(
@@ -289,6 +291,9 @@ export async function updateRates(
     notes?: string;
   }
 ): Promise<RateChangeResponse> {
+  // vendor-update-rates wasn't ported in Phase 3 — the "rate change request"
+  // flow is admin-mediated and rarely used. Keep on the Supabase Edge path
+  // for now; if blocked-region vendors need it we'll port in Phase 4.
   const res = await fetch(`${BASE}/vendor-update-rates`, {
     method: "POST",
     headers: {
@@ -325,15 +330,11 @@ export async function uploadCertification(
 // --- Tax Rate Lookup ---
 
 export async function lookupProvinces(): Promise<ProvincesResponse> {
-  const res = await fetch(`${BASE}/lookup-tax-rate`);
-  return res.json();
+  return postSb<ProvincesResponse>("lookup-tax-rate", {});
 }
 
 export async function lookupTaxRate(provinceCode: string): Promise<TaxLookupResponse> {
-  const res = await fetch(
-    `${BASE}/lookup-tax-rate?province_code=${encodeURIComponent(provinceCode)}`
-  );
-  return res.json();
+  return postSb<TaxLookupResponse>("lookup-tax-rate", { province_code: provinceCode });
 }
 
 // --- Manage Rates (CRUD) ---
@@ -352,13 +353,5 @@ export async function manageRates(
     language_pair_ids?: string[];
   }
 ): Promise<ManageRatesResponse> {
-  const res = await fetch(`${BASE}/vendor-manage-rates`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
-  return res.json();
+  return postSb<ManageRatesResponse>("manage-rates", { session_token: token, ...data });
 }
