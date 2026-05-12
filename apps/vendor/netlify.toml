@@ -2,21 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
-# Same-origin proxy to Supabase edge functions. Hosting at
-# vendor.cethos.com/sb/* eliminates the cross-origin CORS preflight that
-# state-level filters (Egypt, China) drop.
-#
-# Implemented via an Edge Function (not a [[redirects]] rule) because
-# Netlify's redirect :splat placeholder doesn't expand for external URL
-# destinations — the literal string `:splat` gets forwarded, which makes
-# Supabase return NOT_FOUND for every call. The Edge Function does the
-# rewrite programmatically.
-[[edge_functions]]
-  function = "sb-proxy"
-  path = "/sb/*"
+# NOTE: tried a Netlify Edge Function proxy at /sb/* → Supabase (to bypass
+# the CORS preflight that some state-level filters drop). Confirmed
+# unworkable: Netlify-Edge → Supabase's Cloudflare edge consistently
+# returns NOT_FOUND even for hardcoded fetches. CF-to-CF peer-block.
+# If we re-attempt, use a Cloudflare Worker (same-CF, no peer block)
+# or a small VPS proxy instead.
 
-# SPA catch-all — every other path returns index.html so client-side
-# routing works.
 [[redirects]]
   from = "/*"
   to = "/index.html"
