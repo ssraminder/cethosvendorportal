@@ -14,6 +14,7 @@ import { JobBoard } from "./components/jobs/JobBoard";
 import { JobDetail } from "./components/jobs/JobDetail";
 import { InvoiceList } from "./components/invoices/InvoiceList";
 import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
+import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/activate" element={<ActivatePage />} />
           <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/unsubscribe" element={<UnsubscribePage />} />
           <Route path="/" element={<VendorShell />}>
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />
