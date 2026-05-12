@@ -1,20 +1,17 @@
 // Single source of truth for the Supabase Edge Functions base URL.
 //
-// In production we route through `/sb/*` — Netlify's edge proxies it to
-// Supabase Custom Domain (api.cethos.com) via netlify.toml rewrite. This
-// makes every function call same-origin, eliminating the CORS preflight
-// that some state-level filters (Egypt, China) drop.
+// HISTORY: tried routing through Netlify Edge proxy at /sb/* but proved
+// Netlify-Edge → Supabase's Cloudflare-fronted edge fails consistently
+// (NOT_FOUND on every call, even with hardcoded URL + body). Likely a
+// CF-to-CF peer-block. Edge proxy approach abandoned.
 //
-// /sb/ instead of /api/ because /api/ is reserved by Netlify for its
-// built-in Functions auto-routing — that path doesn't survive the SPA
-// reset hierarchy.
-//
-// Local dev (localhost) still hits Supabase directly because there's no
-// Netlify edge to proxy through. Escape hatch via VITE_AUTH_BASE for
-// emergency overrides without a code change.
+// Currently routes direct to Supabase (Custom Domain api.cethos.com
+// configured via Supabase Pro). Vendors in regions that filter
+// supabase.co get the SNI benefit. Vendors where the filter also blocks
+// preflights to api.cethos.com still need VPN as a workaround until we
+// build a non-Netlify proxy (Cloudflare Worker on Cethos's CF account
+// or a VPS — see follow-up).
 
 export const FUNCTIONS_BASE: string =
   import.meta.env.VITE_AUTH_BASE
-  || (typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-    : "/sb");
+  || `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
