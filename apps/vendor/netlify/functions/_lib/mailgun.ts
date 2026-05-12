@@ -21,16 +21,27 @@ interface MailgunSendArgs {
   tags?: string[];
 }
 
-// Quote a display name per RFC 5322 §3.4. If the name contains any
-// `specials` chars (paren, angle, comma, colon, etc.) or non-ASCII, it
-// must be wrapped in a quoted-string with embedded backslashes/quotes
-// escaped. Mailgun's parser is strict — "Test Vendor (Dutch→English)"
-// without quoting gets rejected with "to parameter is not a valid
-// address".
+// Format a display name for use in a mail header.
+//
+// Pure ASCII without specials: pass through as-is.
+// ASCII-only with specials (parens, angles, commas, etc.): wrap in a
+//   RFC 5322 quoted-string.
+// Anything non-ASCII (like the "→" in "Test Vendor (Dutch→English)"):
+//   header values are strictly ASCII, so the whole display name has to
+//   be encoded as an RFC 2047 encoded-word: =?utf-8?B?<base64>?=
+//   Without this, Mailgun's strict parser rejects the address with
+//   "to parameter is not a valid address".
 function rfc5322DisplayName(name: string): string {
-  const needsQuoting = /[\(\)<>\[\]:;@\\,"]|[^\x20-\x7E]/.test(name);
-  if (!needsQuoting) return name;
-  return `"${name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  const hasNonAscii = /[^\x20-\x7E]/.test(name);
+  if (hasNonAscii) {
+    const utf8 = Buffer.from(name, "utf-8");
+    return `=?utf-8?B?${utf8.toString("base64")}?=`;
+  }
+  const hasSpecials = /[\(\)<>\[\]:;@\\,"]/.test(name);
+  if (hasSpecials) {
+    return `"${name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return name;
 }
 
 export async function sendMailgun(args: MailgunSendArgs): Promise<{ sent: boolean; reason?: string }> {
