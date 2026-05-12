@@ -204,10 +204,7 @@ export function NDAPage() {
     const versionLabel = status.template.version_label;
     setDownloading(true);
     try {
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas"),
-      ]);
+      const { default: jsPDF } = await import("jspdf");
 
       const logo = await fetchLogo();
 
@@ -215,114 +212,126 @@ export function NDAPage() {
       const pageWidth = pdf.internal.pageSize.getWidth();   // 595pt
       const pageHeight = pdf.internal.pageSize.getHeight(); // 842pt
 
-      // Layout in points. Side 40, header 60, footer 50 → body 692pt tall.
       const HEADER_H = 60;
       const FOOTER_H = 50;
       const SIDE = 40;
-      const bodyTop = HEADER_H + 6;          // gap below header rule
+      const bodyTop = HEADER_H + 6;
       const bodyHeightPt = pageHeight - bodyTop - FOOTER_H - 6;
       const bodyWidthPt = pageWidth - SIDE * 2;
+      const bodyBottom = bodyTop + bodyHeightPt;
 
-      // Render body off-DOM at a fixed CSS-pixel width. Inline styles
-      // are applied directly to each element (rather than via a <style>
-      // tag) because html2canvas v1 clones content into a sandbox iframe
-      // and can miss <style> rules — which left earlier renders using
-      // browser default styling and produced a runaway page count.
-      const renderWidthPx = 800;
-      const wrap = document.createElement("div");
-      wrap.style.cssText = `position:absolute;left:-10000px;top:0;width:${renderWidthPx}px;background:#fff;color:#1f2937;font-family:'Times New Roman',Georgia,serif;font-size:15px;line-height:1.55`;
-      wrap.innerHTML = sig.signed_html_snapshot;
+      // Parse the HTML snapshot into a flat list of blocks. The
+      // template schema is narrow (h2/h3/p/ul/li), so we don't need a
+      // general HTML renderer — just walk the immediate children of
+      // the body container and take textContent.
+      type Block = { kind: "h2" | "h3" | "p" | "li"; text: string };
 
-      const HEAD_FONT = "Helvetica, Arial, sans-serif";
-      wrap.querySelectorAll("h1, h2, h3").forEach((el) => {
-        const h = el as HTMLElement;
-        h.style.fontFamily = HEAD_FONT;
-        h.style.color = "#111827";
-        h.style.lineHeight = "1.25";
-        h.style.fontWeight = "700";
-        h.style.pageBreakAfter = "avoid";
-        if (h.tagName === "H1") { h.style.fontSize = "22px"; h.style.margin = "18px 0 10px"; }
-        if (h.tagName === "H2") { h.style.fontSize = "18px"; h.style.margin = "18px 0 8px"; }
-        if (h.tagName === "H3") { h.style.fontSize = "15.5px"; h.style.margin = "14px 0 6px"; }
-      });
-      wrap.querySelectorAll("p").forEach((el) => {
-        (el as HTMLElement).style.margin = "0 0 10px";
-      });
-      wrap.querySelectorAll("ul, ol").forEach((el) => {
-        const l = el as HTMLElement;
-        l.style.margin = "0 0 10px 22px";
-        l.style.padding = "0";
-      });
-      wrap.querySelectorAll("li").forEach((el) => {
-        (el as HTMLElement).style.margin = "4px 0";
-      });
-      wrap.querySelectorAll("strong, b").forEach((el) => {
-        const s = el as HTMLElement;
-        s.style.color = "#111827";
-        s.style.fontWeight = "700";
-      });
-      document.body.appendChild(wrap);
-
-      try {
-        const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
-
-        // Single-image multi-page rendering. Each PDF page draws the
-        // full body image at a negative Y offset; the PDF page box
-        // naturally clips it. We then mask any bleed into the footer
-        // band with a white rectangle before drawing the footer text.
-        // This pattern produces a small file (one embedded image) and
-        // a sane page count regardless of slicing math.
-        const imgFullHeightPt = (canvas.height / canvas.width) * bodyWidthPt;
-        const imgData = canvas.toDataURL("image/png");
-
-        // Page-break alignment: text lines don't line up with arbitrary
-        // page boundaries, so any line that straddles the cut gets sliced
-        // in half. We solve this by leaving a safety strip at the bottom
-        // of each body area that masks the partial line, and advancing
-        // the next page by (bodyHeightPt - safety) so the masked line
-        // reappears whole at the top of the next page. Safety must be
-        // > max line height; headings are tallest at ~28pt.
-        const PAGE_BREAK_SAFETY = 32;
-        const stride = bodyHeightPt - PAGE_BREAK_SAFETY;
-
-        const totalPages = Math.max(1, Math.ceil(imgFullHeightPt / stride));
-        for (let p = 0; p < totalPages; p++) {
-          if (p > 0) pdf.addPage();
-          const yOffset = bodyTop - p * stride;
-          pdf.addImage(imgData, "PNG", SIDE, yOffset, bodyWidthPt, imgFullHeightPt);
-          pdf.setFillColor(255, 255, 255);
-          // Mask above body (header band).
-          pdf.rect(0, 0, pageWidth, bodyTop, "F");
-          // Mask the safety strip at the bottom of body + the footer band.
-          // The partial line that would be cut now lives in this masked
-          // strip and reappears whole at the top of the next page.
-          pdf.rect(0, bodyTop + stride, pageWidth, pageHeight - bodyTop - stride, "F");
+      const parsedDoc = new DOMParser().parseFromString(
+        `<div>${sig.signed_html_snapshot}</div>`,
+        "text/html",
+      );
+      const root = parsedDoc.body.firstElementChild as HTMLElement;
+      const blocks: Block[] = [];
+      for (const child of Array.from(root.children)) {
+        const tag = child.tagName.toLowerCase();
+        if (tag === "h2" || tag === "h3" || tag === "p") {
+          const text = (child.textContent ?? "").trim();
+          if (text) blocks.push({ kind: tag as "h2" | "h3" | "p", text });
+        } else if (tag === "ul" || tag === "ol") {
+          for (const li of Array.from(child.children)) {
+            if (li.tagName.toLowerCase() === "li") {
+              const text = (li.textContent ?? "").trim();
+              if (text) blocks.push({ kind: "li", text });
+            }
+          }
         }
-
-        // Audit page after the body.
-        pdf.addPage();
-        drawAuditPage(pdf, {
-          sig,
-          versionLabel: sig.template_version_label ?? versionLabel,
-          pageWidth,
-          pageHeight,
-          headerH: HEADER_H,
-          footerH: FOOTER_H,
-          side: SIDE,
-        });
-
-        // Header + footer overlays on every page (native PDF text).
-        const pageCount = pdf.getNumberOfPages();
-        for (let p = 1; p <= pageCount; p++) {
-          pdf.setPage(p);
-          drawHeader(pdf, { logo, versionLabel, pageWidth, headerH: HEADER_H, side: SIDE });
-          drawFooter(pdf, { sig, pageWidth, pageHeight, footerH: FOOTER_H, side: SIDE, pageNum: p, pageCount });
-        }
-
-        pdf.save(`cethos-nda-${versionLabel}-${sig.signed_at.slice(0, 10)}.pdf`);
-      } finally {
-        document.body.removeChild(wrap);
       }
+
+      // jsPDF default fonts (helvetica, times, courier) use WinAnsi
+      // encoding. Map common typographic characters down to the
+      // WinAnsi-safe form so they render correctly rather than as ?.
+      const sanitize = (s: string): string =>
+        s
+          .replace(/[‘’‚′]/g, "'")
+          .replace(/[“”„″]/g, '"')
+          .replace(/—/g, "—") // em dash — keep, in WinAnsi
+          .replace(/–/g, "–") // en dash – keep, in WinAnsi
+          .replace(/…/g, "...")
+          .replace(/ /g, " ");
+
+      const BODY_FONT = "times";
+      const HEAD_FONT = "helvetica";
+
+      const style = (kind: Block["kind"]) => {
+        if (kind === "h2") return { fontSize: 13.5, lineHeight: 17, marginTop: 14, marginBottom: 6, indent: 0, family: HEAD_FONT, bold: true };
+        if (kind === "h3") return { fontSize: 11.5, lineHeight: 15, marginTop: 12, marginBottom: 5, indent: 0, family: HEAD_FONT, bold: true };
+        if (kind === "li") return { fontSize: 10.5, lineHeight: 14.5, marginTop: 0, marginBottom: 4, indent: 16, family: BODY_FONT, bold: false };
+        return { fontSize: 10.5, lineHeight: 14.5, marginTop: 0, marginBottom: 8, indent: 0, family: BODY_FONT, bold: false };
+      };
+
+      let y = bodyTop;
+      const ensureSpace = (needed: number) => {
+        if (y + needed > bodyBottom) {
+          pdf.addPage();
+          y = bodyTop;
+        }
+      };
+
+      for (const block of blocks) {
+        const s = style(block.kind);
+        y += s.marginTop;
+
+        const text = sanitize(block.text).replace(/\s+/g, " ").trim();
+        if (!text) continue;
+
+        pdf.setFont(s.family, s.bold ? "bold" : "normal");
+        pdf.setFontSize(s.fontSize);
+        const lines: string[] = pdf.splitTextToSize(text, bodyWidthPt - s.indent) as string[];
+
+        // Keep heading + first body line together so we never orphan
+        // a heading at the bottom of a page.
+        if (block.kind === "h2" || block.kind === "h3") {
+          ensureSpace(s.lineHeight * 2);
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+          ensureSpace(s.lineHeight);
+          const baselineY = y + s.fontSize * 0.85;
+          if (block.kind === "li" && i === 0) {
+            pdf.setFont(BODY_FONT, "normal");
+            pdf.setFontSize(s.fontSize);
+            pdf.text("•", SIDE + 4, baselineY);
+          }
+          pdf.setFont(s.family, s.bold ? "bold" : "normal");
+          pdf.setFontSize(s.fontSize);
+          pdf.text(lines[i], SIDE + s.indent, baselineY);
+          y += s.lineHeight;
+        }
+
+        y += s.marginBottom;
+      }
+
+      // Audit page after the body.
+      pdf.addPage();
+      drawAuditPage(pdf, {
+        sig,
+        versionLabel: sig.template_version_label ?? versionLabel,
+        pageWidth,
+        pageHeight,
+        headerH: HEADER_H,
+        footerH: FOOTER_H,
+        side: SIDE,
+      });
+
+      // Header + footer overlays on every page (native PDF text).
+      const pageCount = pdf.getNumberOfPages();
+      for (let p = 1; p <= pageCount; p++) {
+        pdf.setPage(p);
+        drawHeader(pdf, { logo, versionLabel, pageWidth, headerH: HEADER_H, side: SIDE });
+        drawFooter(pdf, { sig, pageWidth, pageHeight, footerH: FOOTER_H, side: SIDE, pageNum: p, pageCount });
+      }
+
+      pdf.save(`cethos-nda-${versionLabel}-${sig.signed_at.slice(0, 10)}.pdf`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate PDF");
     } finally {
