@@ -2,6 +2,35 @@ import { FUNCTIONS_BASE } from "./functionsBase";
 
 const BASE = FUNCTIONS_BASE;
 
+// Post-login data endpoints route through the same-origin /sb/* proxy
+// (Netlify Function → Postgres). Same trick as the auth flow: session_token
+// in the body keeps it a CORS simple-request and bypasses regions where
+// *.supabase.co is blocked.
+const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "localhost"
+  ? "/sb"
+  : null;
+
+async function postSb<T>(sbPath: string, body: unknown): Promise<T> {
+  if (SB_BASE) {
+    const res = await fetch(`${SB_BASE}/${sbPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(body),
+    });
+    return (await res.json()) as T;
+  }
+  // Local dev fallback: not used; the live deploy always has SB_BASE.
+  // Throwing here would break `vite dev`, so we just route to BASE with
+  // the same body. The dev-time Supabase function honours session_token
+  // either way.
+  const res = await fetch(`${BASE}/${sbPath}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as T;
+}
+
 // --- Types ---
 
 export type TabKey = "offered" | "active" | "completed";
@@ -154,10 +183,7 @@ export async function getSteps(
   token: string,
   tab: TabKey
 ): Promise<StepJobsResponse> {
-  const res = await fetch(`${BASE}/vendor-get-jobs?tab=${tab}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return res.json();
+  return postSb<StepJobsResponse>("get-jobs", { session_token: token, tab });
 }
 
 /** @deprecated Use getSteps instead */
@@ -168,16 +194,14 @@ export async function acceptStep(
   stepId: string,
   offerId?: string | null
 ): Promise<{ status: number; data: StepActionResponse }> {
-  const res = await fetch(`${BASE}/vendor-accept-step`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ step_id: stepId, offer_id: offerId || null }),
+  // postSb doesn't expose status; the caller only branches on data.success
+  // for /sb routes. We keep the same return shape for compatibility.
+  const data = await postSb<StepActionResponse>("accept-step", {
+    session_token: token,
+    step_id: stepId,
+    offer_id: offerId || null,
   });
-  const data: StepActionResponse = await res.json();
-  return { status: res.status, data };
+  return { status: data.success ? 200 : 400, data };
 }
 
 export async function declineStep(
@@ -186,15 +210,12 @@ export async function declineStep(
   reason?: string,
   offerId?: string | null
 ): Promise<StepActionResponse> {
-  const res = await fetch(`${BASE}/vendor-decline-step`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ step_id: stepId, reason: reason || null, offer_id: offerId || null }),
+  return postSb<StepActionResponse>("decline-step", {
+    session_token: token,
+    step_id: stepId,
+    reason: reason || null,
+    offer_id: offerId || null,
   });
-  return res.json();
 }
 
 export async function deliverStep(
@@ -226,15 +247,11 @@ export async function getJobDetail(
   stepId: string,
   offerId: string | null
 ): Promise<JobDetailResponse> {
-  const res = await fetch(`${BASE}/vendor-get-job-detail`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ step_id: stepId, offer_id: offerId }),
+  return postSb<JobDetailResponse>("get-job-detail", {
+    session_token: token,
+    step_id: stepId,
+    offer_id: offerId,
   });
-  return res.json();
 }
 
 // --- Counter-Offer Types & API ---

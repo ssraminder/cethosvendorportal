@@ -224,10 +224,9 @@ export async function loginWithPassword(
 export async function validateSession(
   token: string
 ): Promise<SessionResponse> {
-  const res = await fetch(`${BASE}/vendor-auth-session`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return res.json();
+  // /sb/auth-session → Netlify Function → Postgres. session_token goes in
+  // the body, not Authorization, to keep this a CORS simple-request.
+  return postAuth<SessionResponse>("auth-session", { session_token: token });
 }
 
 export async function logoutSession(token: string): Promise<SimpleResponse> {
