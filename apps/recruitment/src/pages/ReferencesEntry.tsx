@@ -22,10 +22,25 @@ interface PreviewData {
 
 const blankRef = (): RefRow => ({ name: "", email: "", company: "", relationship: "" });
 
+// Magic preview token the admin Request References modal generates so staff
+// can see what the applicant page will look like before sending the email.
+// Match keeps this UI in sync with cvp-request-references' previewToken.
+const PREVIEW_TOKEN = "00000000-0000-0000-0000-PREVIEWPREVIEW";
+
 export function ReferencesEntry() {
   const { token } = useParams<{ token: string }>();
-  const [loading, setLoading] = useState(true);
-  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const isPreview = token === PREVIEW_TOKEN;
+  const [loading, setLoading] = useState(!isPreview);
+  const [preview, setPreview] = useState<PreviewData | null>(
+    isPreview
+      ? {
+          applicantName: "Applicant Name",
+          applicationNumber: "APP-PREVIEW",
+          alreadyContactsSubmitted: false,
+          existingReferences: [],
+        }
+      : null,
+  );
   const [error, setError] = useState<string>("");
   const [refs, setRefs] = useState<RefRow[]>([blankRef(), blankRef()]);
   const [submitting, setSubmitting] = useState(false);
@@ -33,6 +48,9 @@ export function ReferencesEntry() {
 
   useEffect(() => {
     if (!token) return;
+    // Preview mode: don't hit the API — show the form so staff can see the
+    // applicant experience. Submit will be blocked separately.
+    if (isPreview) return;
     let cancelled = false;
     const load = async () => {
       try {
@@ -62,7 +80,7 @@ export function ReferencesEntry() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, isPreview]);
 
   const updateRef = (i: number, field: keyof RefRow, value: string) => {
     setRefs((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
@@ -88,6 +106,10 @@ export function ReferencesEntry() {
     .filter((r) => r.name.length >= 2 && /\S+@\S+\.\S+/.test(r.email));
 
   const handleSubmit = async () => {
+    if (isPreview) {
+      setError("This is a preview — nothing is submitted. The applicant will see this exact form.");
+      return;
+    }
     if (validRefs.length < 1) {
       setError("Please add at least one reference with name + email.");
       return;
@@ -180,6 +202,19 @@ export function ReferencesEntry() {
   return (
     <Layout>
       <div className="max-w-2xl mx-auto py-10 px-6">
+        {isPreview && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <div className="font-semibold">Preview mode</div>
+              <div className="text-amber-800">
+                This is what the applicant will see. The form is interactive but submitting
+                won't save anything — the real link with a unique token is sent to the applicant
+                when you click "Send" in the admin email modal.
+              </div>
+            </div>
+          </div>
+        )}
         <h1 className="text-2xl font-semibold text-gray-900 mb-2">Share your references</h1>
         {preview && (
           <p className="text-sm text-gray-600 mb-6">
