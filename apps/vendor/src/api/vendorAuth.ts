@@ -23,9 +23,14 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
+    // Content-Type: text/plain (not application/json) makes this a CORS
+    // "simple request" — no OPTIONS preflight. State-level filters in
+    // Egypt and China drop the preflight; this bypass routes around them.
+    // The Supabase function parses body with req.json() so the actual
+    // content type doesn't matter.
     const res = await fetch(`${BASE}/${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -60,13 +65,12 @@ export async function testConnectivity(): Promise<ConnectivityProbe> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
-    // Same-origin POST with a dummy body. No CORS preflight (POST to same
-    // origin), so this actually exercises the real path. Server returns
-    // 400 ("invalid email") which is fine — reachable=ok if we got any
-    // response at all.
+    // text/plain content-type to keep this a CORS simple-request (no
+    // preflight) so the probe exercises the same wire path the real
+    // auth requests use.
     const res = await fetch(`${BASE}/vendor-auth-check`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ email: "__connectivity_probe__@cethos.local" }),
       signal: controller.signal,
     });
