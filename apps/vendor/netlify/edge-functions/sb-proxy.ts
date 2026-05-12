@@ -31,11 +31,24 @@ export default async (request: Request, _context: Context): Promise<Response> =>
 
   const upstreamUrl = `https://api.cethos.com/functions/v1/${fn}${url.search}`;
 
-  // Clone the request to the new URL, preserving method, headers, body.
-  // Headers are kept verbatim — auth/apikey/content-type all forwarded.
+  // Build the upstream headers. Strip headers that would confuse Supabase's
+  // Cloudflare-backed routing — the original Host (vendor.cethos.com) and
+  // any pre-existing X-Forwarded-* set by Netlify's edge ingress that would
+  // collide with what fetch() needs to set.
+  const upstreamHeaders = new Headers(request.headers);
+  upstreamHeaders.delete("host");
+  upstreamHeaders.delete("x-forwarded-host");
+  upstreamHeaders.delete("x-forwarded-proto");
+  upstreamHeaders.delete("cdn-loop");
+  // Preserve client IP for Supabase audit logs.
+  const cfip = request.headers.get("x-nf-client-connection-ip")
+    || request.headers.get("x-forwarded-for")
+    || "";
+  if (cfip) upstreamHeaders.set("x-forwarded-for", cfip.split(",")[0].trim());
+
   const upstreamReq = new Request(upstreamUrl, {
     method: request.method,
-    headers: request.headers,
+    headers: upstreamHeaders,
     body: ["GET", "HEAD"].includes(request.method) ? null : request.body,
     redirect: "manual",
   });
