@@ -19,36 +19,8 @@ export class NetworkUnreachableError extends Error {
 
 const FETCH_TIMEOUT_MS = 15_000;
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    // Content-Type: text/plain (not application/json) makes this a CORS
-    // "simple request" — no OPTIONS preflight. State-level filters in
-    // Egypt and China drop the preflight; this bypass routes around them.
-    // The Supabase function parses body with req.json() so the actual
-    // content type doesn't matter.
-    const res = await fetch(`${BASE}/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    return (await res.json()) as T;
-  } catch (err) {
-    // Distinguish "request never landed" from "request returned an error"
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new NetworkUnreachableError(`request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
-    }
-    if (err instanceof TypeError) {
-      // Browsers throw TypeError("Failed to fetch") for network failures.
-      throw new NetworkUnreachableError(err);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+// (Legacy postJson removed — auth now uses postAuth → /sb/* same-origin
+// Netlify Function. See further down for the new helper.)
 
 // Quick connectivity probe — used by the LoginPage's "Test connection" link
 // when a vendor hits a fetch failure. Returns details we can show the user
