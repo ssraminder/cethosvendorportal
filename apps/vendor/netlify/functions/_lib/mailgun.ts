@@ -21,6 +21,18 @@ interface MailgunSendArgs {
   tags?: string[];
 }
 
+// Quote a display name per RFC 5322 §3.4. If the name contains any
+// `specials` chars (paren, angle, comma, colon, etc.) or non-ASCII, it
+// must be wrapped in a quoted-string with embedded backslashes/quotes
+// escaped. Mailgun's parser is strict — "Test Vendor (Dutch→English)"
+// without quoting gets rejected with "to parameter is not a valid
+// address".
+function rfc5322DisplayName(name: string): string {
+  const needsQuoting = /[\(\)<>\[\]:;@\\,"]|[^\x20-\x7E]/.test(name);
+  if (!needsQuoting) return name;
+  return `"${name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 export async function sendMailgun(args: MailgunSendArgs): Promise<{ sent: boolean; reason?: string }> {
   const apiKey = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
@@ -32,10 +44,10 @@ export async function sendMailgun(args: MailgunSendArgs): Promise<{ sent: boolea
     ?? process.env.MAILGUN_FROM_EMAIL
     ?? `noreply@${domain}`;
   const senderName = process.env.MAILGUN_SENDER_NAME;
-  const from = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
+  const from = senderName ? `${rfc5322DisplayName(senderName)} <${senderEmail}>` : senderEmail;
 
   const toFormatted = args.to.name
-    ? `${args.to.name} <${args.to.email}>`
+    ? `${rfc5322DisplayName(args.to.name)} <${args.to.email}>`
     : args.to.email;
 
   const formData = new URLSearchParams();
