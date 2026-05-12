@@ -266,8 +266,9 @@ export function NDAPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Confidentiality Agreement</h1>
           <p className="text-sm text-gray-600 mt-0.5">
-            Cethos is ISO 17100 certified. We're required to keep a signed
-            confidentiality agreement on file for every translator.
+            Cethos is working toward ISO 17100 certification. As part of
+            that, we keep a signed confidentiality agreement on file for
+            every translator we work with.
           </p>
         </div>
       </div>
