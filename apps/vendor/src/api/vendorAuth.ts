@@ -65,10 +65,16 @@ export async function testConnectivity(): Promise<ConnectivityProbe> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
-    // text/plain content-type to keep this a CORS simple-request (no
-    // preflight) so the probe exercises the same wire path the real
-    // auth requests use.
-    const res = await fetch(`${BASE}/vendor-auth-check`, {
+    // Hit the new same-origin auth path (Netlify Function → Postgres).
+    // text/plain keeps it a CORS simple-request even though it's
+    // same-origin (defense in depth).
+    const probeBase = typeof window !== "undefined" && window.location.hostname !== "localhost"
+      ? "/sb"
+      : BASE;
+    const probeUrl = probeBase === "/sb"
+      ? `${probeBase}/auth-check`
+      : `${probeBase}/vendor-auth-check`;
+    const res = await fetch(probeUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ email: "__connectivity_probe__@cethos.local" }),
@@ -181,22 +187,54 @@ export async function activateWithToken(token: string): Promise<AuthResponse> {
   return res.json();
 }
 
+// Auth endpoints route through the same-origin /sb/* proxy backed by a
+// Netlify Function that talks to Postgres directly. Bypasses Supabase
+// HTTPS edge entirely for the login flow — works from regions where
+// *.supabase.co is blocked.
+const AUTH_BASE = typeof window !== "undefined" && window.location.hostname !== "localhost"
+  ? "/sb"
+  : BASE; // local dev still hits Supabase directly
+
+async function postAuth<T>(path: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${AUTH_BASE}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new NetworkUnreachableError(`request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    if (err instanceof TypeError) {
+      throw new NetworkUnreachableError(err);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function checkVendor(email: string): Promise<AuthCheckResponse> {
-  return postJson<AuthCheckResponse>("vendor-auth-check", { email });
+  return postAuth<AuthCheckResponse>("auth-check", { email });
 }
 
 export async function sendOtp(
   email: string,
   channel: "email" | "sms"
 ): Promise<OtpSendResponse> {
-  return postJson<OtpSendResponse>("vendor-auth-otp-send", { email, channel });
+  return postAuth<OtpSendResponse>("auth-otp-send", { email, channel });
 }
 
 export async function verifyOtp(
   email: string,
   otp_code: string
 ): Promise<AuthResponse> {
-  return postJson<AuthResponse>("vendor-auth-otp-verify", { email, otp_code });
+  return postAuth<AuthResponse>("auth-otp-verify", { email, otp_code });
 }
 
 export async function loginWithPassword(
