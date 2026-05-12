@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "generate-jwt-keypair": "tsx scripts/generate-jwt-keypair.ts"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",
+    "jose": "^5.9.6",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.574.0",
     "pg": "^8.13.1",

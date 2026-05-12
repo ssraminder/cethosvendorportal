@@ -45,6 +45,28 @@
   status = 200
   force = true
 
+# Phase 1.5: federated SSO infrastructure. Vendor portal mints JWTs for
+# handoffs into other Cethos surfaces (TM today; admin/customer later).
+# See docs/migration/00-overview-federated-sso.md (admin repo) for the
+# full architecture and trust model.
+[[redirects]]
+  from = "/.well-known/jwks.json"
+  to = "/.netlify/functions/jwks"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/sso-issue"
+  to = "/.netlify/functions/sso-issue"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/auth-logout"
+  to = "/.netlify/functions/auth-logout"
+  status = 200
+  force = true
+
 # Phase 2: post-login data endpoints (jobs list, job detail, accept/decline).
 # Same Lambda + direct Postgres pattern, session_token in request body.
 [[redirects]]

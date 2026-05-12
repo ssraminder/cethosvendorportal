@@ -11,6 +11,7 @@ import { LANGUAGES } from "../../data/languages";
 import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
 import { NegotiateModal } from "./NegotiateModal";
 import { TermsModal, checkTermsForOffer, type TermsData } from "./TermsModal";
+import { issueSso, SsoIssueError } from "../../api/vendorSso";
 import {
   X,
   Clock,
@@ -151,6 +152,8 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
   const [detail, setDetail] = useState<JobDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
+  const [ssoLoading, setSsoLoading] = useState(false);
+  const [ssoError, setSsoError] = useState("");
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [volumeExpanded, setVolumeExpanded] = useState(false);
   const [termsModal, setTermsModal] = useState<{
@@ -243,6 +246,40 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
   const canDeliver = ["accepted", "in_progress", "revision_requested"].includes(status);
   const isRevision = status === "revision_requested" || (job?.revision_count ?? 0) > 0;
   const canAccept = status === "offered" && !expired;
+
+  // "Translate Now" surfaces the federated-SSO handoff to the Cethos
+  // CAT editor (TM portal). Only shown when the translator can actually
+  // act on the job — same window as canDeliver. The vendor portal mints
+  // a 5-minute JWT; the browser navigates to tm.cethos.com/sso?token=…
+  // which exchanges it for a TM session cookie. See
+  // docs/migration/00-overview-federated-sso.md (admin repo).
+  const canTranslate = canDeliver;
+  const handleTranslateNow = async () => {
+    if (!sessionToken) {
+      setSsoError("Your session has expired — please sign in again.");
+      return;
+    }
+    setSsoError("");
+    setSsoLoading(true);
+    try {
+      // The step id stands in as the cross-system job reference. TM's
+      // /sso route either deep-links by it (when a matching TM job
+      // exists) or falls back to the translator dashboard.
+      const url = await issueSso(sessionToken, "tm", {
+        jobExternalRef: step.id,
+      });
+      window.location.href = url;
+    } catch (e) {
+      const msg =
+        e instanceof SsoIssueError
+          ? `Couldn't open the editor: ${e.serverMessage}`
+          : e instanceof Error
+            ? `Couldn't open the editor: ${e.message}`
+            : "Couldn't open the editor.";
+      setSsoError(msg);
+      setSsoLoading(false);
+    }
+  };
 
   const currency = job?.vendor_currency ?? step.vendor_currency ?? "CAD";
   const fmt = (val: number) =>
@@ -814,6 +851,23 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                 Offer no longer available
               </span>
             )}
+            {canTranslate && (
+              <button
+                onClick={handleTranslateNow}
+                disabled={ssoLoading}
+                className="px-4 py-2 text-sm font-medium text-teal-700 border border-teal-300 rounded-lg hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                title="Open this job in the Cethos CAT editor"
+              >
+                {ssoLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Opening…
+                  </>
+                ) : (
+                  "Translate Now"
+                )}
+              </button>
+            )}
             {canDeliver && (
               <button
                 onClick={() => setActionModal("deliver")}
@@ -827,6 +881,9 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
               </button>
             )}
           </div>
+          {ssoError && (
+            <div className="px-6 pb-3 text-sm text-red-600">{ssoError}</div>
+          )}
         </div>
       </div>
 
