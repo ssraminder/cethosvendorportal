@@ -25,6 +25,7 @@ interface Body {
   minimum_charge?: number;
   notes?: string;
   rate_id?: string;
+  language_pair_ids?: string[];
 }
 
 interface ServiceRow {
@@ -105,11 +106,31 @@ export const handler = async (event: {
         [vendor_id],
       );
 
+      // The Add/Edit Rate modal reads `result.language_pairs` to render
+      // the per-pair checkbox list. The original Supabase function never
+      // returned this field, so the modal always fell back to "No language
+      // pairs configured" even when the vendor had pairs configured.
+      const languagePairs = await query<{
+        id: string;
+        source_language: string;
+        target_language: string;
+        is_active: boolean;
+        notes: string | null;
+        created_at: string;
+      }>(
+        `SELECT id, source_language, target_language, is_active, notes, created_at
+         FROM vendor_language_pairs
+         WHERE vendor_id = $1 AND is_active = true
+         ORDER BY source_language`,
+        [vendor_id],
+      );
+
       return json({
         success: true,
         rates: ratesWithService,
         services_by_category: servicesByCategory,
         preferred_rate_currency: vendors[0]?.preferred_rate_currency ?? "CAD",
+        language_pairs: languagePairs,
       });
     }
 
@@ -119,32 +140,67 @@ export const handler = async (event: {
       }
       if (body.rate <= 0) return err("Rate must be greater than 0", 400);
 
-      const existing = await query<{ id: string }>(
-        `SELECT id FROM vendor_rates
-         WHERE vendor_id = $1 AND service_id = $2 AND calculation_unit = $3 AND is_active = true
-         LIMIT 1`,
-        [vendor_id, body.service_id, body.calculation_unit],
-      );
-      if (existing[0]) {
+      // The Add Rate modal sends `language_pair_ids: string[]`. Each rate
+      // row is tied to a single language_pair_id (or null for "general"),
+      // so we fan out: one row per pair, or one general row if no pairs
+      // selected. The duplicate check is keyed on (service, unit, pair).
+      const pairIds: (string | null)[] = body.language_pair_ids?.length
+        ? body.language_pair_ids
+        : [null];
+
+      const insertedIds: string[] = [];
+      const skipped: string[] = [];
+      for (const pairId of pairIds) {
+        const existing = pairId
+          ? await query<{ id: string }>(
+              `SELECT id FROM vendor_rates
+               WHERE vendor_id = $1 AND service_id = $2 AND calculation_unit = $3
+                 AND language_pair_id = $4 AND is_active = true
+               LIMIT 1`,
+              [vendor_id, body.service_id, body.calculation_unit, pairId],
+            )
+          : await query<{ id: string }>(
+              `SELECT id FROM vendor_rates
+               WHERE vendor_id = $1 AND service_id = $2 AND calculation_unit = $3
+                 AND language_pair_id IS NULL AND is_active = true
+               LIMIT 1`,
+              [vendor_id, body.service_id, body.calculation_unit],
+            );
+        if (existing[0]) {
+          skipped.push(pairId ?? "general");
+          continue;
+        }
+
+        const inserted = await query<{ id: string }>(
+          `INSERT INTO vendor_rates
+             (vendor_id, service_id, language_pair_id, calculation_unit, rate, currency,
+              minimum_charge, notes, source, added_by, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'self_reported', 'vendor', true, now(), now())
+           RETURNING id`,
+          [
+            vendor_id, body.service_id, pairId, body.calculation_unit, body.rate, body.currency,
+            body.minimum_charge ?? null, body.notes ?? null,
+          ],
+        );
+        if (inserted[0]?.id) insertedIds.push(inserted[0].id);
+      }
+
+      if (insertedIds.length === 0) {
         return err(
           "You already have a rate for this service and unit. Edit the existing rate instead.",
           409,
         );
       }
 
-      const inserted = await query<{ id: string }>(
-        `INSERT INTO vendor_rates
-           (vendor_id, service_id, calculation_unit, rate, currency, minimum_charge, notes,
-            source, added_by, is_active, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'self_reported', 'vendor', true, now(), now())
-         RETURNING id`,
-        [
-          vendor_id, body.service_id, body.calculation_unit, body.rate, body.currency,
-          body.minimum_charge ?? null, body.notes ?? null,
-        ],
-      );
-
-      return json({ success: true, message: "Rate added successfully", rate_id: inserted[0]?.id });
+      return json({
+        success: true,
+        message: insertedIds.length === 1
+          ? "Rate added successfully"
+          : `Added ${insertedIds.length} rates (${skipped.length} duplicates skipped)`,
+        rate_id: insertedIds[0],
+        count: insertedIds.length,
+        skipped: skipped.length,
+      });
     }
 
     if (action === "update") {
