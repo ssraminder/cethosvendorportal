@@ -222,6 +222,28 @@ serve(async (req: Request) => {
       counterDeadline, counterNote,
     });
 
+    // Wake the AI negotiator asynchronously. It will read negotiation_settings
+    // and either auto-execute or sit as a HITL recommendation. Fire-and-forget;
+    // we don't block the vendor's counter-submit response on it.
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && serviceKey) {
+        // Don't await — let the vendor's request return immediately.
+        fetch(`${supabaseUrl}/functions/v1/vendor-negotiate-counter`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${serviceKey}`,
+            apikey: serviceKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ offer_id: offer.id, trigger_event: "vendor_countered" }),
+        }).catch((e) => console.error("Failed to wake negotiator:", e));
+      }
+    } catch (err) {
+      console.error("Negotiator wake-up failed (non-fatal):", err);
+    }
+
     return json({ success: true, auto_accepted: false, auto_assigned: false });
   } catch (err: any) {
     console.error("vendor-counter-offer error:", err?.message || err);
