@@ -1,6 +1,32 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
+
+# Same-origin auth proxy via Netlify Function (Lambda) → direct Postgres.
+# Bypasses Supabase HTTPS edge entirely; the browser only ever talks to
+# vendor.cethos.com, and the Lambda connects to Supabase Postgres on
+# port 6543 (totally separate network path, never blocked).
+#
+# Phase 1: login only (auth-check, auth-otp-send, auth-otp-verify).
+# Other endpoints still hit Supabase HTTPS — port them here as needed.
+[[redirects]]
+  from = "/sb/auth-check"
+  to = "/.netlify/functions/auth-check"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/auth-otp-send"
+  to = "/.netlify/functions/auth-otp-send"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/auth-otp-verify"
+  to = "/.netlify/functions/auth-otp-verify"
+  status = 200
+  force = true
 
 # SPA catch-all.
 [[redirects]]
