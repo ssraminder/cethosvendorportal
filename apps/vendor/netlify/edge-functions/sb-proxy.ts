@@ -26,6 +26,32 @@ export default async (request: Request): Promise<Response> => {
     );
   }
 
+  // Debug path: hit /sb/__testfetch to see if edge can reach Supabase at all
+  if (fn === "__testfetch") {
+    try {
+      const r = await fetch("https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/vendor-auth-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "edge-fn-test@example.com" }),
+      });
+      const text = await r.text();
+      return new Response(
+        JSON.stringify({
+          ok: r.ok,
+          status: r.status,
+          body: text,
+          response_headers: Object.fromEntries(r.headers),
+        }, null, 2),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: String(err) }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   // Forward with explicit hardcoded upstream URL — bypasses any URL
   // construction issues
   const fwd = new Headers();
