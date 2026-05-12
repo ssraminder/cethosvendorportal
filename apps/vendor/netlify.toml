@@ -1,14 +1,20 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
-# NOTE: tried a Netlify Edge Function proxy at /sb/* → Supabase (to bypass
-# the CORS preflight that some state-level filters drop). Confirmed
-# unworkable: Netlify-Edge → Supabase's Cloudflare edge consistently
-# returns NOT_FOUND even for hardcoded fetches. CF-to-CF peer-block.
-# If we re-attempt, use a Cloudflare Worker (same-CF, no peer block)
-# or a small VPS proxy instead.
+# Same-origin auth proxy. /sb/<fn> rewrites to the Lambda-backed Netlify
+# Function which forwards to Supabase. Lambda's network egress is
+# different from Netlify Edge's, so the CF-to-CF peer block we hit with
+# the Edge Function doesn't apply. Same-origin → no CORS preflight →
+# bypasses state-level filters that drop OPTIONS.
+[[redirects]]
+  from = "/sb/*"
+  to = "/.netlify/functions/sb/:splat"
+  status = 200
+  force = true
 
+# SPA catch-all — must come AFTER the /sb redirect.
 [[redirects]]
   from = "/*"
   to = "/index.html"
