@@ -272,25 +272,26 @@ export const handler = async (event: {
     }
 
     const deliveredFiles: FileRow[] = [];
-    const deliveries = await query<{ id: string; version: number; files: unknown }>(
-      `SELECT id, version, files FROM step_deliveries
+    // step_deliveries stores delivered files in `file_paths` (text[]) —
+    // not a `files` jsonb column the original Supabase function referenced.
+    // Filenames are the last segment of the storage path; we lose file
+    // size + mime type for delivered files, which the UI tolerates.
+    const deliveries = await query<{ id: string; version: number; file_paths: string[] | null }>(
+      `SELECT id, version, file_paths FROM step_deliveries
        WHERE step_id = $1 ORDER BY version DESC LIMIT 1`,
       [step.id],
     );
     const latest = deliveries[0];
-    const list: Array<{
-      storage_path?: string; original_filename?: string; filename?: string;
-      file_size?: number; mime_type?: string;
-    }> = Array.isArray(latest?.files) ? (latest!.files as never[]) : [];
-    for (const f of list) {
-      if (!f?.storage_path) continue;
+    const paths: string[] = Array.isArray(latest?.file_paths) ? latest!.file_paths : [];
+    for (const p of paths) {
+      if (!p) continue;
       deliveredFiles.push({
-        storage_path: f.storage_path,
-        filename: f.original_filename || f.filename || "delivered_file",
-        file_size: f.file_size ?? null,
-        mime_type: f.mime_type ?? null,
+        storage_path: p,
+        filename: p.split("/").pop() || "delivered_file",
+        file_size: null,
+        mime_type: null,
         source: "delivered",
-        download_url: signStorageUrl("step-deliveries", f.storage_path),
+        download_url: signStorageUrl("step-deliveries", p),
       });
     }
 
