@@ -15,6 +15,7 @@ import {
 } from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import { CurrencySelect } from "../shared/CurrencySelect";
+import { CvSection } from "./CvSection";
 import { COUNTRIES } from "../../data/countries";
 import { LANGUAGES } from "../../data/languages";
 import {
@@ -1103,6 +1104,13 @@ export function VendorProfile() {
           <ReadOnlyField icon={CircleDot} label="Availability" value={vendor.availability_status || "Not set"} />
         </div>
       </div>
+
+      {/* CV / Resume */}
+      {profileLoaded && (
+        <div className="mt-5">
+          <CvSection />
+        </div>
+      )}
 
       {/* Financial Details */}
       {profileLoaded && (
