@@ -52,7 +52,9 @@ export const handler = async (event: {
         sets.push(`${col} = $${params.length}`);
       };
       if (body.payment_method !== undefined) push("payment_method", body.payment_method);
-      if (body.payment_details !== undefined) push("payment_details", body.payment_details);
+      // payment_details is jsonb — stringify so node-postgres doesn't
+      // emit it as a Postgres composite/array literal.
+      if (body.payment_details !== undefined) push("payment_details", JSON.stringify(body.payment_details));
       if (body.payment_currency !== undefined) push("payment_currency", body.payment_currency);
       if (body.invoice_notes !== undefined) push("invoice_notes", body.invoice_notes);
       params.push(existing[0].id);
@@ -68,7 +70,7 @@ export const handler = async (event: {
         [
           vendor_id,
           body.payment_method ?? null,
-          body.payment_details ?? null,
+          body.payment_details ? JSON.stringify(body.payment_details) : null,
           body.payment_currency ?? null,
           body.invoice_notes ?? null,
         ],

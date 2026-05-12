@@ -99,7 +99,11 @@ export const handler = async (event: {
       if (body.native_languages.length > 3) {
         return err("Maximum of 3 native languages", 400);
       }
-      push("native_languages", body.native_languages);
+      // native_languages is a jsonb column — pass it as a JSON string,
+      // otherwise node-postgres serializes the JS array as a Postgres
+      // array literal (`{en,fr}`) and the server 500s with "invalid
+      // input syntax for type json".
+      push("native_languages", JSON.stringify(body.native_languages));
     }
 
     if (sets.length === 0) return err("No fields to update", 400);
