@@ -1,5 +1,87 @@
 const BASE = import.meta.env.VITE_SUPABASE_URL + "/functions/v1";
 
+// Network errors ("Failed to fetch") happen when the request never gets a
+// response — usually a regional block on supabase.co domains, an aggressive
+// browser extension, or a flaky network. We surface this as a distinct
+// error class so the UI can show a useful "check your network" message
+// instead of the cryptic browser default.
+export class NetworkUnreachableError extends Error {
+  constructor(underlying: unknown) {
+    const detail = underlying instanceof Error ? underlying.message : String(underlying);
+    super(
+      `Couldn't reach the Cethos server. This is usually a network or VPN issue (${detail}).`,
+    );
+    this.name = "NetworkUnreachableError";
+  }
+}
+
+const FETCH_TIMEOUT_MS = 15_000;
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${BASE}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return (await res.json()) as T;
+  } catch (err) {
+    // Distinguish "request never landed" from "request returned an error"
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new NetworkUnreachableError(`request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    if (err instanceof TypeError) {
+      // Browsers throw TypeError("Failed to fetch") for network failures.
+      throw new NetworkUnreachableError(err);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Quick connectivity probe — used by the LoginPage's "Test connection" link
+// when a vendor hits a fetch failure. Returns details we can show the user
+// to help them or support figure out what's broken.
+export interface ConnectivityProbe {
+  reachable: boolean;
+  error?: string;
+  status?: number;
+  duration_ms: number;
+}
+
+export async function testConnectivity(): Promise<ConnectivityProbe> {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const res = await fetch(`${BASE}/vendor-auth-check`, {
+      method: "OPTIONS",
+      headers: {
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+      signal: controller.signal,
+    });
+    return {
+      reachable: res.ok,
+      status: res.status,
+      duration_ms: Date.now() - start,
+    };
+  } catch (err) {
+    return {
+      reachable: false,
+      error: err instanceof Error ? err.message : String(err),
+      duration_ms: Date.now() - start,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 interface VendorProfile {
   id: string;
   full_name: string;
@@ -92,36 +174,21 @@ export async function activateWithToken(token: string): Promise<AuthResponse> {
 }
 
 export async function checkVendor(email: string): Promise<AuthCheckResponse> {
-  const res = await fetch(`${BASE}/vendor-auth-check`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  return res.json();
+  return postJson<AuthCheckResponse>("vendor-auth-check", { email });
 }
 
 export async function sendOtp(
   email: string,
   channel: "email" | "sms"
 ): Promise<OtpSendResponse> {
-  const res = await fetch(`${BASE}/vendor-auth-otp-send`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, channel }),
-  });
-  return res.json();
+  return postJson<OtpSendResponse>("vendor-auth-otp-send", { email, channel });
 }
 
 export async function verifyOtp(
   email: string,
   otp_code: string
 ): Promise<AuthResponse> {
-  const res = await fetch(`${BASE}/vendor-auth-otp-verify`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, otp_code }),
-  });
-  return res.json();
+  return postJson<AuthResponse>("vendor-auth-otp-verify", { email, otp_code });
 }
 
 export async function loginWithPassword(
