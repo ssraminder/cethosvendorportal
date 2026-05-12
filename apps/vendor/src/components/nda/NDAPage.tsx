@@ -76,8 +76,11 @@ export function NDAPage() {
   const [phoneOtp, setPhoneOtp] = useState<OtpState>(blankOtp);
 
   const hasPhone = !!vendor?.phone;
-  const phoneRequired = hasPhone;
-  const allVerified = emailOtp.verified && (phoneRequired ? phoneOtp.verified : true);
+  // Either channel is enough. Showing both keeps the option open for
+  // vendors who prefer one over the other (poor email reach vs. phone
+  // landed in a different country), and the audit log records which
+  // factor was used.
+  const allVerified = emailOtp.verified || phoneOtp.verified;
 
   const load = async () => {
     if (!sessionToken) return;
@@ -332,7 +335,7 @@ export function NDAPage() {
           <div>
             <h3 className="text-base font-semibold text-gray-900 mb-1">Verify your identity</h3>
             <p className="text-xs text-gray-600">
-              For ISO audit purposes we verify {phoneRequired ? "both your email and phone" : "your email"} at the moment of signing — even if you're already logged in.
+              For ISO audit purposes we re-verify your identity at the moment of signing — even if you're already logged in. Verify <strong>either</strong> your email or phone to continue.
             </p>
           </div>
 
@@ -345,7 +348,7 @@ export function NDAPage() {
             onVerify={() => verifyOtp("email")}
           />
 
-          {phoneRequired && (
+          {hasPhone ? (
             <OtpRow
               icon={<Phone className="w-4 h-4" />}
               label={`Phone${vendor?.phone ? ` (${vendor.phone})` : ""}`}
@@ -354,11 +357,9 @@ export function NDAPage() {
               onSend={() => sendOtp("phone")}
               onVerify={() => verifyOtp("phone")}
             />
-          )}
-
-          {!hasPhone && (
-            <div className="text-xs text-gray-500 italic">
-              No phone on file — only email verification is required. Add a phone in your Profile if you'd like two-factor verification on file.
+          ) : (
+            <div className="text-xs text-gray-500 italic px-1">
+              No phone on file. Add a phone in your Profile if you'd like to verify by SMS.
             </div>
           )}
 
