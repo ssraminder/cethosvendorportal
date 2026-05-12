@@ -35,7 +35,10 @@ interface Signature {
   signed_email: string | null;
   signed_at: string;
   signer_ip: string | null;
+  signer_user_agent: string | null;
   signed_html_snapshot: string;
+  verification_log: unknown;
+  template_version_label: string | null;
 }
 
 export const handler = async (event: {
@@ -57,12 +60,17 @@ export const handler = async (event: {
     const template = tpls[0];
     if (!template) return err("No active NDA template configured", 500);
 
+    // Join the template version label so the audit page in the
+    // downloaded PDF can show "Signed against template v1.0" even after
+    // a newer template has been published.
     const sigs = await query<Signature>(
-      `SELECT id, nda_template_id, signed_full_name, signed_email, signed_at,
-              signer_ip, signed_html_snapshot
-       FROM vendor_nda_signatures
-       WHERE vendor_id = $1 AND is_current = true
-       ORDER BY signed_at DESC
+      `SELECT s.id, s.nda_template_id, s.signed_full_name, s.signed_email, s.signed_at,
+              s.signer_ip, s.signer_user_agent, s.signed_html_snapshot, s.verification_log,
+              t.version_label AS template_version_label
+       FROM vendor_nda_signatures s
+       LEFT JOIN nda_templates t ON t.id = s.nda_template_id
+       WHERE s.vendor_id = $1 AND s.is_current = true
+       ORDER BY s.signed_at DESC
        LIMIT 1`,
       [vendor_id],
     );
