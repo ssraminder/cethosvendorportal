@@ -6,7 +6,11 @@
 export default async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
   const fn = url.pathname.replace(/^\/sb\//, "");
-  const upstreamUrl = `https://api.cethos.com/functions/v1/${fn}${url.search}`;
+  // Upstream is the DIRECT Supabase URL, not api.cethos.com Custom Domain.
+  // Custom Domain showed Netlify-Edge-to-Cloudflare loop oddities (404 NOT_FOUND
+  // on requests that work fine from a regular client). The direct URL is also
+  // Cloudflare-fronted but with Supabase's "real" routing config.
+  const upstreamUrl = `https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1/${fn}${url.search}`;
 
   // Debug path: hit /sb/__debug to see what URL gets constructed
   if (fn === "__debug") {
