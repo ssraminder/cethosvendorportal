@@ -1,0 +1,6 @@
+name = "cethos-supabase-proxy"
+main = "worker.js"
+compatibility_date = "2026-05-12"
+
+# Free plan covers 100k requests/day — comfortably above expected load.
+# Bump to a paid plan if you outgrow it.
