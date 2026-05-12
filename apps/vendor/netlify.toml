@@ -45,6 +45,38 @@
   status = 200
   force = true
 
+# Phase 2: post-login data endpoints (jobs list, job detail, accept/decline).
+# Same Lambda + direct Postgres pattern, session_token in request body.
+[[redirects]]
+  from = "/sb/auth-session"
+  to = "/.netlify/functions/auth-session"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/get-jobs"
+  to = "/.netlify/functions/get-jobs"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/get-job-detail"
+  to = "/.netlify/functions/get-job-detail"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/accept-step"
+  to = "/.netlify/functions/accept-step"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/decline-step"
+  to = "/.netlify/functions/decline-step"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"
