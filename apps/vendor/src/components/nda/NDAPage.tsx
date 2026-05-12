@@ -398,7 +398,7 @@ export function NDAPage() {
           </div>
         </div>
         <div
-          className="prose prose-sm max-w-none text-gray-800 leading-relaxed"
+          className="nda-body text-gray-800"
           dangerouslySetInnerHTML={{ __html: status.template.body_html }}
         />
       </div>

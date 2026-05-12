@@ -9,3 +9,45 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* NDA body rendered from server-supplied HTML. Plain CSS so we don't
+   need the Tailwind typography plugin. Keeps things tight enough to
+   read in a portal pane while still showing hierarchy. */
+.nda-body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #1f2937;
+}
+.nda-body h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 24px 0 12px;
+  letter-spacing: -0.01em;
+}
+.nda-body h2:first-child { margin-top: 0; }
+.nda-body h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 22px 0 8px;
+}
+.nda-body p {
+  margin: 0 0 12px;
+}
+.nda-body ul {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  list-style: disc;
+}
+.nda-body ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  list-style: decimal;
+}
+.nda-body li {
+  margin: 4px 0;
+  padding-left: 4px;
+}
+.nda-body strong { font-weight: 600; color: #0f172a; }
+.nda-body a { color: #0d9488; text-decoration: underline; }
