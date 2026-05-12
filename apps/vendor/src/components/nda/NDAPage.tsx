@@ -27,6 +27,18 @@ interface NDATemplate {
   effective_from: string;
 }
 
+interface VerificationFactor {
+  otp_id?: string;
+  verified_at?: string;
+  masked?: string | null;
+}
+
+interface VerificationLog {
+  channels?: string[];
+  email?: VerificationFactor;
+  phone?: VerificationFactor;
+}
+
 interface CurrentSignature {
   id: string;
   nda_template_id: string;
@@ -34,7 +46,10 @@ interface CurrentSignature {
   signed_email: string | null;
   signed_at: string;
   signer_ip: string | null;
+  signer_user_agent?: string | null;
   signed_html_snapshot: string;
+  verification_log?: VerificationLog | null;
+  template_version_label?: string | null;
 }
 
 interface NDAStatus {
@@ -234,6 +249,19 @@ export function NDAPage() {
           margin: [HEADER_H, SIDE, FOOTER_H, SIDE],
           autoPaging: "text",
           html2canvas: { scale: 0.75, useCORS: true, backgroundColor: "#ffffff" },
+        });
+
+        // Append an audit page that travels with the signature: factors
+        // verified, signer fingerprint, timestamps. Auditor-friendly.
+        pdf.addPage();
+        drawAuditPage(pdf, {
+          sig,
+          versionLabel: sig.template_version_label ?? versionLabel,
+          pageWidth,
+          pageHeight,
+          headerH: HEADER_H,
+          footerH: FOOTER_H,
+          side: SIDE,
         });
 
         // Header + footer overlays on every page — native PDF text so
@@ -596,6 +624,110 @@ interface FooterArgs {
   side: number;
   pageNum: number;
   pageCount: number;
+}
+
+interface AuditArgs {
+  sig: CurrentSignature;
+  versionLabel: string;
+  pageWidth: number;
+  pageHeight: number;
+  headerH: number;
+  footerH: number;
+  side: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function drawAuditPage(pdf: any, args: AuditArgs) {
+  const { sig, versionLabel, pageWidth, headerH, side } = args;
+  let y = headerH + 14;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15);
+  pdf.setTextColor(17, 24, 39);
+  pdf.text("Signing audit", side, y);
+  y += 8;
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9.5);
+  pdf.setTextColor(107, 114, 128);
+  pdf.text(
+    "Proof-of-identity factors verified at the moment this NDA was signed.",
+    side,
+    y + 8,
+  );
+  y += 28;
+
+  // Two-column key/value table.
+  const labelX = side;
+  const valueX = side + 130;
+  const rowGap = 16;
+  pdf.setFontSize(10);
+
+  const row = (label: string, value: string) => {
+    pdf.setTextColor(107, 114, 128);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(label, labelX, y);
+    pdf.setTextColor(17, 24, 39);
+    pdf.setFont("helvetica", "bold");
+    // Wrap long values so user-agent strings don't overrun the page.
+    const lines = pdf.splitTextToSize(value, pageWidth - valueX - side);
+    pdf.text(lines, valueX, y);
+    y += rowGap * Math.max(1, lines.length);
+  };
+
+  row("Signed by", sig.signed_full_name);
+  row("Email", sig.signed_email ?? "—");
+  row("Signed at", new Date(sig.signed_at).toUTCString());
+  row("Template version", versionLabel);
+  row("Signature ID", sig.id);
+  row("Signer IP", sig.signer_ip ?? "—");
+  if (sig.signer_user_agent) row("User agent", sig.signer_user_agent);
+
+  // Verification log section.
+  y += 8;
+  pdf.setDrawColor(229, 231, 235);
+  pdf.setLineWidth(0.5);
+  pdf.line(side, y, pageWidth - side, y);
+  y += 20;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(11);
+  pdf.setTextColor(17, 24, 39);
+  pdf.text("Verification factors", side, y);
+  y += rowGap;
+
+  const v = sig.verification_log ?? null;
+  if (!v || !v.channels || v.channels.length === 0) {
+    pdf.setFont("helvetica", "italic");
+    pdf.setFontSize(10);
+    pdf.setTextColor(107, 114, 128);
+    pdf.text("No OTP verification recorded on this signature.", side, y);
+  } else {
+    const channels = v.channels;
+    const factor = (label: string, key: "email" | "phone") => {
+      const f = v[key];
+      if (!f) return;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.setTextColor(22, 101, 52);
+      pdf.text(`✓  ${label}`, labelX, y);
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(75, 85, 99);
+      pdf.text(
+        `${f.masked ?? "—"}   ·   verified ${f.verified_at ? new Date(f.verified_at).toUTCString() : "—"}`,
+        valueX,
+        y,
+      );
+      y += rowGap;
+      if (f.otp_id) {
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(156, 163, 175);
+        pdf.text(`OTP ID: ${f.otp_id}`, valueX, y);
+        y += rowGap - 2;
+      }
+    };
+    if (channels.includes("email")) factor("Email OTP", "email");
+    if (channels.includes("phone")) factor("Phone OTP", "phone");
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
