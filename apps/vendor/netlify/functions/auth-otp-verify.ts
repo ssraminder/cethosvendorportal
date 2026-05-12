@@ -9,7 +9,14 @@
 
 import { randomUUID } from "node:crypto";
 import { query } from "./_lib/db";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import {
+  err,
+  json,
+  jsonWithCookies,
+  parseBody,
+  type NetlifyResponse,
+} from "./_lib/response";
+import { buildSessionCookie } from "./_lib/cookies";
 
 interface OtpRow {
   id: string;
@@ -56,8 +63,8 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     await query(
-      `INSERT INTO vendor_sessions (vendor_id, session_token, expires_at, last_seen_at)
-       VALUES ($1, $2, $3, now())`,
+      `INSERT INTO vendor_sessions (vendor_id, session_token, expires_at, last_seen_at, origin)
+       VALUES ($1, $2, $3, now(), 'otp')`,
       [otp.vendor_id, sessionToken, expiresAt],
     );
 
@@ -88,14 +95,22 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
       );
     }
 
-    return json({
-      success: true,
-      session_token: sessionToken,
-      expires_at: expiresAt,
-      vendor,
-      needs_password: authRows.length === 0,
-      is_first_login: isFirstLogin,
-    });
+    // Set the HttpOnly session cookie alongside returning the raw token
+    // in the body. The body field is what the current frontend reads
+    // (localStorage); the cookie is what cookie-aware future code (and
+    // the new `sso-issue` function) reads. Both refer to the same
+    // session row — there's no double bookkeeping.
+    return jsonWithCookies(
+      {
+        success: true,
+        session_token: sessionToken,
+        expires_at: expiresAt,
+        vendor,
+        needs_password: authRows.length === 0,
+        is_first_login: isFirstLogin,
+      },
+      [buildSessionCookie(sessionToken)],
+    );
   } catch (e) {
     console.error("auth-otp-verify error:", e);
     return err("Internal server error", 500, { detail: e instanceof Error ? e.message : String(e) });
