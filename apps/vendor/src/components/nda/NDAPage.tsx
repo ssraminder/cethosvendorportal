@@ -273,13 +273,13 @@ export function NDAPage() {
         // This pattern produces a small file (one embedded image) and
         // a sane page count regardless of slicing math.
         const imgFullHeightPt = (canvas.height / canvas.width) * bodyWidthPt;
-        const imgData = canvas.toDataURL("image/jpeg", 0.88);
+        const imgData = canvas.toDataURL("image/png");
 
         const totalPages = Math.max(1, Math.ceil(imgFullHeightPt / bodyHeightPt));
         for (let p = 0; p < totalPages; p++) {
           if (p > 0) pdf.addPage();
           const yOffset = bodyTop - p * bodyHeightPt;
-          pdf.addImage(imgData, "JPEG", SIDE, yOffset, bodyWidthPt, imgFullHeightPt);
+          pdf.addImage(imgData, "PNG", SIDE, yOffset, bodyWidthPt, imgFullHeightPt);
           // Mask any image overflow into header/footer bands so the
           // overlays drawn below sit on clean white.
           pdf.setFillColor(255, 255, 255);
