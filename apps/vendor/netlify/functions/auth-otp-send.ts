@@ -9,6 +9,7 @@
  */
 
 import { query } from "./_lib/db";
+import { sendBrevo } from "./_lib/brevo";
 import { sendMailgun } from "./_lib/mailgun";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
 
@@ -85,15 +86,25 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
   </div>
 </div>`;
 
-    const sendResult = await sendMailgun({
-      to: { email: vendor.email, name: vendor.full_name },
-      subject: `${otpCode} is your CETHOS verification code`,
-      html,
-      tags: ["vendor-auth-otp"],
-    });
+    // Try Brevo first (vendor portal's standard provider). Fall back to
+    // Mailgun if Brevo isn't configured — covers either env-var setup.
+    const useBrevo = !!process.env.BREVO_API_KEY;
+    const sendResult = useBrevo
+      ? await sendBrevo({
+          to: { email: vendor.email, name: vendor.full_name },
+          subject: `${otpCode} is your CETHOS verification code`,
+          html,
+          tags: ["vendor-auth-otp"],
+        })
+      : await sendMailgun({
+          to: { email: vendor.email, name: vendor.full_name },
+          subject: `${otpCode} is your CETHOS verification code`,
+          html,
+          tags: ["vendor-auth-otp"],
+        });
 
     if (!sendResult.sent) {
-      console.error("Mailgun send failed:", sendResult.reason);
+      console.error(`Email send failed via ${useBrevo ? "Brevo" : "Mailgun"}:`, sendResult.reason);
       return err("Failed to send email", 502, { detail: sendResult.reason });
     }
 
