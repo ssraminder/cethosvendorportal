@@ -213,25 +213,50 @@ export const handler = async (event: {
       );
 
       if (qfiles.length > 0) {
-        const fileIds = qfiles.map((f) => f.id);
-        // ai_analysis_results.quote_file_id references quote_files.id. The
-        // original Supabase function had this as `file_id` which silently
-        // failed against PostgREST; surfacing it via direct SQL forced the
-        // correct column name here.
-        const aiRows = await query<{ quote_file_id: string; word_count: number | null; page_count: number | null }>(
+        // ai_analysis_results stores word/page counts in two shapes:
+        //   1. Per-file rows (newer): quote_file_id set, one row per file
+        //   2. Quote-level rows (older): quote_file_id null, one row per
+        //      quote covering all files
+        // We sum at the quote level for accurate totals, then attempt a
+        // per-file split using quote_file_id where available.
+        const aiRows = await query<{
+          quote_file_id: string | null;
+          word_count: number | null;
+          page_count: number | null;
+        }>(
           `SELECT quote_file_id, word_count, page_count
            FROM ai_analysis_results
-           WHERE quote_file_id = ANY($1::uuid[]) AND deleted_at IS NULL`,
-          [fileIds],
+           WHERE quote_id = $1 AND deleted_at IS NULL`,
+          [order.quote_id],
         );
+
         const aiByFile: Record<string, { wc: number; pc: number }> = {};
+        let unassignedWords = 0;
+        let unassignedPages = 0;
         for (const a of aiRows) {
-          aiByFile[a.quote_file_id] = { wc: Number(a.word_count) || 0, pc: Number(a.page_count) || 0 };
+          const wc = Number(a.word_count) || 0;
+          const pc = Number(a.page_count) || 0;
+          if (a.quote_file_id) {
+            aiByFile[a.quote_file_id] = { wc, pc };
+          } else {
+            unassignedWords += wc;
+            unassignedPages += pc;
+          }
         }
 
+        // Apportion quote-level totals across files that don't have a
+        // per-file match, evenly. Better than displaying 0 everywhere.
+        const unmatchedFiles = qfiles.filter((f) => !aiByFile[f.id]);
+        const perFileWords = unmatchedFiles.length > 0
+          ? Math.round(unassignedWords / unmatchedFiles.length)
+          : 0;
+        const perFilePages = unmatchedFiles.length > 0
+          ? Math.round((unassignedPages / unmatchedFiles.length) * 10) / 10
+          : 0;
+
         for (const f of qfiles) {
-          const wc = aiByFile[f.id]?.wc ?? 0;
-          const pc = aiByFile[f.id]?.pc ?? 0;
+          const wc = aiByFile[f.id]?.wc ?? perFileWords;
+          const pc = aiByFile[f.id]?.pc ?? perFilePages;
           sourceFiles.push({
             storage_path: f.storage_path,
             filename: f.original_filename,
