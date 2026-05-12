@@ -9,7 +9,6 @@ import { NegotiateModal } from "./NegotiateModal";
 import { TermsModal, checkTermsForOffer, type TermsData } from "./TermsModal";
 import {
   Briefcase,
-  Loader2,
   Clock,
   ChevronRight,
   AlertTriangle,
@@ -267,18 +266,54 @@ export function JobBoard() {
         ))}
       </div>
 
-      {/* Loading */}
+      {/* Loading: skeleton cards reserve the layout so the page doesn't
+          shift when data arrives. */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        <div className="space-y-3" aria-busy="true" aria-live="polite">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-4 animate-pulse">
+                <div className="flex-1 space-y-2">
+                  <div className="flex gap-2">
+                    <div className="h-5 w-16 rounded-full bg-gray-200" />
+                    <div className="h-5 w-40 rounded bg-gray-200" />
+                  </div>
+                  <div className="h-3 w-2/3 rounded bg-gray-100" />
+                  <div className="h-3 w-1/2 rounded bg-gray-100" />
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-7 w-16 rounded-lg bg-gray-200" />
+                  <div className="h-7 w-16 rounded-lg bg-gray-100" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : steps.length === 0 ? (
         /* Empty state */
-        <div className="text-center py-12 text-gray-500">
-          <Briefcase className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-          <p className="text-lg font-medium">{EMPTY_MESSAGES[tab].title}</p>
+        <div className="rounded-xl border border-dashed border-gray-200 bg-white text-center px-6 py-16">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50">
+            <Briefcase className="h-7 w-7 text-teal-500" />
+          </div>
+          <p className="text-base font-semibold text-gray-800">
+            {EMPTY_MESSAGES[tab].title}
+          </p>
           {EMPTY_MESSAGES[tab].desc && (
-            <p className="text-sm mt-1">{EMPTY_MESSAGES[tab].desc}</p>
+            <p className="text-sm mt-1 text-gray-500 max-w-md mx-auto">
+              {EMPTY_MESSAGES[tab].desc}
+            </p>
+          )}
+          {tab === "active" && counts.offered > 0 && (
+            <button
+              onClick={() => setTab("offered")}
+              className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              Review {counts.offered} open offer{counts.offered === 1 ? "" : "s"}
+              <ChevronRight className="h-4 w-4" />
+            </button>
           )}
         </div>
       ) : (
@@ -288,11 +323,19 @@ export function JobBoard() {
             const badge = STATUS_BADGES[step.status] ?? STATUS_BADGES.offered;
             const deadline = formatDeadline(step.deadline);
             const offerExpiry = step.status === "offered" ? formatOfferExpiry(step.expires_at ?? null) : null;
+            // Once expires_at is past, the offer can't be accepted. We dim
+            // the card and replace Accept/Decline/Negotiate with a single
+            // "Offer expired" indicator so vendors don't click a dead CTA.
+            const isExpiredOffer = !!offerExpiry?.expired;
 
             return (
               <div
                 key={step.id}
-                className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                className={`rounded-lg border bg-white p-4 shadow-sm transition-shadow cursor-pointer ${
+                  isExpiredOffer
+                    ? "border-gray-150 opacity-70 hover:shadow-sm"
+                    : "border-gray-200 hover:shadow-md"
+                }`}
                 onClick={() => setSelectedStep(step)}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -305,7 +348,7 @@ export function JobBoard() {
                       <span className="text-sm font-medium text-gray-900">
                         {step.name} — Step {step.step_number}
                       </span>
-                      {step.is_rush && (
+                      {step.is_rush && !isExpiredOffer && (
                         <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700">
                           RUSH
                         </span>
@@ -313,7 +356,7 @@ export function JobBoard() {
                       {offerExpiry && (
                         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
                           offerExpiry.expired
-                            ? "bg-red-100 text-red-700"
+                            ? "bg-gray-100 text-gray-600"
                             : "bg-amber-50 text-amber-700"
                         }`}>
                           <Timer className="h-3 w-3" />
@@ -412,7 +455,7 @@ export function JobBoard() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {step.status === "offered" && (
+                    {step.status === "offered" && !isExpiredOffer && (
                       <>
                         <button
                           onClick={(e) => {
@@ -446,6 +489,11 @@ export function JobBoard() {
                           </button>
                         )}
                       </>
+                    )}
+                    {isExpiredOffer && (
+                      <span className="text-xs italic text-gray-400 px-2">
+                        No longer available
+                      </span>
                     )}
                     {canDeliver(step.status) && (
                       <button
