@@ -1,41 +1,35 @@
 /**
- * Netlify Edge Function: proxy `/sb/<function>` → Supabase Custom Domain
- * at api.cethos.com/functions/v1/<function>.
- *
- * Same-origin path → no CORS preflight → bypasses state-level filters
- * (Egypt, China) that drop OPTIONS requests.
+ * DEBUG version: echoes URL parsing + does the actual fetch.
+ * Will revert after we figure out what's wrong.
  */
 
 export default async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
   const fn = url.pathname.replace(/^\/sb\//, "");
-  if (!fn) {
-    return new Response("Bad proxy request: empty function name", { status: 400 });
-  }
-
   const upstreamUrl = `https://api.cethos.com/functions/v1/${fn}${url.search}`;
 
-  // Forward only the specific headers Supabase functions need. Whitelist
-  // approach: lets fetch() set Host / Content-Length / etc. itself based
-  // on the upstream URL and body. Stripping Host was tried via header
-  // .delete() — didn't work because Deno's Request constructor copies
-  // headers verbatim. Whitelist is more reliable.
+  // Debug path: hit /sb/__debug to see what URL gets constructed
+  if (fn === "__debug") {
+    return new Response(
+      JSON.stringify({
+        request_url: request.url,
+        pathname: url.pathname,
+        fn_parsed: fn,
+        upstream_would_be: upstreamUrl,
+        method: request.method,
+      }, null, 2),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Forward with explicit hardcoded upstream URL — bypasses any URL
+  // construction issues
   const fwd = new Headers();
-  const passThrough = [
-    "authorization",
-    "apikey",
-    "content-type",
-    "x-client-info",
-    "accept",
-  ];
-  for (const h of passThrough) {
+  for (const h of ["authorization", "apikey", "content-type", "x-client-info", "accept"]) {
     const v = request.headers.get(h);
     if (v) fwd.set(h, v);
   }
 
-  // Buffer the body so fetch() sets Content-Length correctly. Streaming
-  // bodies through Netlify Edge to a fetch upstream is occasionally
-  // unreliable; buffering is small and safe for auth payloads.
   let body: string | null = null;
   if (!["GET", "HEAD"].includes(request.method)) {
     body = await request.text();
@@ -47,12 +41,14 @@ export default async (request: Request): Promise<Response> => {
       headers: fwd,
       body,
     });
-    // Re-emit response with CORS open (just in case some browser cares).
-    const resHeaders = new Headers(upstreamRes.headers);
+    const text = await upstreamRes.text();
+    const resHeaders = new Headers();
     resHeaders.set("Access-Control-Allow-Origin", "*");
-    return new Response(upstreamRes.body, {
+    resHeaders.set("Content-Type", upstreamRes.headers.get("Content-Type") || "application/json");
+    resHeaders.set("X-Proxy-Upstream", upstreamUrl);
+    resHeaders.set("X-Proxy-Status", String(upstreamRes.status));
+    return new Response(text, {
       status: upstreamRes.status,
-      statusText: upstreamRes.statusText,
       headers: resHeaders,
     });
   } catch (err) {
