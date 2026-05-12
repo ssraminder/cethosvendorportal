@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { GraduationCap, Loader2, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { FUNCTIONS_BASE } from "../../api/functionsBase";
 
 /**
  * RequestTest — vendor self-service for adding a new domain to the
@@ -92,8 +93,7 @@ export function RequestTest() {
     const load = async () => {
       setLoading(true);
       try {
-        const base =
-          import.meta.env.VITE_SUPABASE_URL + "/functions/v1/cvp-get-my-domains";
+        const base = `${FUNCTIONS_BASE}/cvp-get-my-domains`;
         const resp = await fetch(base, {
           method: "POST",
           headers: {
@@ -165,8 +165,7 @@ export function RequestTest() {
     setRequesting(key);
     setLastResult(null);
     try {
-      const base =
-        import.meta.env.VITE_SUPABASE_URL + "/functions/v1/cvp-request-test";
+      const base = `${FUNCTIONS_BASE}/cvp-request-test`;
       const resp = await fetch(base, {
         method: "POST",
         headers: {

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Loader2, ShieldCheck, AlertTriangle, Calendar, FileText, Download } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+import { FUNCTIONS_BASE } from "../../api/functionsBase";
+
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 interface NDATemplate {
@@ -46,7 +47,7 @@ export function NDAPage() {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/vendor-get-nda-status`, {
+      const resp = await fetch(`${FUNCTIONS_BASE}/vendor-get-nda-status`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${sessionToken}`,
@@ -86,7 +87,7 @@ export function NDAPage() {
     setSubmitting(true);
     setError("");
     try {
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/vendor-sign-nda`, {
+      const resp = await fetch(`${FUNCTIONS_BASE}/vendor-sign-nda`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${sessionToken}`,

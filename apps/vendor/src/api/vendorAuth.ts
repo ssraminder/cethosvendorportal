@@ -1,4 +1,6 @@
-const BASE = import.meta.env.VITE_SUPABASE_URL + "/functions/v1";
+import { FUNCTIONS_BASE } from "./functionsBase";
+
+const BASE = FUNCTIONS_BASE;
 
 // Network errors ("Failed to fetch") happen when the request never gets a
 // response — usually a regional block on supabase.co domains, an aggressive
@@ -58,16 +60,18 @@ export async function testConnectivity(): Promise<ConnectivityProbe> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
+    // Same-origin POST with a dummy body. No CORS preflight (POST to same
+    // origin), so this actually exercises the real path. Server returns
+    // 400 ("invalid email") which is fine — reachable=ok if we got any
+    // response at all.
     const res = await fetch(`${BASE}/vendor-auth-check`, {
-      method: "OPTIONS",
-      headers: {
-        "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "content-type",
-      },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "__connectivity_probe__@cethos.local" }),
       signal: controller.signal,
     });
     return {
-      reachable: res.ok,
+      reachable: true,
       status: res.status,
       duration_ms: Date.now() - start,
     };

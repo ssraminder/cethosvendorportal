@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { FUNCTIONS_BASE } from "../../api/functionsBase";
 
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const BASE = FUNCTIONS_BASE;
 
 /**
  * Shown at the very top of the layout when the active vendor session is
