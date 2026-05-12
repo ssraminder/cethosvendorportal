@@ -121,6 +121,31 @@
   status = 200
   force = true
 
+# NDA — status, two-factor OTP gating, and signing.
+[[redirects]]
+  from = "/sb/get-nda-status"
+  to = "/.netlify/functions/get-nda-status"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/nda-otp-send"
+  to = "/.netlify/functions/nda-otp-send"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/nda-otp-verify"
+  to = "/.netlify/functions/nda-otp-verify"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/sign-nda"
+  to = "/.netlify/functions/sign-nda"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"
