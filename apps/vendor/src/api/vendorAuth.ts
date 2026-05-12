@@ -253,15 +253,9 @@ export async function updateProfile(
     native_languages?: string[];
   }
 ): Promise<ProfileUpdateResponse> {
-  const res = await fetch(`${BASE}/vendor-update-profile`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
-  return res.json();
+  // Route through /sb/update-profile (Netlify Function → Postgres). Same
+  // bypass pattern as the rest of Phase 3 — works from blocked regions.
+  return postAuth<ProfileUpdateResponse>("update-profile", { session_token: token, ...data });
 }
 
 export async function sendPhoneVerification(
