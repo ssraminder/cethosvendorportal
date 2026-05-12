@@ -16,6 +16,8 @@ import { InvoiceList } from "./components/invoices/InvoiceList";
 import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
 import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
 import { NDAPage } from "./components/nda/NDAPage";
+import { VendorReferencesEntry } from "./components/references/VendorReferencesEntry";
+import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
 
 function App() {
   return (
@@ -26,6 +28,8 @@ function App() {
           <Route path="/activate" element={<ActivatePage />} />
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
+          <Route path="/vendor-references/:token" element={<VendorReferencesEntry />} />
+          <Route path="/vendor-reference-feedback/:token" element={<VendorReferenceFeedback />} />
           <Route path="/" element={<VendorShell />}>
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />
