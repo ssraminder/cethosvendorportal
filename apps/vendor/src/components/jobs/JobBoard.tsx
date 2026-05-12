@@ -58,7 +58,10 @@ function formatOfferExpiry(expiresAt: string | null): { text: string; expired: b
   const d = new Date(expiresAt);
   const now = new Date();
   const diff = d.getTime() - now.getTime();
-  if (diff < 0) return { text: "Expired", expired: true };
+  // "Deadline passed" is friendlier and more accurate than "Expired" —
+  // the offer's response window closed; the step itself isn't dead and
+  // the admin may still reassign or re-offer.
+  if (diff < 0) return { text: "Deadline passed", expired: true };
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const days = Math.floor(hours / 24);
   if (hours < 24) return { text: `Expires in ${hours}h`, expired: false };
