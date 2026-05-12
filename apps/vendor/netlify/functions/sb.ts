@@ -11,7 +11,10 @@
  * Bound to /sb/* via netlify.toml redirect.
  */
 
-const SUPABASE_BASE = "https://api.cethos.com/functions/v1";
+// Trying direct supabase.co — Custom Domain returned NOT_FOUND from both
+// Netlify Edge and Lambda. Possibly Supabase Custom Domain has stricter
+// origin/IP validation that rejects cloud-provider IPs.
+const SUPABASE_BASE = "https://lmzoyezvsjgsxveoakdr.supabase.co/functions/v1";
 
 interface NetlifyEvent {
   path: string;
