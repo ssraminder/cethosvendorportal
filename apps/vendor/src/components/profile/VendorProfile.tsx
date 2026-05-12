@@ -9,7 +9,9 @@ import {
   getFullProfile,
   lookupProvinces,
   lookupTaxRate,
+  requestContractorUpgrade,
   type Province,
+  type ContractorUpgradeRequest,
 } from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import { CurrencySelect } from "../shared/CurrencySelect";
@@ -30,6 +32,9 @@ import {
   Percent,
   DollarSign,
   Languages,
+  Briefcase,
+  ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
 
 // --- Editable text field ---
@@ -649,6 +654,182 @@ function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
   );
 }
 
+// --- Contractor type (Individual / Business) with upgrade workflow ---
+interface ContractorTypeRowProps {
+  contractorType: "individual" | "business";
+  upgradeRequest: ContractorUpgradeRequest | null;
+  onSubmitUpgrade: (justification: string) => Promise<string | null>;
+  onWithdrawUpgrade: () => Promise<string | null>;
+}
+
+function ContractorTypeRow({
+  contractorType,
+  upgradeRequest,
+  onSubmitUpgrade,
+  onWithdrawUpgrade,
+}: ContractorTypeRowProps) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [justification, setJustification] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const isBusiness = contractorType === "business";
+  const pending = !isBusiness && upgradeRequest?.status === "pending";
+  const rejected = !isBusiness && upgradeRequest?.status === "rejected";
+
+  const handleSubmit = async () => {
+    if (justification.trim().length < 20) {
+      setError("Tell us a bit more — at least 20 characters.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    const err = await onSubmitUpgrade(justification.trim());
+    setSubmitting(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setModalOpen(false);
+    setJustification("");
+  };
+
+  const handleWithdraw = async () => {
+    setSubmitting(true);
+    setError("");
+    const err = await onWithdrawUpgrade();
+    setSubmitting(false);
+    if (err) setError(err);
+  };
+
+  return (
+    <div className="px-6 py-4">
+      <div className="flex items-start gap-4">
+        <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+          <Briefcase className="w-4 h-4 text-gray-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+            Contractor Type
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                isBusiness
+                  ? "bg-teal-50 text-teal-700"
+                  : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {isBusiness && <ShieldCheck className="w-3 h-3" />}
+              {isBusiness ? "Business" : "Individual"}
+            </span>
+
+            {pending && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                Upgrade pending review
+              </span>
+            )}
+            {rejected && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700">
+                Upgrade rejected
+              </span>
+            )}
+          </div>
+
+          {/* Sub-text + actions */}
+          {isBusiness && (
+            <p className="text-xs text-gray-500 mt-1.5">
+              You're approved to subcontract jobs to other freelancers on your team.
+            </p>
+          )}
+
+          {!isBusiness && !pending && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 mb-1.5">
+                Individual contractors work in their own capacity. Upgrade to a business account to subcontract jobs to other freelancers on your team — subject to vendor-manager approval.
+              </p>
+              {rejected && upgradeRequest?.reviewer_notes && (
+                <p className="text-xs text-red-600 mb-2">
+                  Reviewer note: {upgradeRequest.reviewer_notes}
+                </p>
+              )}
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700"
+              >
+                Request business upgrade <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {pending && (
+            <div className="mt-2 text-xs text-gray-500 space-y-1">
+              <p>
+                Submitted {new Date(upgradeRequest!.requested_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}. We'll email you when a vendor manager reviews this.
+              </p>
+              {upgradeRequest!.vendor_justification && (
+                <p className="italic text-gray-400">"{upgradeRequest!.vendor_justification}"</p>
+              )}
+              <button
+                onClick={handleWithdraw}
+                disabled={submitting}
+                className="text-gray-500 hover:text-gray-700 underline disabled:opacity-50"
+              >
+                Withdraw request
+              </button>
+              {error && <p className="text-red-600">{error}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              Request business upgrade
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Tell us about your business: how many translators on your team, what work you'd subcontract, why this is the right structure. A vendor manager will review and respond by email.
+            </p>
+            <textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              rows={5}
+              maxLength={1000}
+              placeholder="e.g. I run a 4-translator studio specialising in legal Dutch→English. I'd subcontract overflow capacity to colleagues who are also Cethos vendors when I'm at capacity."
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              {justification.length}/1000
+            </p>
+            {error && (
+              <p className="text-xs text-red-600 mt-2">{error}</p>
+            )}
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={() => { setModalOpen(false); setError(""); }}
+                disabled={submitting}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || justification.trim().length < 20}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 rounded hover:bg-teal-700 disabled:opacity-50"
+              >
+                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Submit request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Main profile page ---
 export function VendorProfile() {
   const { vendor, sessionToken, setVendor } = useVendorAuth();
@@ -660,6 +841,8 @@ export function VendorProfile() {
   const [provinceState, setProvinceState] = useState("");
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
+  const [contractorType, setContractorType] = useState<"individual" | "business">("individual");
+  const [upgradeRequest, setUpgradeRequest] = useState<ContractorUpgradeRequest | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   const countryOptions: SelectOption[] = COUNTRIES.map((c) => ({ value: c, label: c }));
@@ -692,6 +875,8 @@ export function VendorProfile() {
         setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
         setProvinceState(result.vendor.province_state || "");
         setNativeLanguages(result.vendor.native_languages || []);
+        setContractorType(result.vendor.contractor_type === "business" ? "business" : "individual");
+        setUpgradeRequest(result.contractor_upgrade_request ?? null);
 
         // Load provinces if vendor is in Canada
         if (result.vendor.country === "Canada") {
@@ -806,6 +991,22 @@ export function VendorProfile() {
     return err;
   }
 
+  async function submitContractorUpgrade(justification: string): Promise<string | null> {
+    const res = await requestContractorUpgrade(sessionToken!, { action: "submit", justification });
+    if (res.error || !res.request) return res.error ?? "Failed to submit";
+    setUpgradeRequest(res.request);
+    return null;
+  }
+
+  async function withdrawContractorUpgrade(): Promise<string | null> {
+    const res = await requestContractorUpgrade(sessionToken!, { action: "withdraw" });
+    if (res.error) return res.error;
+    if (upgradeRequest) {
+      setUpgradeRequest({ ...upgradeRequest, status: "withdrawn" });
+    }
+    return null;
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       {/* Profile header */}
@@ -889,6 +1090,14 @@ export function VendorProfile() {
             <NativeLanguagesField
               value={nativeLanguages}
               onSave={saveNativeLanguages}
+            />
+          )}
+          {profileLoaded && (
+            <ContractorTypeRow
+              contractorType={contractorType}
+              upgradeRequest={upgradeRequest}
+              onSubmitUpgrade={submitContractorUpgrade}
+              onWithdrawUpgrade={withdrawContractorUpgrade}
             />
           )}
           <ReadOnlyField icon={CircleDot} label="Availability" value={vendor.availability_status || "Not set"} />
