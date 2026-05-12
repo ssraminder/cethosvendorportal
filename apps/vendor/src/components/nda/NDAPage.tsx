@@ -86,11 +86,19 @@ export function NDAPage() {
   const [justSigned, setJustSigned] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // Two-factor OTP state. Phone is only relevant when vendor.phone is set.
+  // OTP state for whichever channel the vendor picks. Phone is only
+  // available when vendor.phone is set; otherwise the chooser is
+  // skipped and we auto-select email.
   const [emailOtp, setEmailOtp] = useState<OtpState>(blankOtp);
   const [phoneOtp, setPhoneOtp] = useState<OtpState>(blankOtp);
+  const [selectedChannel, setSelectedChannel] = useState<"email" | "phone" | null>(null);
 
   const hasPhone = !!vendor?.phone;
+  // If the vendor doesn't have a phone, there's nothing to pick — auto-
+  // select email so the chooser never shows for those vendors.
+  useEffect(() => {
+    if (!hasPhone && selectedChannel === null) setSelectedChannel("email");
+  }, [hasPhone, selectedChannel]);
   // Either channel is enough. Showing both keeps the option open for
   // vendors who prefer one over the other (poor email reach vs. phone
   // landed in a different country), and the audit log records which
@@ -389,31 +397,81 @@ export function NDAPage() {
           <div>
             <h3 className="text-base font-semibold text-gray-900 mb-1">Verify your identity</h3>
             <p className="text-xs text-gray-600">
-              For ISO audit purposes we re-verify your identity at the moment of signing — even if you're already logged in. Verify <strong>either</strong> your email or phone to continue.
+              For ISO audit purposes we re-verify your identity at the moment of signing — even if you're already logged in. Choose <strong>email or phone</strong>; either is enough.
             </p>
           </div>
 
-          <OtpRow
-            icon={<Mail className="w-4 h-4" />}
-            label={`Email${vendor?.email ? ` (${vendor.email})` : ""}`}
-            state={emailOtp}
-            setter={setEmailOtp}
-            onSend={() => sendOtp("email")}
-            onVerify={() => verifyOtp("email")}
-          />
+          {/* Chooser: only shown when phone is on file AND nothing
+              verified yet AND no channel selected yet. Once a channel
+              succeeds, the other is hidden so it can't be tried. */}
+          {hasPhone && !allVerified && selectedChannel === null && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setSelectedChannel("email")}
+                className="flex items-start gap-3 text-left rounded-lg border border-gray-200 hover:border-teal-300 hover:bg-teal-50/40 p-3 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">Email me a code</p>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{vendor?.email}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => setSelectedChannel("phone")}
+                className="flex items-start gap-3 text-left rounded-lg border border-gray-200 hover:border-teal-300 hover:bg-teal-50/40 p-3 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                  <Phone className="w-4 h-4 text-gray-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">Text me a code</p>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{vendor?.phone}</p>
+                </div>
+              </button>
+            </div>
+          )}
 
-          {hasPhone ? (
-            <OtpRow
-              icon={<Phone className="w-4 h-4" />}
-              label={`Phone${vendor?.phone ? ` (${vendor.phone})` : ""}`}
-              state={phoneOtp}
-              setter={setPhoneOtp}
-              onSend={() => sendOtp("phone")}
-              onVerify={() => verifyOtp("phone")}
-            />
-          ) : (
-            <div className="text-xs text-gray-500 italic px-1">
-              No phone on file. Add a phone in your Profile if you'd like to verify by SMS.
+          {selectedChannel === "email" && (
+            <div className="space-y-2">
+              <OtpRow
+                icon={<Mail className="w-4 h-4" />}
+                label={`Email${vendor?.email ? ` (${vendor.email})` : ""}`}
+                state={emailOtp}
+                setter={setEmailOtp}
+                onSend={() => sendOtp("email")}
+                onVerify={() => verifyOtp("email")}
+              />
+              {hasPhone && !emailOtp.verified && (
+                <button
+                  onClick={() => { setEmailOtp(blankOtp); setSelectedChannel(null); }}
+                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  Use phone instead
+                </button>
+              )}
+            </div>
+          )}
+
+          {selectedChannel === "phone" && (
+            <div className="space-y-2">
+              <OtpRow
+                icon={<Phone className="w-4 h-4" />}
+                label={`Phone${vendor?.phone ? ` (${vendor.phone})` : ""}`}
+                state={phoneOtp}
+                setter={setPhoneOtp}
+                onSend={() => sendOtp("phone")}
+                onVerify={() => verifyOtp("phone")}
+              />
+              {!phoneOtp.verified && (
+                <button
+                  onClick={() => { setPhoneOtp(blankOtp); setSelectedChannel(null); }}
+                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  Use email instead
+                </button>
+              )}
             </div>
           )}
 
