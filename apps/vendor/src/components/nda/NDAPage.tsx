@@ -223,54 +223,68 @@ export function NDAPage() {
       const bodyHeightPt = pageHeight - bodyTop - FOOTER_H - 6;
       const bodyWidthPt = pageWidth - SIDE * 2;
 
-      // Render body off-DOM at a fixed CSS-pixel width. html2canvas
-      // handles `position: absolute; left: -10000px` correctly as long
-      // as the element has explicit dimensions.
+      // Render body off-DOM at a fixed CSS-pixel width. Inline styles
+      // are applied directly to each element (rather than via a <style>
+      // tag) because html2canvas v1 clones content into a sandbox iframe
+      // and can miss <style> rules — which left earlier renders using
+      // browser default styling and produced a runaway page count.
       const renderWidthPx = 800;
       const wrap = document.createElement("div");
-      wrap.style.cssText = `position:absolute;left:-10000px;top:0;width:${renderWidthPx}px;background:#fff;color:#1f2937`;
-      wrap.innerHTML = `
-        <style>
-          .nda-pdf-body { font-family: 'Times New Roman', Georgia, serif; font-size: 15px; line-height: 1.6; color: #1f2937; }
-          .nda-pdf-body h1, .nda-pdf-body h2, .nda-pdf-body h3 {
-            font-family: Helvetica, Arial, sans-serif; color: #111827; line-height: 1.25;
-          }
-          .nda-pdf-body h1 { font-size: 22px; margin: 18px 0 10px; }
-          .nda-pdf-body h2 { font-size: 18px; margin: 18px 0 8px; }
-          .nda-pdf-body h3 { font-size: 15.5px; margin: 14px 0 6px; }
-          .nda-pdf-body p { margin: 0 0 10px; }
-          .nda-pdf-body ul, .nda-pdf-body ol { margin: 0 0 10px 22px; padding: 0; }
-          .nda-pdf-body li { margin: 4px 0; }
-          .nda-pdf-body strong { color: #111827; font-weight: bold; }
-        </style>
-        <div class="nda-pdf-body">${sig.signed_html_snapshot}</div>
-      `;
+      wrap.style.cssText = `position:absolute;left:-10000px;top:0;width:${renderWidthPx}px;background:#fff;color:#1f2937;font-family:'Times New Roman',Georgia,serif;font-size:15px;line-height:1.55`;
+      wrap.innerHTML = sig.signed_html_snapshot;
+
+      const HEAD_FONT = "Helvetica, Arial, sans-serif";
+      wrap.querySelectorAll("h1, h2, h3").forEach((el) => {
+        const h = el as HTMLElement;
+        h.style.fontFamily = HEAD_FONT;
+        h.style.color = "#111827";
+        h.style.lineHeight = "1.25";
+        h.style.fontWeight = "700";
+        h.style.pageBreakAfter = "avoid";
+        if (h.tagName === "H1") { h.style.fontSize = "22px"; h.style.margin = "18px 0 10px"; }
+        if (h.tagName === "H2") { h.style.fontSize = "18px"; h.style.margin = "18px 0 8px"; }
+        if (h.tagName === "H3") { h.style.fontSize = "15.5px"; h.style.margin = "14px 0 6px"; }
+      });
+      wrap.querySelectorAll("p").forEach((el) => {
+        (el as HTMLElement).style.margin = "0 0 10px";
+      });
+      wrap.querySelectorAll("ul, ol").forEach((el) => {
+        const l = el as HTMLElement;
+        l.style.margin = "0 0 10px 22px";
+        l.style.padding = "0";
+      });
+      wrap.querySelectorAll("li").forEach((el) => {
+        (el as HTMLElement).style.margin = "4px 0";
+      });
+      wrap.querySelectorAll("strong, b").forEach((el) => {
+        const s = el as HTMLElement;
+        s.style.color = "#111827";
+        s.style.fontWeight = "700";
+      });
       document.body.appendChild(wrap);
 
       try {
         const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
-        // pt-per-px ratio: bodyWidthPt mapped over canvas.width pixels.
-        const pxToPt = bodyWidthPt / canvas.width;
-        const bodyHeightPx = Math.floor(bodyHeightPt / pxToPt);
 
-        let consumedPx = 0;
-        let isFirstPage = true;
-        while (consumedPx < canvas.height) {
-          if (!isFirstPage) pdf.addPage();
-          isFirstPage = false;
+        // Single-image multi-page rendering. Each PDF page draws the
+        // full body image at a negative Y offset; the PDF page box
+        // naturally clips it. We then mask any bleed into the footer
+        // band with a white rectangle before drawing the footer text.
+        // This pattern produces a small file (one embedded image) and
+        // a sane page count regardless of slicing math.
+        const imgFullHeightPt = (canvas.height / canvas.width) * bodyWidthPt;
+        const imgData = canvas.toDataURL("image/jpeg", 0.88);
 
-          const sliceHeightPx = Math.min(bodyHeightPx, canvas.height - consumedPx);
-          const sliceCanvas = document.createElement("canvas");
-          sliceCanvas.width = canvas.width;
-          sliceCanvas.height = sliceHeightPx;
-          const ctx = sliceCanvas.getContext("2d");
-          ctx?.drawImage(canvas, 0, -consumedPx);
-
-          const sliceImg = sliceCanvas.toDataURL("image/png");
-          const sliceHeightPt = sliceHeightPx * pxToPt;
-          pdf.addImage(sliceImg, "PNG", SIDE, bodyTop, bodyWidthPt, sliceHeightPt);
-
-          consumedPx += sliceHeightPx;
+        const totalPages = Math.max(1, Math.ceil(imgFullHeightPt / bodyHeightPt));
+        for (let p = 0; p < totalPages; p++) {
+          if (p > 0) pdf.addPage();
+          const yOffset = bodyTop - p * bodyHeightPt;
+          pdf.addImage(imgData, "JPEG", SIDE, yOffset, bodyWidthPt, imgFullHeightPt);
+          // Mask any image overflow into header/footer bands so the
+          // overlays drawn below sit on clean white.
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(0, 0, pageWidth, bodyTop, "F");
+          pdf.rect(0, pageHeight - FOOTER_H - 6, pageWidth, FOOTER_H + 6, "F");
         }
 
         // Audit page after the body.
