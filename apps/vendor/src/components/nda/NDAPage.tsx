@@ -110,31 +110,73 @@ export function NDAPage() {
     }
   };
 
-  const downloadSnapshot = () => {
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadSnapshot = async () => {
     if (!status?.current_signature) return;
     const sig = status.current_signature;
-    const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Cethos NDA — signed copy</title>
-<style>body{font-family:Georgia,serif;max-width:780px;margin:40px auto;padding:0 24px;line-height:1.55;color:#222}h1,h2,h3{font-family:-apple-system,BlinkMacSystemFont,sans-serif}.meta{background:#f6f6f6;padding:14px 18px;border-left:3px solid #888;margin:24px 0;font-family:-apple-system,monospace;font-size:13px}.meta b{display:inline-block;width:140px}</style>
-</head><body>
-<div class="meta">
-  <div><b>Signed by:</b> ${escapeHtml(sig.signed_full_name)}</div>
-  <div><b>Email:</b> ${escapeHtml(sig.signed_email ?? "—")}</div>
-  <div><b>Signed at:</b> ${new Date(sig.signed_at).toUTCString()}</div>
-  <div><b>Signer IP:</b> ${escapeHtml(sig.signer_ip ?? "—")}</div>
-  <div><b>Signature ID:</b> ${sig.id}</div>
-</div>
-${sig.signed_html_snapshot}
-</body></html>`;
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `cethos-nda-${sig.signed_at.slice(0, 10)}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setDownloading(true);
+    try {
+      // Lazy-load the PDF deps so they don't bloat the main bundle.
+      // jsPDF + html2canvas are ~150KB gzipped and only needed when the
+      // vendor explicitly downloads a signed copy.
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import("jspdf"),
+        import("html2canvas"),
+      ]);
+
+      // Build the printable DOM offscreen so the live page isn't disturbed.
+      // 794px ~= A4 at 96dpi minus margins — html2canvas will rasterise
+      // this faithfully and jsPDF lays it onto an A4 page.
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "position:fixed;left:-99999px;top:0;width:794px;padding:48px 56px;background:#fff;font-family:Georgia,serif;line-height:1.55;color:#222";
+      wrap.innerHTML = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f6f6f6;padding:14px 18px;border-left:3px solid #888;margin:0 0 24px;font-size:12px">
+          <div><b style="display:inline-block;width:140px">Signed by:</b> ${escapeHtml(sig.signed_full_name)}</div>
+          <div><b style="display:inline-block;width:140px">Email:</b> ${escapeHtml(sig.signed_email ?? "—")}</div>
+          <div><b style="display:inline-block;width:140px">Signed at:</b> ${new Date(sig.signed_at).toUTCString()}</div>
+          <div><b style="display:inline-block;width:140px">Signer IP:</b> ${escapeHtml(sig.signer_ip ?? "—")}</div>
+          <div><b style="display:inline-block;width:140px">Signature ID:</b> ${sig.id}</div>
+        </div>
+        ${sig.signed_html_snapshot}
+      `;
+      document.body.appendChild(wrap);
+
+      try {
+        const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+        const pdf = new jsPDF({ unit: "pt", format: "a4" });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const imgData = canvas.toDataURL("image/png");
+
+        if (imgHeight <= pageHeight) {
+          pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+        } else {
+          // Spill long NDAs across pages. We re-add the same tall image
+          // with a negative Y offset per page; jsPDF clips at the page
+          // boundary so each page shows a different vertical slice.
+          let heightLeft = imgHeight;
+          let position = 0;
+          pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+          while (heightLeft > 0) {
+            position -= pageHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
+        }
+        pdf.save(`cethos-nda-${sig.signed_at.slice(0, 10)}.pdf`);
+      } finally {
+        document.body.removeChild(wrap);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to generate PDF");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loading) {
@@ -199,9 +241,15 @@ ${sig.signed_html_snapshot}
           </div>
           <button
             onClick={downloadSnapshot}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-800 bg-white border border-green-300 rounded hover:bg-green-100"
+            disabled={downloading}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-800 bg-white border border-green-300 rounded hover:bg-green-100 disabled:opacity-60"
           >
-            <Download className="w-3.5 h-3.5" /> Download signed copy
+            {downloading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            {downloading ? "Generating PDF…" : "Download signed copy (PDF)"}
           </button>
         </div>
       )}
