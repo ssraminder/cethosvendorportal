@@ -275,16 +275,28 @@ export function NDAPage() {
         const imgFullHeightPt = (canvas.height / canvas.width) * bodyWidthPt;
         const imgData = canvas.toDataURL("image/png");
 
-        const totalPages = Math.max(1, Math.ceil(imgFullHeightPt / bodyHeightPt));
+        // Page-break alignment: text lines don't line up with arbitrary
+        // page boundaries, so any line that straddles the cut gets sliced
+        // in half. We solve this by leaving a safety strip at the bottom
+        // of each body area that masks the partial line, and advancing
+        // the next page by (bodyHeightPt - safety) so the masked line
+        // reappears whole at the top of the next page. Safety must be
+        // > max line height; headings are tallest at ~28pt.
+        const PAGE_BREAK_SAFETY = 32;
+        const stride = bodyHeightPt - PAGE_BREAK_SAFETY;
+
+        const totalPages = Math.max(1, Math.ceil(imgFullHeightPt / stride));
         for (let p = 0; p < totalPages; p++) {
           if (p > 0) pdf.addPage();
-          const yOffset = bodyTop - p * bodyHeightPt;
+          const yOffset = bodyTop - p * stride;
           pdf.addImage(imgData, "PNG", SIDE, yOffset, bodyWidthPt, imgFullHeightPt);
-          // Mask any image overflow into header/footer bands so the
-          // overlays drawn below sit on clean white.
           pdf.setFillColor(255, 255, 255);
+          // Mask above body (header band).
           pdf.rect(0, 0, pageWidth, bodyTop, "F");
-          pdf.rect(0, pageHeight - FOOTER_H - 6, pageWidth, FOOTER_H + 6, "F");
+          // Mask the safety strip at the bottom of body + the footer band.
+          // The partial line that would be cut now lives in this masked
+          // strip and reappears whole at the top of the next page.
+          pdf.rect(0, bodyTop + stride, pageWidth, pageHeight - bodyTop - stride, "F");
         }
 
         // Audit page after the body.
