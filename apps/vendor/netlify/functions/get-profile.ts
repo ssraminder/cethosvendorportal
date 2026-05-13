@@ -142,16 +142,30 @@ export const handler = async (event: {
     );
     const translatorProfile = translators[0] ?? null;
 
-    // 5 dashboard checklist items, 20% each — matches Supabase function logic.
+    // Has the vendor uploaded any ISO 17100 evidence? Count rows in
+    // vendor_cvs OR a non-empty certifications jsonb on the vendor row.
+    const cvCountRows = await query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM vendor_cvs WHERE vendor_id = $1`,
+      [vendor_id],
+    );
+    const cvCount = cvCountRows[0]?.n ?? 0;
+    const certsArr = Array.isArray(vendor.certifications) ? (vendor.certifications as unknown[]) : [];
+    const hasIsoEvidence = cvCount > 0 || certsArr.length > 0;
+
     const completedSteps: Record<string, boolean> = {
       photo: !!translatorProfile?.profile_photo_url,
       availability: !!vendor.availability_status && vendor.availability_status !== "available",
       languages: languagePairs.some((lp) => lp.is_active),
       rates: rates.length > 0,
       payment: !!paymentInfo?.payment_method,
+      iso_native_languages: Array.isArray(vendor.native_languages) && vendor.native_languages.length > 0,
+      iso_years_experience: vendor.years_experience != null,
+      iso_specializations: Array.isArray(vendor.specializations) && (vendor.specializations as unknown[]).length > 0,
+      iso_evidence_uploaded: hasIsoEvidence,
     };
-    let completeness = 0;
-    for (const done of Object.values(completedSteps)) if (done) completeness += 20;
+    const totalSteps = Object.keys(completedSteps).length;
+    const doneSteps = Object.values(completedSteps).filter(Boolean).length;
+    const completeness = totalSteps === 0 ? 0 : Math.round((doneSteps / totalSteps) * 100);
 
     return json({
       vendor,

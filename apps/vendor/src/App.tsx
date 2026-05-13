@@ -18,6 +18,7 @@ import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
 import { NDAPage } from "./components/nda/NDAPage";
 import { VendorReferencesEntry } from "./components/references/VendorReferencesEntry";
 import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
+import { IsoEvidencePage } from "./components/iso-evidence/IsoEvidencePage";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
           <Route path="/vendor-references/:token" element={<VendorReferencesEntry />} />
           <Route path="/vendor-reference-feedback/:token" element={<VendorReferenceFeedback />} />
+          <Route path="/iso-evidence/:token" element={<IsoEvidencePage />} />
           <Route path="/" element={<VendorShell />}>
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />
