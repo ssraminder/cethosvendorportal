@@ -113,10 +113,16 @@ export const handler = async (event: {
       // claims a step, leftover pending offers shouldn't clutter the
       // Offered tab — the vendor can't act on them anyway.
       //
-      // Cancelled/completed steps are also filtered. Expired offers
-      // (offers.expires_at < now()) stay visible but are dimmed and
-      // labelled "Deadline passed" client-side so the vendor can see
-      // what happened.
+      // Cancelled/completed steps are also filtered.
+      //
+      // Defense in depth: also drop offers that have expired with no
+      // response. These should already be flipped to 'expired' or
+      // 'retracted' by the admin-side action handler when the step is
+      // reset, but occasionally an admin path leaves them stale and
+      // there's no UX value in showing a "deadline passed" pending
+      // offer the vendor can't act on. The earlier behaviour was to
+      // keep them visible-and-dimmed; that turned out to be confusing
+      // (offers appeared "live" in the tab even though they were dead).
       const offers = await query<OfferRow>(
         `SELECT o.id, o.step_id, o.status, o.vendor_rate, o.vendor_rate_unit, o.vendor_total, o.vendor_currency,
                 o.pricing_mode, o.deadline, o.expires_at, o.instructions, o.offered_at, o.offered_by,
@@ -129,6 +135,9 @@ export const handler = async (event: {
            AND o.status = 'pending'
            AND (s.vendor_id IS NULL OR s.vendor_id = $1)
            AND s.status NOT IN ('cancelled', 'approved', 'completed', 'skipped')
+           AND NOT (o.expires_at IS NOT NULL
+                    AND o.expires_at < NOW()
+                    AND o.responded_at IS NULL)
          ORDER BY o.offered_at DESC`,
         [vendor_id],
       );
@@ -272,7 +281,19 @@ export const handler = async (event: {
 
     // Counts across all three tabs
     const offeredCount = await query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM vendor_step_offers WHERE vendor_id = $1 AND status = 'pending'`,
+      // Same defensive filter as the offered tab query above: don't
+      // count expired/unresponded pending offers, and skip offers
+      // where another vendor already has the step.
+      `SELECT COUNT(*)::text AS n
+       FROM vendor_step_offers o
+       JOIN order_workflow_steps s ON s.id = o.step_id
+       WHERE o.vendor_id = $1
+         AND o.status = 'pending'
+         AND (s.vendor_id IS NULL OR s.vendor_id = $1)
+         AND s.status NOT IN ('cancelled', 'approved', 'completed', 'skipped')
+         AND NOT (o.expires_at IS NOT NULL
+                  AND o.expires_at < NOW()
+                  AND o.responded_at IS NULL)`,
       [vendor_id],
     );
     const activeCount = await query<{ n: string }>(
