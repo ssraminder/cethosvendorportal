@@ -17,7 +17,13 @@ const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "l
 // inside the body. Inclusion is safe — this key is meant to ship with
 // the client bundle.
 const ANON_KEY: string | undefined = (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY;
-const gatewayHeaders = ANON_KEY ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } : {};
+// Typed as Record<string, string> explicitly so the empty branch ({}) of
+// the ternary doesn't poison the inference with `{ apikey?: undefined }`,
+// which production tsc (-b mode) rejects when spread into Record-typed
+// header bags downstream.
+const gatewayHeaders: Record<string, string> = ANON_KEY
+  ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+  : {};
 
 export interface IsoRequestItem {
   slug: string;
@@ -108,7 +114,9 @@ export async function explainIsoEvidenceItem(
   sessionToken?: string | null,
 ): Promise<{ success: boolean; error?: string; data?: { request_id: string; status: string; all_done: boolean; resolved_count: number; total_count: number } }> {
   const headers: Record<string, string> = sessionToken
-    ? { ...(ANON_KEY ? { apikey: ANON_KEY } : {}), Authorization: `Bearer ${sessionToken}` }
+    ? ANON_KEY
+      ? { apikey: ANON_KEY, Authorization: `Bearer ${sessionToken}` }
+      : { Authorization: `Bearer ${sessionToken}` }
     : { ...gatewayHeaders };
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-evidence-explain-item`,
@@ -127,7 +135,9 @@ export async function completeIsoEvidenceItem(
   // the server's cross-check (request.vendor_id === session.vendor_id) to
   // run. Otherwise fall back to the anon-key envelope.
   const headers: Record<string, string> = sessionToken
-    ? { ...(ANON_KEY ? { apikey: ANON_KEY } : {}), Authorization: `Bearer ${sessionToken}` }
+    ? ANON_KEY
+      ? { apikey: ANON_KEY, Authorization: `Bearer ${sessionToken}` }
+      : { Authorization: `Bearer ${sessionToken}` }
     : { ...gatewayHeaders };
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-evidence-complete-item`,
