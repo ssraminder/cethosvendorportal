@@ -5,6 +5,7 @@ import { getSteps } from "../../api/vendorJobs";
 import { VendorSidebar } from "./VendorSidebar";
 import { VendorHeader } from "./VendorHeader";
 import { ImpersonationBanner } from "./ImpersonationBanner";
+import { BugReportFab } from "../support/BugReportFab";
 import { Loader2 } from "lucide-react";
 
 export function VendorShell() {
@@ -54,6 +55,7 @@ export function VendorShell() {
           <Outlet context={{ setJobOfferedCount }} />
         </main>
       </div>
+      <BugReportFab />
     </div>
   );
 }
