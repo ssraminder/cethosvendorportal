@@ -14,16 +14,25 @@ const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "l
 // MCP-deployed edge functions land with verify_jwt=true. The Supabase
 // gateway accepts the publishable anon key in the apikey header to
 // satisfy that check; the function itself does its own token validation
-// inside the body. Inclusion is safe — this key is meant to ship with
-// the client bundle.
-const ANON_KEY: string | undefined = (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY;
-// Typed as Record<string, string> explicitly so the empty branch ({}) of
-// the ternary doesn't poison the inference with `{ apikey?: undefined }`,
-// which production tsc (-b mode) rejects when spread into Record-typed
-// header bags downstream.
-const gatewayHeaders: Record<string, string> = ANON_KEY
-  ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
-  : {};
+// inside the body. Inclusion is safe — this key is the project's
+// publishable key, designed to ship with the client bundle.
+//
+// We try the build-time env var first, then fall back to the literal
+// publishable key. The fallback exists because production Netlify is
+// not currently exposing VITE_SUPABASE_ANON_KEY to the build, which
+// silently strands these endpoints behind the gateway with 401s. The
+// key is bound to project ref `lmzoyezvsjgsxveoakdr` and rotation
+// (rare) will require a code update, but that's a worthwhile trade
+// for resilience.
+const PUBLISHABLE_ANON_KEY_FALLBACK =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
+const ANON_KEY: string =
+  (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY
+  || PUBLISHABLE_ANON_KEY_FALLBACK;
+const gatewayHeaders: Record<string, string> = {
+  apikey: ANON_KEY,
+  Authorization: `Bearer ${ANON_KEY}`,
+};
 
 export interface IsoRequestItem {
   slug: string;
