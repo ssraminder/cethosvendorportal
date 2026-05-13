@@ -92,24 +92,26 @@ export function UnsubscribePage() {
           <p className="text-sm text-gray-700">
             {confirmedEmail ? (
               <>
-                <span className="font-medium">{confirmedEmail}</span> will no longer receive
-                broadcast emails from CETHOS.
+                <span className="font-medium">{confirmedEmail}</span> has been unsubscribed and
+                your CETHOS vendor profile has been <span className="font-medium">deactivated</span>.
               </>
             ) : (
-              <>You've been unsubscribed from CETHOS broadcast emails.</>
+              <>
+                You've been unsubscribed and your CETHOS vendor profile has been{" "}
+                <span className="font-medium">deactivated</span>.
+              </>
             )}
           </p>
           <p className="text-sm text-gray-600">
-            You'll still receive transactional emails tied to active work — job offers,
-            deliveries, and invoices. Those aren't opt-outable while you're an active vendor on
-            our roster.
+            You won't receive any further emails from CETHOS — broadcast or transactional — and
+            we won't route new job offers to you while your profile is inactive.
           </p>
           <p className="text-sm text-gray-600">
-            Changed your mind? Reply to any CETHOS email or contact{" "}
+            Changed your mind? Reply to any past CETHOS email or contact{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-600 hover:text-blue-700">
               {SUPPORT_EMAIL}
             </a>{" "}
-            and we'll add you back.
+            and we'll reactivate your profile and add you back.
           </p>
         </div>
       );
@@ -117,6 +119,15 @@ export function UnsubscribePage() {
 
     return (
       <div className="space-y-5">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-medium">Heads up — this also deactivates your profile.</p>
+            <p className="mt-1 text-amber-800">
+              Unsubscribing here will stop all CETHOS emails to you <em>and</em> deactivate your
+              vendor profile, so we won't route new job offers your way until you ask us to
+              reactivate it.
+            </p>
+          </div>
+
         <p className="text-sm text-gray-700">
           Before you go — would you let us know why? Your feedback helps us send fewer, better
           emails.
@@ -170,11 +181,12 @@ export function UnsubscribePage() {
           disabled={stage === "submitting"}
           className="w-full py-2.5 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
         >
-          {stage === "submitting" ? "Unsubscribing..." : "Unsubscribe me"}
+          {stage === "submitting" ? "Unsubscribing..." : "Unsubscribe and deactivate my profile"}
         </button>
 
         <p className="text-xs text-gray-500 text-center">
-          You can skip the reason — clicking the button above will unsubscribe you either way.
+          The reason is optional — clicking the button above will unsubscribe you and deactivate
+          your profile either way.
         </p>
       </div>
     );
