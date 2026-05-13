@@ -22,6 +22,10 @@ import {
   Settings,
   CreditCard,
   CheckCircle2,
+  GraduationCap,
+  Tag,
+  BookOpen,
+  ShieldCheck,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
@@ -59,6 +63,12 @@ const PROFILE_STEPS = [
   { key: "languages", label: "Add language pairs", icon: Languages },
   { key: "rates", label: "Configure services & rates", icon: Settings },
   { key: "payment", label: "Add payment information", icon: CreditCard },
+  // ISO 17100 references — mirrors the doc-request modal so vendors see
+  // the same checklist Cethos assesses against.
+  { key: "iso_native_languages", label: "Declare native language(s) (ISO 17100)", icon: BookOpen },
+  { key: "iso_years_experience", label: "Years of professional experience (ISO 17100)", icon: GraduationCap },
+  { key: "iso_specializations", label: "Subject specializations (ISO 17100)", icon: Tag },
+  { key: "iso_evidence_uploaded", label: "Upload qualifying degree or certification (ISO 17100)", icon: ShieldCheck },
 ] as const;
 
 export function VendorDashboard() {

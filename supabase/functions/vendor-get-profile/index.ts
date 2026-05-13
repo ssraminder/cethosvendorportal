@@ -48,7 +48,7 @@ serve(async (req: Request) => {
     const { data: vendor, error: vendorErr } = await supabase
       .from("vendors")
       .select(
-        "id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, certifications, years_experience, rate_per_page, rate_currency, specializations, minimum_rate, total_projects, last_project_date, rating, tax_id, tax_name, tax_rate, preferred_rate_currency"
+        "id, full_name, email, phone, status, vendor_type, country, province_state, city, availability_status, certifications, years_experience, rate_per_page, rate_currency, specializations, minimum_rate, total_projects, last_project_date, rating, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages"
       )
       .eq("id", session.vendor_id)
       .single();
@@ -107,18 +107,37 @@ serve(async (req: Request) => {
       .eq("email", vendor.email)
       .single();
 
-    // Calculate profile completeness based on the 5 dashboard steps (20% each)
-    let completeness = 0;
+    // Has the vendor uploaded any ISO 17100 evidence (CV or any
+    // certification with a stored file)? One row in either bucket counts.
+    const [{ count: cvCount }, { count: certCount }] = await Promise.all([
+      supabase
+        .from("vendor_cvs")
+        .select("id", { count: "exact", head: true })
+        .eq("vendor_id", session.vendor_id),
+      // Certifications live on vendors.certifications jsonb today; treat any
+      // non-empty array as "has cert evidence."
+      Promise.resolve({ count: Array.isArray(vendor.certifications) && vendor.certifications.length > 0 ? 1 : 0 }),
+    ]);
+    const hasIsoEvidence = (cvCount ?? 0) > 0 || (certCount ?? 0) > 0;
+
     const completedSteps: Record<string, boolean> = {
+      // Original 5 onboarding steps
       photo: !!translatorProfile?.profile_photo_url,
       availability: !!vendor.availability_status && vendor.availability_status !== "available",
       languages: (languagePairs || []).some((lp: Record<string, unknown>) => lp.is_active),
       rates: (rates || []).length > 0,
       payment: !!paymentInfo?.payment_method,
+      // ISO 17100 evidence steps. Mirror the slugs from the admin doc-
+      // request modal so each step's "Edit" CTA can deep-link to the same
+      // affordance on /profile (or to an active /iso-evidence/:token).
+      iso_native_languages: Array.isArray(vendor.native_languages) && (vendor.native_languages as string[]).length > 0,
+      iso_years_experience: vendor.years_experience != null,
+      iso_specializations: Array.isArray(vendor.specializations) && (vendor.specializations as string[]).length > 0,
+      iso_evidence_uploaded: hasIsoEvidence,
     };
-    for (const done of Object.values(completedSteps)) {
-      if (done) completeness += 20;
-    }
+    const totalSteps = Object.keys(completedSteps).length;
+    const doneSteps = Object.values(completedSteps).filter(Boolean).length;
+    const completeness = totalSteps === 0 ? 0 : Math.round((doneSteps / totalSteps) * 100);
 
     return new Response(
       JSON.stringify({

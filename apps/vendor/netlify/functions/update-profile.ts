@@ -29,6 +29,8 @@ interface UpdateBody {
   tax_rate?: string;
   preferred_rate_currency?: string;
   native_languages?: string[];
+  years_experience?: number | null;
+  specializations?: string[];
 }
 
 export const handler = async (event: {
@@ -105,6 +107,21 @@ export const handler = async (event: {
       // input syntax for type json".
       push("native_languages", JSON.stringify(body.native_languages));
     }
+    if (body.years_experience !== undefined) {
+      const yrs = body.years_experience;
+      if (yrs !== null && (typeof yrs !== "number" || yrs < 0 || yrs > 80)) {
+        return err("years_experience must be a number between 0 and 80", 400);
+      }
+      push("years_experience", yrs);
+    }
+    if (body.specializations !== undefined) {
+      if (!Array.isArray(body.specializations)) {
+        return err("specializations must be an array", 400);
+      }
+      const cleaned = body.specializations.map((s) => String(s).trim()).filter(Boolean);
+      // specializations is a jsonb column — same JSON-stringify dance as native_languages.
+      push("specializations", JSON.stringify(cleaned));
+    }
 
     if (sets.length === 0) return err("No fields to update", 400);
 
@@ -141,7 +158,8 @@ export const handler = async (event: {
 
     const updated = await query(
       `SELECT id, full_name, email, phone, status, vendor_type, country, province_state, city,
-              availability_status, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages
+              availability_status, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages,
+              years_experience, specializations
        FROM vendors WHERE id = $1 LIMIT 1`,
       [vendor_id],
     );

@@ -251,6 +251,8 @@ export async function updateProfile(
     tax_rate?: string;
     preferred_rate_currency?: string;
     native_languages?: string[];
+    years_experience?: number | null;
+    specializations?: string[];
   }
 ): Promise<ProfileUpdateResponse> {
   // Route through /sb/update-profile (Netlify Function → Postgres). Same
