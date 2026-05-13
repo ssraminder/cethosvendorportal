@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import {
   Loader2,
   Upload,
@@ -29,11 +29,15 @@ import {
   FileText,
   Edit2,
   ShieldCheck,
+  HelpCircle,
+  XCircle,
+  X as XIcon,
 } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   resolveDocRequest,
   completeIsoEvidenceItem,
+  explainIsoEvidenceItem,
   type IsoRequestItem,
   type ResolvedDocRequest,
 } from "../../api/isoEvidence";
@@ -70,6 +74,7 @@ function decorateItem(it: IsoRequestItem): PageItem {
 
 export function IsoEvidencePage() {
   const { token } = useParams<{ token: string }>();
+  const [search] = useSearchParams();
   const { vendor, sessionToken } = useVendorAuth();
   const [loading, setLoading] = useState(true);
   const [resolved, setResolved] = useState<ResolvedDocRequest | null>(null);
@@ -77,6 +82,9 @@ export function IsoEvidencePage() {
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [items, setItems] = useState<PageItem[]>([]);
   const [allDone, setAllDone] = useState(false);
+  // "I don't have this" modal state — slug + draft reason.
+  const [explainSlug, setExplainSlug] = useState<string | null>(null);
+  const [explainReason, setExplainReason] = useState("");
 
   // ── Local edits for profile-field items ──────────────────────────────
   const [nativeLangsDraft, setNativeLangsDraft] = useState<string[]>([]);
@@ -116,9 +124,19 @@ export function IsoEvidencePage() {
   }, [refresh]);
 
   const completedCount = useMemo(
-    () => items.filter((it) => !!it.completed_at).length,
+    () => items.filter((it) => !!it.completed_at || !!it.declined_at).length,
     [items],
   );
+
+  // Reminder emails can deep-link to a specific slug with ?explain=<slug>
+  // to pop the explain modal directly. Apply once items load.
+  useEffect(() => {
+    const slug = search.get("explain");
+    if (slug && items.some((it) => it.slug === slug && !it.completed_at && !it.declined_at)) {
+      setExplainSlug(slug);
+      setExplainReason("");
+    }
+  }, [search, items]);
 
   const markComplete = useCallback(
     async (slug: string) => {
@@ -170,6 +188,32 @@ export function IsoEvidencePage() {
       await markComplete(item.slug);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusySlug(null);
+    }
+  }
+
+  async function handleExplainSubmit() {
+    if (!token || !explainSlug) return;
+    const reason = explainReason.trim();
+    if (reason.length < 3) { setErrorMsg("Please explain in at least a few words."); return; }
+    setBusySlug(explainSlug);
+    setErrorMsg(null);
+    try {
+      const res = await explainIsoEvidenceItem(token, explainSlug, reason, sessionToken);
+      if (!res.success) throw new Error(res.error ?? "Could not record");
+      setItems((prev) =>
+        prev.map((it) =>
+          it.slug === explainSlug && !it.completed_at && !it.declined_at
+            ? { ...it, declined_at: new Date().toISOString(), decline_reason: reason }
+            : it,
+        ),
+      );
+      if (res.data?.all_done) setAllDone(true);
+      setExplainSlug(null);
+      setExplainReason("");
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusySlug(null);
     }
@@ -314,21 +358,25 @@ export function IsoEvidencePage() {
         <div className="space-y-3">
           {items.map((item) => {
             const done = !!item.completed_at;
+            const declined = !!item.declined_at;
+            const resolved = done || declined;
             const busy = busySlug === item.slug;
             return (
               <div
                 key={item.slug}
-                className={`bg-white rounded-xl border p-4 ${done ? "border-emerald-200" : "border-gray-200"}`}
+                className={`bg-white rounded-xl border p-4 ${done ? "border-emerald-200" : declined ? "border-gray-300" : "border-gray-200"}`}
               >
                 <div className="flex items-start gap-3">
                   {done ? (
                     <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
+                  ) : declined ? (
+                    <XCircle className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
                   ) : (
                     <Clock className="w-5 h-5 text-gray-300 mt-0.5 shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-sm font-medium ${done ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                      <span className={`text-sm font-medium ${resolved ? "text-gray-500 line-through" : "text-gray-900"}`}>
                         {item.label}
                       </span>
                       <span className="text-[10px] uppercase tracking-wide text-gray-400">
@@ -339,7 +387,7 @@ export function IsoEvidencePage() {
                       <p className="text-xs text-gray-500 mt-0.5">{item.rationale}</p>
                     )}
 
-                    {!done && loggedIn && item.kind === "file" && (
+                    {!resolved && loggedIn && item.kind === "file" && (
                       <div className="mt-3">
                         <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${busy ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>
                           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -359,7 +407,7 @@ export function IsoEvidencePage() {
                       </div>
                     )}
 
-                    {!done && loggedIn && item.kind === "profile_field" && (
+                    {!resolved && loggedIn && item.kind === "profile_field" && (
                       <div className="mt-3 space-y-2">
                         {item.profile_column === "native_languages" && (
                           <NativeLanguageEditor
@@ -408,12 +456,79 @@ export function IsoEvidencePage() {
                         Completed {new Date(item.completed_at!).toLocaleString()}
                       </p>
                     )}
+
+                    {declined && (
+                      <div className="mt-2 p-2 bg-gray-50 border border-gray-100 rounded text-[11px] text-gray-600">
+                        <div className="font-medium text-gray-700 mb-0.5">Marked unavailable</div>
+                        <div className="italic">{item.decline_reason || "No reason given"}</div>
+                      </div>
+                    )}
+
+                    {!resolved && loggedIn && (
+                      <button
+                        type="button"
+                        onClick={() => { setExplainSlug(item.slug); setExplainReason(""); }}
+                        className="mt-2 inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-700"
+                      >
+                        <HelpCircle className="w-3 h-3" />
+                        I don't have this — explain
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
+
+        {explainSlug && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-semibold text-gray-900">
+                  Tell us what you have instead
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => { setExplainSlug(null); setExplainReason(""); }}
+                  className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                >
+                  <XIcon className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-600 mb-3">
+                Cethos asked for <strong>{items.find((it) => it.slug === explainSlug)?.label}</strong>. If you don't have it or can't get it, describe what you do have — we'll figure out if there's an acceptable substitute.
+              </p>
+              <textarea
+                value={explainReason}
+                onChange={(e) => setExplainReason(e.target.value)}
+                rows={5}
+                maxLength={2000}
+                placeholder="e.g. My original diploma was lost in a move; I can provide a transcript instead — or I'd need a few weeks to request a replacement from the registrar."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+              />
+              <div className="flex items-center justify-end gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => { setExplainSlug(null); setExplainReason(""); }}
+                  disabled={busySlug === explainSlug}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExplainSubmit}
+                  disabled={busySlug === explainSlug || explainReason.trim().length < 3}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 rounded hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {busySlug === explainSlug ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loggedIn && (
           <div className="text-center text-xs text-gray-500">
