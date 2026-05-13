@@ -44,6 +44,16 @@ const ALL_TESTABLE_DOMAINS = Object.keys(DOMAIN_LABELS).filter(
   (d) => d !== "certified_official" && d !== "other",
 );
 
+interface LatestSubmission {
+  id: string;
+  token: string;
+  token_expires_at: string | null;
+  status: string;
+  ai_assessment_score: number | null;
+  submitted_at: string | null;
+  created_at: string;
+}
+
 interface TranslatorDomainRow {
   id: string;
   source_language_id: string;
@@ -57,6 +67,7 @@ interface TranslatorDomainRow {
     | "skip_manual_review"
     | "revoked";
   cooldown_until: string | null;
+  latest_submission?: LatestSubmission | null;
 }
 
 interface LanguageRow {
@@ -77,6 +88,7 @@ export function RequestTest() {
   const [langMap, setLangMap] = useState<Map<string, LanguageRow>>(new Map());
   const [error, setError] = useState<string>("");
   const [requesting, setRequesting] = useState<string | null>(null); // key: src|tgt|domain
+  const [appUrl, setAppUrl] = useState<string>("https://join.cethos.com");
   const [lastResult, setLastResult] = useState<{
     ok: boolean;
     message: string;
@@ -108,6 +120,7 @@ export function RequestTest() {
         setRows(data?.data?.rows ?? []);
         const langs = (data?.data?.languages ?? []) as LanguageRow[];
         setLangMap(new Map(langs.map((l) => [l.id, l])));
+        if (data?.data?.app_url) setAppUrl(String(data.data.app_url));
         setError("");
       } catch (err) {
         if (!cancelled) {
@@ -147,7 +160,7 @@ export function RequestTest() {
   const byPair = useMemo(() => {
     const map = new Map<
       string,
-      Map<string, { status: TranslatorDomainRow["status"]; cooldown: string | null }>
+      Map<string, { status: TranslatorDomainRow["status"]; cooldown: string | null; submission: LatestSubmission | null }>
     >();
     for (const r of rows) {
       const key = `${r.source_language_id}|${r.target_language_id}`;
@@ -155,6 +168,7 @@ export function RequestTest() {
       map.get(key)!.set(r.domain, {
         status: r.status,
         cooldown: r.cooldown_until,
+        submission: r.latest_submission ?? null,
       });
     }
     return map;
@@ -313,6 +327,7 @@ export function RequestTest() {
                     const existing = statusByDomain.get(domain);
                     const status = existing?.status;
                     const cooldown = existing?.cooldown;
+                    const submission = existing?.submission ?? null;
                     const cooldownActive =
                       status === "rejected" &&
                       cooldown &&
@@ -347,10 +362,37 @@ export function RequestTest() {
                             {DOMAIN_LABELS[domain]}
                           </div>
                           {status === "approved" && (
-                            <div className="text-[11px] text-emerald-700">Approved</div>
+                            <>
+                              <div className="text-[11px] text-emerald-700">Approved</div>
+                              {submission?.token && (
+                                <a
+                                  href={`${appUrl}/test-feedback/${submission.token}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-teal-700 hover:text-teal-900 inline-flex items-center gap-0.5 mt-0.5"
+                                >
+                                  View scorecard
+                                  {typeof submission.ai_assessment_score === "number" && (
+                                    <span className="ml-1 text-gray-500">· {submission.ai_assessment_score}</span>
+                                  )}
+                                </a>
+                              )}
+                            </>
                           )}
                           {(status === "pending" || status === "in_review") && (
-                            <div className="text-[11px] text-amber-700">In progress</div>
+                            <>
+                              <div className="text-[11px] text-amber-700">In progress</div>
+                              {submission?.token && (
+                                <a
+                                  href={`${appUrl}/test/${submission.token}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-teal-700 hover:text-teal-900 inline-flex items-center gap-0.5 mt-0.5"
+                                >
+                                  Open test &rarr;
+                                </a>
+                              )}
+                            </>
                           )}
                           {cooldownActive && cooldown && (
                             <div className="text-[11px] text-gray-600">
@@ -359,9 +401,24 @@ export function RequestTest() {
                             </div>
                           )}
                           {status === "rejected" && !cooldownActive && (
-                            <div className="text-[11px] text-red-700">
-                              Previously rejected — retry available
-                            </div>
+                            <>
+                              <div className="text-[11px] text-red-700">
+                                Previously rejected — retry available
+                              </div>
+                              {submission?.token && (
+                                <a
+                                  href={`${appUrl}/test-feedback/${submission.token}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-teal-700 hover:text-teal-900 inline-flex items-center gap-0.5 mt-0.5"
+                                >
+                                  View scorecard
+                                  {typeof submission.ai_assessment_score === "number" && (
+                                    <span className="ml-1 text-gray-500">· {submission.ai_assessment_score}</span>
+                                  )}
+                                </a>
+                              )}
+                            </>
                           )}
                         </div>
                         {canRequest && (
