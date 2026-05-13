@@ -99,7 +99,10 @@ serve(async (req: Request) => {
     });
   }
 
-  const completedCount = updatedItems.filter((it) => !!it.completed_at).length;
+  // "Resolved" = completed_at OR declined_at. The /iso-evidence page also
+  // lets vendors decline an item with a written reason; for the request to
+  // close, every item just needs to be in one of those two terminal states.
+  const completedCount = updatedItems.filter((it) => !!it.completed_at || !!it.declined_at).length;
   const allDone = completedCount === updatedItems.length;
   const nextStatus = allDone ? "completed" : "partial";
   const completedAt = allDone ? nowIso : null;

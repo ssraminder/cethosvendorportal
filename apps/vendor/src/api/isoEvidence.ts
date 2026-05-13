@@ -20,6 +20,8 @@ export interface IsoRequestItem {
   profile_column?: string | null;
   rationale?: string | null;
   completed_at?: string | null;
+  declined_at?: string | null;
+  decline_reason?: string | null;
 }
 
 export interface ResolvedDocRequest {
@@ -58,6 +60,23 @@ export async function resolveDocRequest(token: string): Promise<ResolvedDocReque
     gatewayHeaders,
   );
   return (await res.json()) as ResolvedDocRequest | ResolveError;
+}
+
+export async function explainIsoEvidenceItem(
+  token: string,
+  slug: string,
+  reason: string,
+  sessionToken?: string | null,
+): Promise<{ success: boolean; error?: string; data?: { request_id: string; status: string; all_done: boolean; resolved_count: number; total_count: number } }> {
+  const headers: Record<string, string> = sessionToken
+    ? { ...(ANON_KEY ? { apikey: ANON_KEY } : {}), Authorization: `Bearer ${sessionToken}` }
+    : { ...gatewayHeaders };
+  const res = await safePost(
+    `${FUNCTIONS_BASE}/vendor-iso-evidence-explain-item`,
+    { token, slug, reason },
+    headers,
+  );
+  return await res.json();
 }
 
 export async function completeIsoEvidenceItem(
