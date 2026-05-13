@@ -19,6 +19,7 @@ import { NDAPage } from "./components/nda/NDAPage";
 import { VendorReferencesEntry } from "./components/references/VendorReferencesEntry";
 import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
 import { IsoEvidencePage } from "./components/iso-evidence/IsoEvidencePage";
+import { VendorDocuments } from "./components/documents/VendorDocuments";
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
             <Route path="rates" element={<VendorRates />} />
             <Route path="payment" element={<PaymentInfo />} />
             <Route path="nda" element={<NDAPage />} />
+            <Route path="documents" element={<VendorDocuments />} />
             <Route path="request-test" element={<RequestTest />} />
             <Route path="jobs" element={<JobBoard />} />
             <Route path="jobs/:id" element={<JobDetail />} />

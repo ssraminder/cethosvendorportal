@@ -175,6 +175,14 @@
   status = 200
   force = true
 
+# ISO 17100 evidence request list — surfaces open document requests on
+# the /documents page so vendors can act on them without the email link.
+[[redirects]]
+  from = "/sb/list-doc-requests"
+  to = "/.netlify/functions/list-doc-requests"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"
