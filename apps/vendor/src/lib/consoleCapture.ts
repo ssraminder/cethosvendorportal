@@ -56,6 +56,41 @@ export function installConsoleCapture(): void {
   window.addEventListener("unhandledrejection", (e) => {
     push("error", ["unhandledrejection:", e.reason]);
   });
+
+  // Wrap fetch so network errors and non-2xx responses land in the
+  // ring buffer. Most "errors" vendors see in DevTools are 4xx/5xx
+  // responses that the app never explicitly console.errors, so without
+  // this the bug report often comes back empty even when something
+  // clearly went wrong.
+  const originalFetch = window.fetch?.bind(window);
+  if (originalFetch) {
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const started = performance.now();
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      try {
+        const res = await originalFetch(input, init);
+        const ms = Math.round(performance.now() - started);
+        if (!res.ok) {
+          // Don't consume the response body — clone it so the caller still gets it.
+          let preview = "";
+          try {
+            const clone = res.clone();
+            const text = await clone.text();
+            preview = text.slice(0, 400);
+          } catch { /* ignore */ }
+          push("error", [`fetch ${res.status} ${method} ${url} (${ms}ms)`, preview]);
+        } else {
+          push("debug", [`fetch ${res.status} ${method} ${url} (${ms}ms)`]);
+        }
+        return res;
+      } catch (err) {
+        const ms = Math.round(performance.now() - started);
+        push("error", [`fetch FAILED ${method} ${url} (${ms}ms)`, err]);
+        throw err;
+      }
+    };
+  }
 }
 
 export function getConsoleLogs(): ConsoleEntry[] {
