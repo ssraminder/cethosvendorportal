@@ -37,12 +37,17 @@ const gatewayHeaders: Record<string, string> = {
 export interface IsoRequestItem {
   slug: string;
   label: string;
-  kind: "file" | "profile_field";
+  kind: "file" | "profile_field" | "quiz";
   profile_column?: string | null;
   rationale?: string | null;
   completed_at?: string | null;
   declined_at?: string | null;
   decline_reason?: string | null;
+  // Quiz-specific fields (kind="quiz" only)
+  quiz_competence?: string | null;
+  quiz_domain?: string | null;
+  quiz_score_pct?: number | null;
+  quiz_passed?: boolean | null;
 }
 
 export interface ResolvedDocRequest {
