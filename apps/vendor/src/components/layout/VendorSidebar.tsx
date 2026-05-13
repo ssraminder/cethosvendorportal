@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   LayoutGrid,
@@ -12,9 +11,7 @@ import {
   GraduationCap,
   ShieldCheck,
   Folder,
-  Bug,
 } from "lucide-react";
-import { BugReportModal } from "../support/BugReportModal";
 
 interface VendorSidebarProps {
   isOpen: boolean;
@@ -36,13 +33,6 @@ const mainNavItems = [
 ] as const;
 
 export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
-  const [bugOpen, setBugOpen] = useState(false);
-
-  function handleOpenBugReport() {
-    onClose();
-    setBugOpen(true);
-  }
-
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive
       ? "flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm font-semibold bg-teal-50 text-teal-700 border-l-[3px] border-teal-600 -ml-[3px] transition-colors"
@@ -79,46 +69,30 @@ export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSideba
           </button>
         </div>
 
-        <nav className="p-3 mt-2 space-y-0.5 flex flex-col h-[calc(100%-4rem)]">
-          <div className="space-y-0.5">
-            {mainNavItems.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === "/"}
-                onClick={onClose}
-                className={navLinkClass}
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon className={iconClass(isActive)} />
-                    {label}
-                    {label === "Jobs" && jobOfferedCount != null && jobOfferedCount > 0 && (
-                      <span className="ml-auto rounded-full bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 text-[11px] font-semibold leading-none">
-                        {jobOfferedCount}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </div>
-
-          {/* Support — pinned to bottom of sidebar */}
-          <div className="mt-auto pt-3 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={handleOpenBugReport}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors group"
+        <nav className="p-3 mt-2 space-y-0.5">
+          {mainNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              onClick={onClose}
+              className={navLinkClass}
             >
-              <Bug className="w-[18px] h-[18px] text-gray-400 group-hover:text-gray-600" />
-              Report a bug
-            </button>
-          </div>
+              {({ isActive }) => (
+                <>
+                  <Icon className={iconClass(isActive)} />
+                  {label}
+                  {label === "Jobs" && jobOfferedCount != null && jobOfferedCount > 0 && (
+                    <span className="ml-auto rounded-full bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 text-[11px] font-semibold leading-none">
+                      {jobOfferedCount}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          ))}
         </nav>
       </aside>
-
-      <BugReportModal open={bugOpen} onClose={() => setBugOpen(false)} />
     </>
   );
 }
