@@ -95,12 +95,60 @@ serve(async (req: Request) => {
       ? await supabase.from("languages").select("id, name, code").in("id", ids)
       : { data: [] };
 
+  // Enrich each domain row with the latest cvp_test_submission for that
+  // (source, target, domain) tuple — used by /competence-tests to surface
+  // an "Open test" link on in-progress cells and a "View scorecard" link
+  // on approved/rejected cells. Lookup is keyed by the translator's
+  // application_id; for translators without an application, we just
+  // return empty submission info.
+  const { data: app } = await supabase
+    .from("cvp_applications")
+    .select("id")
+    .eq("email", vendor.email)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let rowsWithTests = domainRows.map((r) => ({ ...r, latest_submission: null as Record<string, unknown> | null }));
+
+  if (app && domainRows.length > 0) {
+    const { data: combos } = await supabase
+      .from("cvp_test_combinations")
+      .select("id, source_language_id, target_language_id, domain")
+      .eq("application_id", app.id);
+
+    const enriched: typeof rowsWithTests = [];
+    for (const r of rowsWithTests) {
+      const matchingCombos = (combos ?? []).filter(
+        (c) =>
+          c.source_language_id === r.source_language_id
+          && c.target_language_id === r.target_language_id
+          && c.domain === r.domain,
+      );
+      if (matchingCombos.length === 0) {
+        enriched.push(r);
+        continue;
+      }
+      const { data: subs } = await supabase
+        .from("cvp_test_submissions")
+        .select("id, token, token_expires_at, status, ai_assessment_score, submitted_at, created_at")
+        .in("combination_id", matchingCombos.map((c) => c.id))
+        .order("created_at", { ascending: false })
+        .limit(1);
+      enriched.push({ ...r, latest_submission: subs?.[0] ?? null });
+    }
+    rowsWithTests = enriched;
+  }
+
   return json({
     success: true,
     data: {
       translator_id: translator.id,
-      rows: domainRows,
+      rows: rowsWithTests,
       languages: languages ?? [],
+      // Public base URL for /test/:token and /test-feedback/:token links.
+      // Mirrors the APP_URL convention used by cvp-send-test-feedback-request.
+      app_url: Deno.env.get("APP_URL") ?? "https://join.cethos.com",
     },
   });
 });

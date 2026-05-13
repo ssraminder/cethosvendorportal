@@ -27,7 +27,7 @@ const mainNavItems = [
   { to: "/payment", label: "Payment", icon: CreditCard },
   { to: "/nda", label: "NDA", icon: ShieldCheck },
   { to: "/documents", label: "Documents", icon: Folder },
-  { to: "/request-test", label: "Request test", icon: GraduationCap },
+  { to: "/request-test", label: "Competence tests", icon: GraduationCap },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },
 ] as const;
