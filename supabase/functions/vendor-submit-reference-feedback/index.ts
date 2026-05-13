@@ -38,10 +38,11 @@ serve(async (req: Request) => {
   let body: {
     feedback_token?: string;
     validate_only?: boolean;
-    feedback_text?: string;
+    feedback_text?: string | null;
     feedback_rating?: number;
     decline?: boolean;
     decline_reason?: string;
+    competence_responses?: Record<string, unknown>;
   };
   try {
     body = await req.json();
@@ -110,19 +111,24 @@ serve(async (req: Request) => {
   // Submit path
   const text = (body.feedback_text ?? "").trim();
   const rating = Number(body.feedback_rating);
-  if (text.length < 50) {
-    return json({ success: false, error: "feedback_too_short", detail: "Please write at least 50 characters." }, 400);
-  }
   if (!(rating >= 1 && rating <= 5)) {
     return json({ success: false, error: "rating_invalid", detail: "Rating must be 1-5." }, 400);
+  }
+
+  // Phase 5a — competence_responses is the primary signal now. Free
+  // text is optional. Validate MCQ payload shape.
+  const competence = validateCompetenceResponses(body.competence_responses);
+  if (!competence.ok) {
+    return json({ success: false, error: "competence_invalid", detail: competence.error }, 400);
   }
 
   const { error: updErr } = await supabase
     .from("vendor_references")
     .update({
       status: "received",
-      feedback_text: text,
+      feedback_text: text || null,
       feedback_rating: rating,
+      competence_responses: competence.data,
       feedback_received_at: nowIso,
     })
     .eq("id", refRow.id);
@@ -130,3 +136,34 @@ serve(async (req: Request) => {
 
   return json({ success: true, data: { received: true } });
 });
+
+// Inline MCQ validator — mirrors apps/vendor/src/data/referenceMcqs.ts.
+const REQUIRED_SLUGS = [
+  "translation_competence",
+  "linguistic_textual_competence",
+  "research_competence",
+  "cultural_competence",
+  "technical_competence",
+  "domain_competence",
+];
+
+function validateCompetenceResponses(input: unknown):
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string } {
+  if (!input || typeof input !== "object") return { ok: false, error: "missing" };
+  const obj = input as Record<string, unknown>;
+  for (const slug of REQUIRED_SLUGS) {
+    if (!["a", "b", "c", "d", "e"].includes(obj[slug] as string)) {
+      return { ok: false, error: `missing or invalid: ${slug}` };
+    }
+  }
+  if (!["yes", "probably", "probably_not", "no"].includes(obj.would_work_again as string)) {
+    return { ok: false, error: "missing or invalid: would_work_again" };
+  }
+  if (obj.domain_specialty != null && typeof obj.domain_specialty !== "string") {
+    return { ok: false, error: "domain_specialty must be string or null" };
+  }
+  const data: Record<string, unknown> = { would_work_again: obj.would_work_again, domain_specialty: obj.domain_specialty ? String(obj.domain_specialty).slice(0, 200) : null };
+  for (const slug of REQUIRED_SLUGS) data[slug] = obj[slug];
+  return { ok: true, data };
+}

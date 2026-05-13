@@ -10,8 +10,16 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Loader2, CheckCircle2, AlertCircle, Star } from "lucide-react";
 import { FUNCTIONS_BASE } from "../../api/functionsBase";
+import { CompetenceMcqSection } from "./CompetenceMcqSection";
+import {
+  REFERENCE_MCQS,
+  validateCompetenceResponses,
+  type CompetenceResponses,
+} from "../../data/referenceMcqs";
 
-const MIN_FEEDBACK_CHARS = 50;
+// Free text is optional now that we collect structured MCQ answers;
+// keep the input but no longer require 50 chars.
+const SUGGESTED_FEEDBACK_CHARS = 30;
 
 export function VendorReferenceFeedback() {
   const { token } = useParams<{ token: string }>();
@@ -24,6 +32,7 @@ export function VendorReferenceFeedback() {
   const [mode, setMode] = useState<"form" | "decline">("form");
   const [rating, setRating] = useState<number>(0);
   const [feedback, setFeedback] = useState("");
+  const [mcq, setMcq] = useState<Partial<CompetenceResponses>>({});
   const [declineReason, setDeclineReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -63,12 +72,19 @@ export function VendorReferenceFeedback() {
 
   async function submitFeedback() {
     if (!token) return;
-    if (feedback.trim().length < MIN_FEEDBACK_CHARS) {
-      setSubmitError(`Please write at least ${MIN_FEEDBACK_CHARS} characters.`);
+    if (!(rating >= 1 && rating <= 5)) {
+      setSubmitError("Please select an overall rating from 1 to 5.");
       return;
     }
-    if (!(rating >= 1 && rating <= 5)) {
-      setSubmitError("Please select a rating from 1 to 5.");
+    const mcqValidation = validateCompetenceResponses(mcq);
+    if (!mcqValidation.ok) {
+      const slug = mcqValidation.error.replace(/^missing or invalid: /, "");
+      const question = REFERENCE_MCQS.find((q) => q.slug === slug);
+      setSubmitError(
+        question
+          ? `Please answer: "${question.prompt.replace(/\{\{name\}\}/g, vendorFullName.split(" ")[0] || "")}"`
+          : "Please answer all questions before submitting.",
+      );
       return;
     }
     setSubmitting(true);
@@ -79,8 +95,9 @@ export function VendorReferenceFeedback() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           feedback_token: token,
-          feedback_text: feedback.trim(),
+          feedback_text: feedback.trim() || null,
           feedback_rating: rating,
+          competence_responses: mcqValidation.data,
         }),
       });
       const data = await res.json();
@@ -200,19 +217,29 @@ export function VendorReferenceFeedback() {
                   </div>
                 </div>
 
+                <div className="mb-6">
+                  <CompetenceMcqSection
+                    vendorFirstName={vendorFullName.split(" ")[0] || "this translator"}
+                    value={mcq}
+                    onChange={setMcq}
+                  />
+                </div>
+
                 <div className="mb-5">
                   <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Your feedback *
+                    Anything else? <span className="text-gray-400 font-normal">(optional)</span>
                   </label>
                   <textarea
                     value={feedback}
                     onChange={(e) => setFeedback(e.target.value)}
-                    rows={8}
-                    placeholder="What was the nature of your working relationship? How would you describe their translation quality, professionalism, communication, and reliability? Would you work with them again? Anything else Cethos should know?"
+                    rows={4}
+                    placeholder={`Anything you'd want Cethos to know that the questions above didn't cover — context, a specific story, or a caveat.`}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:border-[#0F9DA0] focus:ring-2 focus:ring-[#0F9DA0]/20 outline-none resize-y"
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
-                    {feedback.trim().length} / {MIN_FEEDBACK_CHARS} characters minimum
+                    {feedback.trim().length > 0 && feedback.trim().length < SUGGESTED_FEEDBACK_CHARS
+                      ? "Short responses are fine — only fill this if you have something extra to add."
+                      : ""}
                   </p>
                 </div>
 

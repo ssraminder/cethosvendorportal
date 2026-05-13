@@ -122,9 +122,10 @@ serve(async (req: Request) => {
     feedbackToken?: string;
     action?: "submit" | "decline";
     validateOnly?: boolean;
-    feedbackText?: string;
+    feedbackText?: string | null;
     feedbackRating?: number;
     reason?: string;
+    competenceResponses?: Record<string, unknown>;
   };
   try {
     body = await req.json();
@@ -195,12 +196,6 @@ serve(async (req: Request) => {
     return json({ success: false, error: "unknown_action" }, 400);
   }
   const feedbackText = (body.feedbackText ?? "").trim();
-  if (feedbackText.length < 30) {
-    return json(
-      { success: false, error: "feedback_too_short", detail: "Please write at least a few sentences." },
-      400,
-    );
-  }
   const rating =
     typeof body.feedbackRating === "number" &&
     body.feedbackRating >= 1 &&
@@ -208,14 +203,25 @@ serve(async (req: Request) => {
       ? body.feedbackRating
       : null;
 
+  // Phase 5a — competence_responses is now the primary signal. Free
+  // text is optional; MCQ payload is required.
+  const competence = validateCompetenceResponses(body.competenceResponses);
+  if (!competence.ok) {
+    return json(
+      { success: false, error: "competence_invalid", detail: competence.error },
+      400,
+    );
+  }
+
   // Persist immediately; AI runs after so a slow / failing AI doesn't
   // make the reference think their submission failed.
   await supabase
     .from("cvp_application_references")
     .update({
       status: "received",
-      feedback_text: feedbackText,
+      feedback_text: feedbackText || null,
       feedback_rating: rating,
+      competence_responses: competence.data,
       feedback_received_at: new Date().toISOString(),
     })
     .eq("id", refRow.id);
@@ -270,3 +276,37 @@ serve(async (req: Request) => {
     data: { received: true, aiAnalysed: analysis.ok },
   });
 });
+
+// Inline MCQ validator — mirrors apps/vendor/src/data/referenceMcqs.ts.
+const REQUIRED_SLUGS = [
+  "translation_competence",
+  "linguistic_textual_competence",
+  "research_competence",
+  "cultural_competence",
+  "technical_competence",
+  "domain_competence",
+];
+
+function validateCompetenceResponses(input: unknown):
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string } {
+  if (!input || typeof input !== "object") return { ok: false, error: "missing" };
+  const obj = input as Record<string, unknown>;
+  for (const slug of REQUIRED_SLUGS) {
+    if (!["a", "b", "c", "d", "e"].includes(obj[slug] as string)) {
+      return { ok: false, error: `missing or invalid: ${slug}` };
+    }
+  }
+  if (!["yes", "probably", "probably_not", "no"].includes(obj.would_work_again as string)) {
+    return { ok: false, error: "missing or invalid: would_work_again" };
+  }
+  if (obj.domain_specialty != null && typeof obj.domain_specialty !== "string") {
+    return { ok: false, error: "domain_specialty must be string or null" };
+  }
+  const data: Record<string, unknown> = {
+    would_work_again: obj.would_work_again,
+    domain_specialty: obj.domain_specialty ? String(obj.domain_specialty).slice(0, 200) : null,
+  };
+  for (const slug of REQUIRED_SLUGS) data[slug] = obj[slug];
+  return { ok: true, data };
+}
