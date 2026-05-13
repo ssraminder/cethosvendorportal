@@ -56,6 +56,11 @@ interface LatestSubmission {
    *  at `${APP_URL}/test-feedback/{feedback_token}`. Null until the
    *  feedback round is created (post-grading). */
   feedback_token?: string | null;
+  /** Stable TM editor URL (tm.cethos.com/translator/editor/{job_id}).
+   *  Reusable — requires the vendor to be signed into TM, but doesn't
+   *  burn on first click like the email's one-shot signin URL. */
+  tm_job_url?: string | null;
+  tm_job_id?: string | null;
 }
 
 interface TranslatorDomainRow {
@@ -388,7 +393,23 @@ export function RequestTest() {
                           {(status === "pending" || status === "in_review") && (
                             <>
                               <div className="text-[11px] text-amber-700">In progress</div>
-                              {submission?.token && (
+                              {/* Prefer the stable TM editor URL: vendor signs into
+                                  tm.cethos.com with their email + OTP and resumes
+                                  the same job. The email's signin_url is one-shot
+                                  so we deliberately don't surface it here. */}
+                              {submission?.tm_job_url ? (
+                                <>
+                                  <a
+                                    href={submission.tm_job_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] text-teal-700 hover:text-teal-900 inline-flex items-center gap-0.5 mt-0.5"
+                                  >
+                                    Open test in TM &rarr;
+                                  </a>
+                                  <div className="text-[10px] text-gray-500">Sign in at tm.cethos.com with your email if prompted.</div>
+                                </>
+                              ) : submission?.token ? (
                                 <a
                                   href={`${appUrl}/test/${submission.token}`}
                                   target="_blank"
@@ -397,7 +418,7 @@ export function RequestTest() {
                                 >
                                   Open test &rarr;
                                 </a>
-                              )}
+                              ) : null}
                             </>
                           )}
                           {cooldownActive && cooldown && (
