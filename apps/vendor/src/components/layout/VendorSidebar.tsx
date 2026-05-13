@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import html2canvas from "html2canvas";
 import {
   LayoutGrid,
   User,
@@ -14,7 +13,6 @@ import {
   ShieldCheck,
   Folder,
   Bug,
-  Loader2,
 } from "lucide-react";
 import { BugReportModal } from "../support/BugReportModal";
 
@@ -39,43 +37,9 @@ const mainNavItems = [
 
 export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
   const [bugOpen, setBugOpen] = useState(false);
-  const [bugCapturing, setBugCapturing] = useState(false);
-  const [bugScreenshot, setBugScreenshot] = useState<string | null>(null);
 
-  async function handleOpenBugReport() {
-    // Pre-capture the current page state BEFORE opening the modal so
-    // (a) the screenshot reflects what the vendor was actually seeing,
-    // and (b) the modal never has to hide/show itself mid-capture.
-    setBugCapturing(true);
+  function handleOpenBugReport() {
     onClose();
-    let screenshot: string | null = null;
-    try {
-      // Small delay so the sidebar's mobile-close animation completes
-      // before we snap. Otherwise the screenshot includes a half-closed
-      // sidebar on mobile widths.
-      await new Promise((r) => setTimeout(r, 120));
-      const canvas = await html2canvas(document.body, {
-        scale: Math.min(window.devicePixelRatio || 1, 2),
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-        windowWidth: document.documentElement.scrollWidth,
-        windowHeight: document.documentElement.scrollHeight,
-      });
-      const MAX_W = 1600;
-      const scale = canvas.width > MAX_W ? MAX_W / canvas.width : 1;
-      const target = document.createElement("canvas");
-      target.width = Math.round(canvas.width * scale);
-      target.height = Math.round(canvas.height * scale);
-      const ctx = target.getContext("2d");
-      if (ctx) ctx.drawImage(canvas, 0, 0, target.width, target.height);
-      screenshot = target.toDataURL("image/png");
-    } catch {
-      // If capture fails for any reason, open the modal anyway with no
-      // screenshot — the vendor can still file a text-only report.
-    }
-    setBugScreenshot(screenshot);
-    setBugCapturing(false);
     setBugOpen(true);
   }
 
@@ -145,25 +109,16 @@ export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSideba
             <button
               type="button"
               onClick={handleOpenBugReport}
-              disabled={bugCapturing}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors group disabled:opacity-60"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors group"
             >
-              {bugCapturing ? (
-                <Loader2 className="w-[18px] h-[18px] text-gray-400 animate-spin" />
-              ) : (
-                <Bug className="w-[18px] h-[18px] text-gray-400 group-hover:text-gray-600" />
-              )}
-              {bugCapturing ? "Preparing report…" : "Report a bug"}
+              <Bug className="w-[18px] h-[18px] text-gray-400 group-hover:text-gray-600" />
+              Report a bug
             </button>
           </div>
         </nav>
       </aside>
 
-      <BugReportModal
-        open={bugOpen}
-        initialScreenshot={bugScreenshot}
-        onClose={() => { setBugOpen(false); setBugScreenshot(null); }}
-      />
+      <BugReportModal open={bugOpen} onClose={() => setBugOpen(false)} />
     </>
   );
 }
