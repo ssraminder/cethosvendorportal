@@ -116,6 +116,35 @@ serve(async (req: Request) => {
     return json({ success: false, error: "update_failed", detail: updErr.message }, 500);
   }
 
+  // Phase 3 — fire the ISO assessment again so the admin's verdict
+  // refreshes without manual intervention. Fire-and-forget; the page
+  // doesn't need to wait. Service-role JWT satisfies verify_jwt on the
+  // assess function.
+  let reassessTriggered = false;
+  if (allDone) {
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && serviceRole) {
+        // Don't await — let the assess function run in the background.
+        // The vendor portal only needs confirmation that completion was
+        // recorded; the assessment refresh happens on the admin side.
+        fetch(`${supabaseUrl}/functions/v1/vendor-iso17100-assess`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceRole}`,
+            apikey: serviceRole,
+          },
+          body: JSON.stringify({ vendor_id: request.vendor_id }),
+        }).catch((e) => console.error("auto-reassess fetch failed:", e));
+        reassessTriggered = true;
+      }
+    } catch (e) {
+      console.error("auto-reassess setup failed:", e);
+    }
+  }
+
   return json({
     success: true,
     data: {
@@ -124,6 +153,7 @@ serve(async (req: Request) => {
       completed_count: completedCount,
       total_count: updatedItems.length,
       all_done: allDone,
+      reassess_triggered: reassessTriggered,
     },
   });
 });
