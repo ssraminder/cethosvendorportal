@@ -107,21 +107,32 @@ export async function listMyDocRequests(sessionToken: string): Promise<{ success
   return (await res.json()) as { success: boolean; error?: string; requests?: MyDocRequest[] };
 }
 
+// Both endpoints are deployed with verify_jwt=true (MCP default). The
+// Supabase gateway validates the Authorization header AS a JWT before
+// the function code runs — and the vendor portal's session token is a
+// random UUID, not a JWT, so passing it as Bearer would 401 at the
+// gateway every time the vendor is logged in. We use the anon-key
+// envelope so the gateway is satisfied; the function still validates
+// the doc-request token in the body, which is the real authority here
+// (token was emailed to the vendor's verified address; possession is
+// proof). The vendor-session cross-check has been removed — it was
+// defence-in-depth, and adding a custom header to carry it would
+// trigger CORS preflight that safePost is explicitly avoiding.
+//
+// Note: the `sessionToken` parameter is kept on the signature so call
+// sites don't change, but it's intentionally unused at the transport
+// layer.
+
 export async function explainIsoEvidenceItem(
   token: string,
   slug: string,
   reason: string,
-  sessionToken?: string | null,
+  _sessionToken?: string | null,
 ): Promise<{ success: boolean; error?: string; data?: { request_id: string; status: string; all_done: boolean; resolved_count: number; total_count: number } }> {
-  const headers: Record<string, string> = sessionToken
-    ? ANON_KEY
-      ? { apikey: ANON_KEY, Authorization: `Bearer ${sessionToken}` }
-      : { Authorization: `Bearer ${sessionToken}` }
-    : { ...gatewayHeaders };
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-evidence-explain-item`,
     { token, slug, reason },
-    headers,
+    gatewayHeaders,
   );
   return await res.json();
 }
@@ -129,20 +140,12 @@ export async function explainIsoEvidenceItem(
 export async function completeIsoEvidenceItem(
   token: string,
   slug: string,
-  sessionToken?: string | null,
+  _sessionToken?: string | null,
 ): Promise<{ success: boolean; error?: string; data?: { request_id: string; status: string; all_done: boolean; completed_count: number; total_count: number } }> {
-  // Session token takes precedence: when the vendor is logged in we want
-  // the server's cross-check (request.vendor_id === session.vendor_id) to
-  // run. Otherwise fall back to the anon-key envelope.
-  const headers: Record<string, string> = sessionToken
-    ? ANON_KEY
-      ? { apikey: ANON_KEY, Authorization: `Bearer ${sessionToken}` }
-      : { Authorization: `Bearer ${sessionToken}` }
-    : { ...gatewayHeaders };
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-evidence-complete-item`,
     { token, slug },
-    headers,
+    gatewayHeaders,
   );
   return await res.json();
 }
