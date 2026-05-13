@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Layout } from "../components/Layout";
 import { CheckCircle, Loader2, AlertTriangle, X } from "lucide-react";
+import { CompetenceMcqSection } from "../components/references/CompetenceMcqSection";
+import {
+  REFERENCE_MCQS,
+  validateCompetenceResponses,
+  type CompetenceResponses,
+} from "../data/referenceMcqs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -22,6 +28,7 @@ export function ReferenceFeedback() {
 
   const [feedbackText, setFeedbackText] = useState("");
   const [rating, setRating] = useState<number | null>(null);
+  const [mcq, setMcq] = useState<Partial<CompetenceResponses>>({});
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<"submitted" | "declined" | null>(null);
   const [showDecline, setShowDecline] = useState(false);
@@ -61,8 +68,16 @@ export function ReferenceFeedback() {
   }, [token]);
 
   const handleSubmit = async () => {
-    if (feedbackText.trim().length < 30) {
-      setError("Please write at least a few sentences (30+ characters).");
+    const mcqValidation = validateCompetenceResponses(mcq);
+    if (!mcqValidation.ok) {
+      const slug = mcqValidation.error.replace(/^missing or invalid: /, "");
+      const q = REFERENCE_MCQS.find((qq) => qq.slug === slug);
+      const name = preview?.applicantName?.split(" ")[0] || "this applicant";
+      setError(
+        q
+          ? `Please answer: "${q.prompt.replace(/\{\{name\}\}/g, name)}"`
+          : "Please answer all questions before submitting.",
+      );
       return;
     }
     setError("");
@@ -78,8 +93,9 @@ export function ReferenceFeedback() {
         body: JSON.stringify({
           feedbackToken: token,
           action: "submit",
-          feedbackText,
+          feedbackText: feedbackText.trim() || null,
           feedbackRating: rating,
+          competenceResponses: mcqValidation.data,
         }),
       });
       const data = await resp.json();
@@ -211,23 +227,12 @@ export function ReferenceFeedback() {
           </div>
         )}
 
-        <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-900 mb-2">
-              In your own words: how was {preview?.applicantName.split(" ")[0]} to work with as a
-              translator? Strengths, weaknesses, anything notable.
-            </label>
-            <textarea
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-              rows={8}
-              placeholder="Their domain expertise, attention to deadlines, communication style — whatever stands out. The more specific the better."
-              className="w-full p-3 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
-            />
-            <div className="text-xs text-gray-500 mt-1">
-              {feedbackText.trim().length} characters · minimum 30
-            </div>
-          </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-6">
+          <CompetenceMcqSection
+            vendorFirstName={preview?.applicantName?.split(" ")[0] || "this applicant"}
+            value={mcq}
+            onChange={setMcq}
+          />
 
           <div>
             <label className="block text-sm font-medium text-gray-900 mb-2">
@@ -254,6 +259,19 @@ export function ReferenceFeedback() {
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-900 mb-2">
+              Anything else? <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              rows={4}
+              placeholder="Anything you'd want CETHOS to know that the questions above didn't cover — context, a specific story, or a caveat."
+              className="w-full p-3 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
             <button
               type="button"
@@ -266,7 +284,7 @@ export function ReferenceFeedback() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || feedbackText.trim().length < 30}
+              disabled={submitting}
               className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded disabled:opacity-50 inline-flex items-center gap-2"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
