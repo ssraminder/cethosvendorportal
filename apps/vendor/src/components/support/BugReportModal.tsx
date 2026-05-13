@@ -43,6 +43,7 @@ export function BugReportModal({ open, onClose }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [consoleCount, setConsoleCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -56,7 +57,16 @@ export function BugReportModal({ open, onClose }: Props) {
       setShowConsoleHelp(false);
       setError(null);
       setSubmitted(false);
+      setConsoleCount(getConsoleLogs().length);
     }
+  }, [open]);
+
+  // Refresh the captured-entries counter while the modal is open so
+  // the vendor sees the live buffer size, not a stale render-time read.
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => setConsoleCount(getConsoleLogs().length), 750);
+    return () => clearInterval(id);
   }, [open]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -305,7 +315,7 @@ export function BugReportModal({ open, onClose }: Props) {
                       </button>
                     </div>
                     <p className="text-[11px] text-gray-500 mt-0.5">
-                      Last 100 entries from this session ({getConsoleLogs().length} captured). Helps us debug. Doesn't include passwords or other secrets the app doesn't log.
+                      Last 100 entries from this session ({consoleCount} captured — includes app logs and any failed network calls). Helps us debug. Doesn't include passwords or other secrets the app doesn't log.
                     </p>
                   </div>
                 </label>
