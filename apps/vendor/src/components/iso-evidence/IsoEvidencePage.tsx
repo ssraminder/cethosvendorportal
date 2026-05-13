@@ -54,6 +54,7 @@ import { LANGUAGES } from "../../data/languages";
 import { PrivacyAcceptanceGate, hasAcceptedPrivacy } from "./PrivacyAcceptanceGate";
 import { SpecializationsPicker } from "../shared/SpecializationsPicker";
 import { QualifyingRouteSelector } from "./QualifyingRouteSelector";
+import { IsoQuizModal } from "./IsoQuizModal";
 import {
   QUALIFYING_ROUTES,
   ALL_ROUTE_SLUGS,
@@ -112,6 +113,8 @@ export function IsoEvidencePage() {
   // a route is "chosen" once its slugs are present AND at least one of
   // the OTHER routes' slugs has been declined (auto-declined on pick).
   const [routeBusy, setRouteBusy] = useState(false);
+  // ISO competence MCQ quiz state — which slug's quiz is currently open.
+  const [quizSlug, setQuizSlug] = useState<string | null>(null);
 
   // ── Local edits for profile-field items ──────────────────────────────
   const [nativeLangsDraft, setNativeLangsDraft] = useState<string[]>([]);
@@ -518,7 +521,7 @@ export function IsoEvidencePage() {
                         {item.label}
                       </span>
                       <span className="text-[10px] uppercase tracking-wide text-gray-400">
-                        {item.kind === "profile_field" ? "profile" : "file"}
+                        {item.kind === "profile_field" ? "profile" : item.kind === "quiz" ? "quiz" : "file"}
                       </span>
                     </div>
                     {item.rationale && (
@@ -573,6 +576,23 @@ export function IsoEvidencePage() {
                         </div>
                       );
                     })()}
+
+                    {!resolved && loggedIn && item.kind === "quiz" && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => setQuizSlug(item.slug)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium bg-teal-600 text-white hover:bg-teal-700"
+                        >
+                          Take 10-minute quiz
+                        </button>
+                        {typeof item.quiz_score_pct === "number" && (
+                          <p className="mt-1.5 text-[11px] text-gray-500">
+                            Last attempt: {String(item.quiz_score_pct)}%. Threshold 80%.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {!resolved && loggedIn && item.kind === "file" && (
                       <div className="mt-3">
@@ -737,6 +757,27 @@ export function IsoEvidencePage() {
           setPendingUpload(null);
         }}
       />
+
+      {quizSlug && token && (() => {
+        const it = items.find((x) => x.slug === quizSlug);
+        return (
+          <IsoQuizModal
+            token={token}
+            slug={quizSlug}
+            label={it?.label ?? quizSlug}
+            onClose={() => { setQuizSlug(null); refresh(); }}
+            onPassed={(score) => {
+              setItems((prev) =>
+                prev.map((x) =>
+                  x.slug === quizSlug && !x.completed_at
+                    ? { ...x, completed_at: new Date().toISOString(), quiz_score_pct: score, quiz_passed: true }
+                    : x,
+                ),
+              );
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
