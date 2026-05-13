@@ -115,13 +115,24 @@ export function RequestTest() {
       setLoading(true);
       try {
         const base = `${FUNCTIONS_BASE}/cvp-get-my-domains`;
+        // Send the vendor session UUID in the body, anon key in the
+        // Authorization header so the Supabase gateway's verify_jwt
+        // accepts us regardless of how the function was last deployed
+        // (MCP defaults to verify_jwt=true; vendor session UUID would
+        // otherwise be rejected at the gateway). The function itself
+        // prefers body.session_token over the header.
+        const anonKey =
+          (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env
+            ?.VITE_SUPABASE_ANON_KEY
+          ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
         const resp = await fetch(base, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${sessionToken}`,
+            Authorization: `Bearer ${anonKey}`,
+            apikey: anonKey,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ session_token: sessionToken }),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();

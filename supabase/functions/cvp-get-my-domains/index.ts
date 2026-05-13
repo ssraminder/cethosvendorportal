@@ -42,7 +42,29 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  // Dual auth: prefer session_token from the body (works regardless of
+  // verify_jwt at the gateway), fall back to Authorization: Bearer for
+  // backwards compatibility with existing callers that pass the vendor
+  // session token in the header. The body path lets us send the anon
+  // key as Authorization (gateway-valid JWT) while still carrying the
+  // vendor session UUID as a string — robust to MCP redeploys that flip
+  // verify_jwt back to true.
+  let bodyToken: string | null = null;
+  let parsedBody: Record<string, unknown> = {};
+  try {
+    parsedBody = await req.clone().json().catch(() => ({}));
+    if (typeof parsedBody?.session_token === "string") {
+      bodyToken = parsedBody.session_token;
+    }
+  } catch {
+    /* ignore — body is optional */
+  }
+  const headerToken = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  // Treat anon-key-shaped JWTs (start with "eyJ") in the header as gateway
+  // envelopes, not as a vendor session. The vendor session is a plain
+  // UUID; the anon key is a JWT.
+  const headerIsAnonJwt = headerToken.startsWith("eyJ");
+  const token = bodyToken ?? (headerIsAnonJwt ? null : headerToken);
   if (!token) return json({ success: false, error: "unauthenticated" }, 401);
 
   const supabase = createClient(
