@@ -330,11 +330,33 @@ export async function uploadCertification(
     action: "add" | "remove";
     cert_name: string;
     expiry_date?: string;
+    file?: File;
+    /** Legacy — kept for callers that still send base64. New callers should pass `file`. */
     file_base64?: string;
     file_name?: string;
     file_type?: string;
   }
 ): Promise<CertResponse> {
+  // Prefer multipart/form-data when a File is supplied. Base64-in-JSON
+  // was triggering 546 ("function panic") on PDFs above ~1MB because the
+  // edge-function body limit eats base64-bloated payloads. Multipart is
+  // CORS-safelisted, doesn't preflight, and the file streams straight
+  // through to storage.
+  if (data.file) {
+    const form = new FormData();
+    form.append("action", data.action);
+    form.append("cert_name", data.cert_name);
+    if (data.expiry_date) form.append("expiry_date", data.expiry_date);
+    form.append("file", data.file);
+    const res = await fetch(`${BASE}/vendor-upload-certification`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    return res.json();
+  }
+
+  // JSON path: either a base64-encoded body (legacy) or a remove action.
   const res = await fetch(`${BASE}/vendor-upload-certification`, {
     method: "POST",
     headers: {

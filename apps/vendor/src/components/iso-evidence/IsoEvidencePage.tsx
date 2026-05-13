@@ -290,19 +290,12 @@ export function IsoEvidencePage() {
         const res = await uploadCv(sessionToken, file, item.label);
         if (!res.success) throw new Error(res.error ?? "CV upload failed");
       } else {
-        const reader = new FileReader();
-        const dataUrl: string = await new Promise((resolve, reject) => {
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(new Error("File read failed"));
-          reader.readAsDataURL(file);
-        });
-        const base64 = dataUrl.split(",")[1] ?? "";
+        // Stream the File directly via multipart. The base64+JSON path
+        // was 546-panicking the function on any PDF over ~1 MB.
         const res = await uploadCertification(sessionToken, {
           action: "add",
           cert_name: item.label,
-          file_base64: base64,
-          file_name: file.name,
-          file_type: file.type || "application/pdf",
+          file,
         });
         if (res.error) throw new Error(res.error);
       }
