@@ -135,7 +135,22 @@ serve(async (req: Request) => {
         .in("combination_id", matchingCombos.map((c) => c.id))
         .order("created_at", { ascending: false })
         .limit(1);
-      enriched.push({ ...r, latest_submission: subs?.[0] ?? null });
+      const submission = subs?.[0] ?? null;
+      // For graded submissions, look up the matching feedback round —
+      // its `token` powers /test-feedback/:token, the scorecard view.
+      // The submission's own token only opens /test/:token (taking).
+      let feedback_token: string | null = null;
+      if (submission?.id) {
+        const { data: fr } = await supabase
+          .from("cvp_test_feedback_rounds")
+          .select("token")
+          .eq("submission_id", submission.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        feedback_token = (fr?.token as string | undefined) ?? null;
+      }
+      enriched.push({ ...r, latest_submission: submission ? { ...submission, feedback_token } : null });
     }
     rowsWithTests = enriched;
   }

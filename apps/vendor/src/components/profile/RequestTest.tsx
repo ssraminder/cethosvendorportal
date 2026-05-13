@@ -52,6 +52,10 @@ interface LatestSubmission {
   ai_assessment_score: number | null;
   submitted_at: string | null;
   created_at: string;
+  /** Token from cvp_test_feedback_rounds, used to open the scorecard view
+   *  at `${APP_URL}/test-feedback/{feedback_token}`. Null until the
+   *  feedback round is created (post-grading). */
+  feedback_token?: string | null;
 }
 
 interface TranslatorDomainRow {
@@ -364,9 +368,9 @@ export function RequestTest() {
                           {status === "approved" && (
                             <>
                               <div className="text-[11px] text-emerald-700">Approved</div>
-                              {submission?.token && (
+                              {submission?.feedback_token ? (
                                 <a
-                                  href={`${appUrl}/test-feedback/${submission.token}`}
+                                  href={`${appUrl}/test-feedback/${submission.feedback_token}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-[11px] text-teal-700 hover:text-teal-900 inline-flex items-center gap-0.5 mt-0.5"
@@ -376,7 +380,9 @@ export function RequestTest() {
                                     <span className="ml-1 text-gray-500">· {submission.ai_assessment_score}</span>
                                   )}
                                 </a>
-                              )}
+                              ) : typeof submission?.ai_assessment_score === "number" ? (
+                                <div className="text-[11px] text-gray-500 mt-0.5">Score: {submission.ai_assessment_score}</div>
+                              ) : null}
                             </>
                           )}
                           {(status === "pending" || status === "in_review") && (
@@ -405,9 +411,9 @@ export function RequestTest() {
                               <div className="text-[11px] text-red-700">
                                 Previously rejected — retry available
                               </div>
-                              {submission?.token && (
+                              {submission?.feedback_token ? (
                                 <a
-                                  href={`${appUrl}/test-feedback/${submission.token}`}
+                                  href={`${appUrl}/test-feedback/${submission.feedback_token}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-[11px] text-teal-700 hover:text-teal-900 inline-flex items-center gap-0.5 mt-0.5"
@@ -417,7 +423,9 @@ export function RequestTest() {
                                     <span className="ml-1 text-gray-500">· {submission.ai_assessment_score}</span>
                                   )}
                                 </a>
-                              )}
+                              ) : typeof submission?.ai_assessment_score === "number" ? (
+                                <div className="text-[11px] text-gray-500 mt-0.5">Score: {submission.ai_assessment_score}</div>
+                              ) : null}
                             </>
                           )}
                         </div>
