@@ -52,6 +52,7 @@ import { ISO_REQUEST_ITEM_BY_SLUG } from "../../data/isoRequestItems";
 import { guideFor } from "../../data/isoEvidenceGuide";
 import { LANGUAGES } from "../../data/languages";
 import { PrivacyAcceptanceGate, hasAcceptedPrivacy } from "./PrivacyAcceptanceGate";
+import { SpecializationsPicker } from "../shared/SpecializationsPicker";
 
 const CV_SLUGS = new Set([
   // The "CV" upload slot only really makes sense for the umbrella CV.
@@ -102,7 +103,10 @@ export function IsoEvidencePage() {
   // ── Local edits for profile-field items ──────────────────────────────
   const [nativeLangsDraft, setNativeLangsDraft] = useState<string[]>([]);
   const [yearsExpDraft, setYearsExpDraft] = useState<string>("");
-  const [specsDraft, setSpecsDraft] = useState<string>("");
+  // Specializations are edited via the SpecializationsPicker chip
+  // multi-select. We keep them as a string[] (canonical labels), not
+  // the comma-separated string the old textarea produced.
+  const [specsDraft, setSpecsDraft] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -129,7 +133,7 @@ export function IsoEvidencePage() {
         ? String(r.vendor.profile.years_experience)
         : "",
     );
-    setSpecsDraft((r.vendor.profile.specializations ?? []).join(", "));
+    setSpecsDraft(r.vendor.profile.specializations ?? []);
   }, [token]);
 
   useEffect(() => {
@@ -258,7 +262,7 @@ export function IsoEvidencePage() {
         if (!Number.isFinite(n) || n < 0 || n > 80) throw new Error("Years must be 0–80");
         payload = { years_experience: n };
       } else if (item.profile_column === "specializations") {
-        const arr = specsDraft.split(",").map((s) => s.trim()).filter(Boolean);
+        const arr = specsDraft.map((s) => s.trim()).filter(Boolean);
         if (arr.length === 0) throw new Error("Pick at least one specialization");
         payload = { specializations: arr };
       } else {
@@ -504,13 +508,10 @@ export function IsoEvidencePage() {
                           />
                         )}
                         {item.profile_column === "specializations" && (
-                          <input
-                            type="text"
+                          <SpecializationsPicker
                             value={specsDraft}
-                            onChange={(e) => setSpecsDraft(e.target.value)}
+                            onChange={setSpecsDraft}
                             disabled={busy}
-                            placeholder="Legal, Medical, Marketing (comma-separated)"
-                            className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                           />
                         )}
                         <button
