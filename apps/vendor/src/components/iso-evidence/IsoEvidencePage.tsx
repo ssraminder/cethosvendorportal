@@ -53,6 +53,14 @@ import { guideFor } from "../../data/isoEvidenceGuide";
 import { LANGUAGES } from "../../data/languages";
 import { PrivacyAcceptanceGate, hasAcceptedPrivacy } from "./PrivacyAcceptanceGate";
 import { SpecializationsPicker } from "../shared/SpecializationsPicker";
+import { QualifyingRouteSelector } from "./QualifyingRouteSelector";
+import {
+  QUALIFYING_ROUTES,
+  ALL_ROUTE_SLUGS,
+  applicableRoutes,
+  type RouteKey,
+  type QualifyingRoute,
+} from "../../data/qualifyingRoutes";
 
 const CV_SLUGS = new Set([
   // The "CV" upload slot only really makes sense for the umbrella CV.
@@ -100,6 +108,11 @@ export function IsoEvidencePage() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ item: PageItem; file: File } | null>(null);
 
+  // ISO 17100 §3.1.4 qualifying-route state. Inferred from items —
+  // a route is "chosen" once its slugs are present AND at least one of
+  // the OTHER routes' slugs has been declined (auto-declined on pick).
+  const [routeBusy, setRouteBusy] = useState(false);
+
   // ── Local edits for profile-field items ──────────────────────────────
   const [nativeLangsDraft, setNativeLangsDraft] = useState<string[]>([]);
   const [yearsExpDraft, setYearsExpDraft] = useState<string>("");
@@ -144,6 +157,85 @@ export function IsoEvidencePage() {
     () => items.filter((it) => !!it.completed_at || !!it.declined_at).length,
     [items],
   );
+
+  // Route inference: a route is "chosen" once at least one of its slugs
+  // is completed OR all of the OTHER routes' slugs have been declined.
+  const routeContext = useMemo(() => {
+    const presentSlugs = items.map((it) => it.slug).filter((s) => ALL_ROUTE_SLUGS.has(s));
+    if (presentSlugs.length === 0) return { applicable: [], chosen: null, routeItems: [] };
+    const applicable = applicableRoutes(presentSlugs);
+    // Multi-route mode only kicks in when the request asked for 2+ routes.
+    if (applicable.length < 2) return { applicable: [], chosen: null, routeItems: items.filter((it) => presentSlugs.includes(it.slug)) };
+
+    const itemBySlug = new Map(items.map((it) => [it.slug, it]));
+    // Find a route whose at-least-one slug is completed (vendor has uploaded for it).
+    let chosen: RouteKey | null = null;
+    for (const r of QUALIFYING_ROUTES) {
+      const slugs = r.required_slugs.filter((s) => presentSlugs.includes(s));
+      if (slugs.length === 0) continue;
+      if (slugs.some((s) => !!itemBySlug.get(s)?.completed_at)) { chosen = r.key; break; }
+    }
+    // Fall back: find the route where its slugs are NOT all declined (others must be all declined to indicate route was picked).
+    if (!chosen) {
+      for (const r of QUALIFYING_ROUTES) {
+        const slugs = r.required_slugs.filter((s) => presentSlugs.includes(s));
+        if (slugs.length === 0) continue;
+        const allDeclined = slugs.every((s) => !!itemBySlug.get(s)?.declined_at);
+        if (!allDeclined) {
+          const others = applicable.filter((rr) => rr.key !== r.key);
+          const othersAllDeclined = others.every((rr) =>
+            rr.required_slugs.filter((s) => presentSlugs.includes(s)).every((s) => !!itemBySlug.get(s)?.declined_at),
+          );
+          if (othersAllDeclined && others.length > 0) { chosen = r.key; break; }
+        }
+      }
+    }
+    const routeItems = items.filter((it) => presentSlugs.includes(it.slug));
+    return { applicable, chosen, routeItems };
+  }, [items]);
+
+  async function handleChooseRoute(route: QualifyingRoute) {
+    if (!token) return;
+    setRouteBusy(true);
+    setErrorMsg(null);
+    try {
+      // Decline all route slugs that are NOT in the chosen route, with
+      // a clear reason. Skip anything already resolved.
+      const itemBySlug = new Map(items.map((it) => [it.slug, it]));
+      const toDecline = items.filter(
+        (it) =>
+          ALL_ROUTE_SLUGS.has(it.slug)
+          && !route.required_slugs.includes(it.slug)
+          && !it.completed_at
+          && !it.declined_at,
+      );
+      const reason = `Pursuing ${route.title} — this route's documents are not applicable for me.`;
+      for (const it of toDecline) {
+        // Run sequentially so we don't hammer the function with N parallel
+        // writes against the same row — supersede-style updates would race.
+        // eslint-disable-next-line no-await-in-loop
+        const r = await explainIsoEvidenceItem(token, it.slug, reason, sessionToken);
+        if (!r.success) {
+          throw new Error(r.error ?? `Could not decline ${it.label}`);
+        }
+      }
+      // Optimistic local update so the UI reflects the route immediately.
+      setItems((prev) =>
+        prev.map((it) => {
+          if (!ALL_ROUTE_SLUGS.has(it.slug)) return it;
+          if (route.required_slugs.includes(it.slug)) return it;
+          if (it.completed_at || it.declined_at) return it;
+          return { ...it, declined_at: new Date().toISOString(), decline_reason: reason };
+        }),
+      );
+      // Voiding unused itemBySlug ref (silences ts lint about unused).
+      void itemBySlug;
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Could not lock route");
+    } finally {
+      setRouteBusy(false);
+    }
+  }
 
   // Reminder emails can deep-link to a specific slug with ?explain=<slug>
   // to pop the explain modal directly. Apply once items load.
@@ -384,12 +476,36 @@ export function IsoEvidencePage() {
           </div>
         )}
 
+        {routeContext.applicable.length >= 2 && (
+          <div className={routeBusy ? "opacity-50 pointer-events-none" : ""}>
+            <QualifyingRouteSelector
+              routeItems={routeContext.routeItems}
+              chosenRoute={routeContext.chosen}
+              onChoose={handleChooseRoute}
+            />
+          </div>
+        )}
+
         <div className="space-y-3">
           {items.map((item) => {
             const done = !!item.completed_at;
             const declined = !!item.declined_at;
             const resolved = done || declined;
             const busy = busySlug === item.slug;
+
+            // When the doc-request spans multiple §3.1.4 qualifying
+            // routes, hide route items: until a route is picked, none
+            // of them appear (they're surfaced inside the route
+            // selector); once a route is picked, only the chosen
+            // route's items show. The others get marked declined by
+            // handleChooseRoute and aren't rendered here.
+            if (routeContext.applicable.length >= 2 && ALL_ROUTE_SLUGS.has(item.slug)) {
+              if (!routeContext.chosen) return null;
+              const chosenSlugs =
+                QUALIFYING_ROUTES.find((r) => r.key === routeContext.chosen)?.required_slugs ?? [];
+              if (!chosenSlugs.includes(item.slug)) return null;
+            }
+
             return (
               <div
                 key={item.slug}
