@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getFullProfile,
@@ -6,7 +6,7 @@ import {
   type PaymentInfo as PaymentInfoType,
 } from "../../api/vendorProfile";
 import { CurrencySelect } from "../shared/CurrencySelect";
-import { CreditCard, Loader2, Save, CheckCircle } from "lucide-react";
+import { CalendarClock, CreditCard, Loader2, Save, CheckCircle, AlertTriangle } from "lucide-react";
 
 const PAYMENT_METHODS = [
   { value: "e_transfer", label: "Interac e-Transfer" },
@@ -29,6 +29,9 @@ export function PaymentInfo() {
   const [method, setMethod] = useState("");
   const [currency, setCurrency] = useState("CAD");
   const [invoiceNotes, setInvoiceNotes] = useState("");
+  // Cooling-off acknowledgement — required for any payout-routing change
+  // on a vendor that already has payment_info on file.
+  const [changeAcknowledged, setChangeAcknowledged] = useState(false);
 
   // Payment details (varies by method)
   const [paypalEmail, setPaypalEmail] = useState("");
@@ -42,6 +45,13 @@ export function PaymentInfo() {
   const [wiseEmail, setWiseEmail] = useState("");
   const [chequeAddress, setChequeAddress] = useState("");
 
+  // Snapshot of original values so we can detect "did payout-routing fields
+  // actually change?" rather than nagging on every save click.
+  const [originalSnapshot, setOriginalSnapshot] = useState<{
+    method: string;
+    currency: string;
+  } | null>(null);
+
   const loadPaymentInfo = useCallback(async () => {
     if (!sessionToken) return;
     try {
@@ -51,6 +61,10 @@ export function PaymentInfo() {
         setMethod(result.payment_info.payment_method || "");
         setCurrency(result.payment_info.payment_currency || "CAD");
         setInvoiceNotes(result.payment_info.invoice_notes || "");
+        setOriginalSnapshot({
+          method: result.payment_info.payment_method || "",
+          currency: result.payment_info.payment_currency || "CAD",
+        });
       }
     } catch {
       setError("Failed to load payment information");
@@ -94,8 +108,29 @@ export function PaymentInfo() {
     }
   };
 
+  // Does the form differ from what's on file in a way that affects payouts?
+  // Currency + method changes do. payment_details changes for the active
+  // method do too; we keep it conservative and treat any field-level edit
+  // on the active method as a payout-routing change.
+  const isPayoutChange = useMemo(() => {
+    if (!paymentInfo || !originalSnapshot) return false;
+    if (method !== originalSnapshot.method) return true;
+    if (currency !== originalSnapshot.currency) return true;
+    // For the active method, treat any value present as potentially changed.
+    // Server re-checks on submit, so this is just for showing the warning.
+    const details = buildPaymentDetails();
+    return Object.values(details).some((v) => typeof v === "string" && v.length > 0);
+  }, [paymentInfo, originalSnapshot, method, currency, paypalEmail, bankName, bankAccountNumber, bankTransitNumber, bankInstitution, bankSwiftCode, bankAddress, eTransferEmail, wiseEmail, chequeAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const needsAcknowledgement = isPayoutChange;
+  const saveDisabled = saving || (needsAcknowledgement && !changeAcknowledged);
+
   const handleSave = async () => {
     if (!sessionToken) return;
+    if (needsAcknowledgement && !changeAcknowledged) {
+      setError("Please confirm the cooling-off notice before saving.");
+      return;
+    }
     setSaving(true);
     setError("");
     setSuccess("");
@@ -105,12 +140,18 @@ export function PaymentInfo() {
         payment_details: method ? buildPaymentDetails() : undefined,
         payment_currency: currency,
         invoice_notes: invoiceNotes || undefined,
+        change_acknowledged: needsAcknowledgement ? changeAcknowledged : undefined,
       });
       if (result.success) {
         setSuccess("Payment information saved successfully");
         if (result.payment_info) {
           setPaymentInfo(result.payment_info);
+          setOriginalSnapshot({
+            method: result.payment_info.payment_method || "",
+            currency: result.payment_info.payment_currency || "CAD",
+          });
         }
+        setChangeAcknowledged(false);
       } else {
         setError(result.error || "Failed to save payment information");
       }
@@ -365,12 +406,53 @@ export function PaymentInfo() {
           />
         </div>
 
+        {/* Payment Terms — read-only Cethos-wide default. */}
+        <div className="flex items-start gap-2.5 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <CalendarClock className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <span className="font-medium text-gray-900">Payment terms:</span>{" "}
+            <span className="text-gray-700">
+              NET {paymentInfo?.payment_terms_days ?? 45} from invoice
+            </span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Cethos pays approved invoices within {paymentInfo?.payment_terms_days ?? 45} days of issue. Contact <a href="mailto:vm@cethos.com" className="text-teal-700 hover:underline">vm@cethos.com</a> to discuss custom terms.
+            </p>
+          </div>
+        </div>
+
+        {/* Cooling-off acknowledgement — only shown when there's already
+            payment info on file AND the form has payout-routing changes. */}
+        {needsAcknowledgement && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+              <div className="text-sm text-amber-900">
+                <p className="font-medium">Heads up — this change applies from the next payment cycle.</p>
+                <p className="mt-1 text-amber-800">
+                  Any invoices processed in the <strong>last 15 days</strong>, including ones not yet remitted, will still be paid to your previous payout details. New payouts route to the updated details from today onward.
+                </p>
+                <label className="mt-2 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={changeAcknowledged}
+                    onChange={(e) => setChangeAcknowledged(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-amber-900">
+                    I understand and accept that this change does not affect payments processed in the last 15 days.
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Save Button */}
         <div className="flex justify-start pt-2">
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors shadow-sm disabled:opacity-50"
+            disabled={saveDisabled}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />

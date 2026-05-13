@@ -69,6 +69,8 @@ interface PaymentInfo {
   payment_currency: string;
   payment_method: string | null;
   invoice_notes: string | null;
+  payment_terms_days: number;
+  change_acknowledged_at: string | null;
   updated_at: string;
 }
 
@@ -283,6 +285,7 @@ export async function updatePaymentInfo(
     payment_details?: Record<string, unknown>;
     payment_currency?: string;
     invoice_notes?: string;
+    change_acknowledged?: boolean;
   }
 ): Promise<PaymentInfoResponse> {
   return postSb<PaymentInfoResponse>("update-payment-info", { session_token: token, ...data });

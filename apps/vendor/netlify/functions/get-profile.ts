@@ -124,8 +124,10 @@ export const handler = async (event: {
     const payments = await query<{
       id: string; payment_currency: string | null; payment_method: string | null;
       invoice_notes: string | null; updated_at: string;
+      payment_terms_days: number; change_acknowledged_at: string | null;
     }>(
-      `SELECT id, payment_currency, payment_method, invoice_notes, updated_at
+      `SELECT id, payment_currency, payment_method, invoice_notes,
+              payment_terms_days, change_acknowledged_at, updated_at
        FROM vendor_payment_info WHERE vendor_id = $1 LIMIT 1`,
       [vendor_id],
     );
