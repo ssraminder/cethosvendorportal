@@ -32,6 +32,10 @@ import {
   HelpCircle,
   XCircle,
   X as XIcon,
+  ChevronDown,
+  ChevronRight,
+  Info,
+  Lightbulb,
 } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
@@ -45,7 +49,9 @@ import { uploadCv } from "../../api/vendorCvs";
 import { uploadCertification } from "../../api/vendorProfile";
 import { updateProfile } from "../../api/vendorAuth";
 import { ISO_REQUEST_ITEM_BY_SLUG } from "../../data/isoRequestItems";
+import { guideFor } from "../../data/isoEvidenceGuide";
 import { LANGUAGES } from "../../data/languages";
+import { PrivacyAcceptanceGate, hasAcceptedPrivacy } from "./PrivacyAcceptanceGate";
 
 const CV_SLUGS = new Set([
   // The "CV" upload slot only really makes sense for the umbrella CV.
@@ -85,6 +91,13 @@ export function IsoEvidencePage() {
   // "I don't have this" modal state — slug + draft reason.
   const [explainSlug, setExplainSlug] = useState<string | null>(null);
   const [explainReason, setExplainReason] = useState("");
+  // Per-item "show instructions & examples" expansion state.
+  const [openGuides, setOpenGuides] = useState<Record<string, boolean>>({});
+  // Privacy-acceptance state. We open the modal lazily on the first
+  // upload attempt and stash the pending action so we can resume after
+  // the vendor accepts.
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<{ item: PageItem; file: File } | null>(null);
 
   // ── Local edits for profile-field items ──────────────────────────────
   const [nativeLangsDraft, setNativeLangsDraft] = useState<string[]>([]);
@@ -161,6 +174,18 @@ export function IsoEvidencePage() {
   );
 
   async function handleFileUpload(item: PageItem, file: File) {
+    if (!sessionToken) return;
+    // Privacy gate — first upload of the session opens the consent modal.
+    // Once accepted we resume; subsequent uploads skip the gate.
+    if (!hasAcceptedPrivacy()) {
+      setPendingUpload({ item, file });
+      setPrivacyOpen(true);
+      return;
+    }
+    await doUpload(item, file);
+  }
+
+  async function doUpload(item: PageItem, file: File) {
     if (!sessionToken) return;
     setBusySlug(item.slug);
     setErrorMsg(null);
@@ -387,6 +412,55 @@ export function IsoEvidencePage() {
                       <p className="text-xs text-gray-500 mt-0.5">{item.rationale}</p>
                     )}
 
+                    {/* What counts? / Examples disclosure */}
+                    {(() => {
+                      const guide = guideFor(item.slug);
+                      if (!guide) return null;
+                      const isOpen = !!openGuides[item.slug];
+                      return (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setOpenGuides((s) => ({ ...s, [item.slug]: !s[item.slug] }))}
+                            className="inline-flex items-center gap-1 text-[12px] text-teal-700 hover:text-teal-900 font-medium"
+                          >
+                            {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                            {isOpen ? "Hide instructions & examples" : "What counts? Show instructions & examples"}
+                          </button>
+                          {isOpen && (
+                            <div className="mt-2 p-3 rounded-lg border border-gray-100 bg-gray-50 space-y-3">
+                              <div className="flex gap-2 text-xs">
+                                <Info className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
+                                <p className="text-gray-700 leading-relaxed">{guide.description}</p>
+                              </div>
+                              <div>
+                                <div className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide mb-1">
+                                  Examples we accept
+                                </div>
+                                <ul className="list-disc pl-5 space-y-0.5 text-xs text-gray-700">
+                                  {guide.examples.map((ex, i) => (
+                                    <li key={i}>{ex}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              {guide.tips && guide.tips.length > 0 && (
+                                <div>
+                                  <div className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide mb-1 flex items-center gap-1">
+                                    <Lightbulb className="w-3 h-3" /> Tips
+                                  </div>
+                                  <ul className="list-disc pl-5 space-y-0.5 text-xs text-gray-700">
+                                    {guide.tips.map((t, i) => (
+                                      <li key={i}>{t}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {!resolved && loggedIn && item.kind === "file" && (
                       <div className="mt-3">
                         <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${busy ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>
@@ -539,6 +613,20 @@ export function IsoEvidencePage() {
           </div>
         )}
       </div>
+
+      <PrivacyAcceptanceGate
+        open={privacyOpen}
+        onAccept={() => {
+          setPrivacyOpen(false);
+          const pending = pendingUpload;
+          setPendingUpload(null);
+          if (pending) void doUpload(pending.item, pending.file);
+        }}
+        onCancel={() => {
+          setPrivacyOpen(false);
+          setPendingUpload(null);
+        }}
+      />
     </div>
   );
 }
