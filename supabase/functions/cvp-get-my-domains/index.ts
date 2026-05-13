@@ -131,7 +131,7 @@ serve(async (req: Request) => {
       }
       const { data: subs } = await supabase
         .from("cvp_test_submissions")
-        .select("id, token, token_expires_at, status, ai_assessment_score, submitted_at, created_at")
+        .select("id, token, token_expires_at, status, ai_assessment_score, submitted_at, created_at, tm_job_id, tm_job_url")
         .in("combination_id", matchingCombos.map((c) => c.id))
         .order("created_at", { ascending: false })
         .limit(1);
