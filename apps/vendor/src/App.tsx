@@ -20,6 +20,8 @@ import { VendorReferencesEntry } from "./components/references/VendorReferencesE
 import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
 import { IsoEvidencePage } from "./components/iso-evidence/IsoEvidencePage";
 import { VendorDocuments } from "./components/documents/VendorDocuments";
+import { OnboardingGate } from "./components/onboarding/OnboardingGate";
+import { OnboardingPage } from "./components/onboarding/OnboardingPage";
 
 function App() {
   return (
@@ -34,18 +36,25 @@ function App() {
           <Route path="/vendor-reference-feedback/:token" element={<VendorReferenceFeedback />} />
           <Route path="/iso-evidence/:token" element={<IsoEvidencePage />} />
           <Route path="/" element={<VendorShell />}>
-            <Route index element={<VendorDashboard />} />
+            {/* Routes the vendor needs in order to complete onboarding —
+                accessible regardless of gate state. */}
+            <Route path="onboarding" element={<OnboardingPage />} />
             <Route path="profile" element={<VendorProfile />} />
-            <Route path="languages" element={<LanguagePairs />} />
-            <Route path="rates" element={<VendorRates />} />
-            <Route path="payment" element={<PaymentInfo />} />
             <Route path="nda" element={<NDAPage />} />
-            <Route path="documents" element={<VendorDocuments />} />
-            <Route path="request-test" element={<RequestTest />} />
-            <Route path="jobs" element={<JobBoard />} />
-            <Route path="jobs/:id" element={<JobDetail />} />
-            <Route path="invoices" element={<InvoiceList />} />
-            <Route path="invoices/:id" element={<InvoiceDetail />} />
+
+            {/* Gated routes — vendor must have CV + NDA on file. */}
+            <Route element={<OnboardingGate />}>
+              <Route index element={<VendorDashboard />} />
+              <Route path="languages" element={<LanguagePairs />} />
+              <Route path="rates" element={<VendorRates />} />
+              <Route path="payment" element={<PaymentInfo />} />
+              <Route path="documents" element={<VendorDocuments />} />
+              <Route path="request-test" element={<RequestTest />} />
+              <Route path="jobs" element={<JobBoard />} />
+              <Route path="jobs/:id" element={<JobDetail />} />
+              <Route path="invoices" element={<InvoiceList />} />
+              <Route path="invoices/:id" element={<InvoiceDetail />} />
+            </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
