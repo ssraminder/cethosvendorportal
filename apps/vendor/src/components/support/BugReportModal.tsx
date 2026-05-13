@@ -5,15 +5,17 @@
  *   - title + description (free text)
  *   - the page URL + viewport size + user-agent (auto)
  *   - recent console logs (auto, via consoleCapture ring buffer)
- *   - optional PNG screenshot (auto-captured via html2canvas)
+ *   - optional screenshot — vendor takes one themselves with the OS
+ *     tool and uploads here. (Auto-capture via html2canvas was tried
+ *     but hit CORS on cross-origin images so was abandoned.)
  *
  * Submits to vendor-submit-bug-report. The function persists to
  * bug_reports + uploads the screenshot to the private bucket + emails
  * the staff support inbox.
  */
 
-import { useEffect, useState } from "react";
-import { Loader2, X as XIcon, Camera, CheckCircle2, AlertCircle, Bug, HelpCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, X as XIcon, Upload, CheckCircle2, AlertCircle, Bug, HelpCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getConsoleLogs } from "../../lib/consoleCapture";
 import { FUNCTIONS_BASE } from "../../api/functionsBase";
@@ -21,42 +23,65 @@ import { FUNCTIONS_BASE } from "../../api/functionsBase";
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Screenshot data-URL pre-captured by the caller before opening the
-   *  modal. Pre-capture avoids needing the modal to hide itself during
-   *  the snap, which previously felt like the modal was closing. */
-  initialScreenshot?: string | null;
 }
 
 const ANON_KEY: string =
   (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY
   || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
 
-export function BugReportModal({ open, onClose, initialScreenshot }: Props) {
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
+
+export function BugReportModal({ open, onClose }: Props) {
   const { sessionToken, vendor } = useVendorAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [includeScreenshot, setIncludeScreenshot] = useState(true);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [showScreenshotHelp, setShowScreenshotHelp] = useState(false);
   const [includeConsole, setIncludeConsole] = useState(true);
-  const [screenshotDataUrl, setScreenshotDataUrl] = useState<string | null>(null);
   const [showConsoleHelp, setShowConsoleHelp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reset state on each open; absorb the caller-supplied pre-captured
-  // screenshot if one was passed.
   useEffect(() => {
     if (open) {
       setTitle("");
       setDescription("");
-      setIncludeScreenshot(true);
+      setScreenshotFile(null);
+      setScreenshotPreview(null);
+      setShowScreenshotHelp(false);
       setIncludeConsole(true);
-      setScreenshotDataUrl(initialScreenshot ?? null);
       setShowConsoleHelp(false);
       setError(null);
       setSubmitted(false);
     }
-  }, [open, initialScreenshot]);
+  }, [open]);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file (PNG, JPG, or WebP).");
+      return;
+    }
+    if (file.size > MAX_SCREENSHOT_BYTES) {
+      setError(`That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. The max is 5 MB — try cropping or saving at lower quality.`);
+      return;
+    }
+    setError(null);
+    setScreenshotFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setScreenshotPreview(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+  }
+
+  function clearScreenshot() {
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function handleSubmit() {
     if (!sessionToken) { setError("Please sign in first."); return; }
@@ -81,13 +106,8 @@ export function BugReportModal({ open, onClose, initialScreenshot }: Props) {
       form.append("user_agent", navigator.userAgent);
       form.append("viewport", JSON.stringify(viewport));
       if (consoleLogs) form.append("console_logs", JSON.stringify(consoleLogs));
-      if (includeScreenshot && screenshotDataUrl) {
-        // Strip the data-URL prefix and convert to Blob for upload.
-        const base64 = screenshotDataUrl.split(",")[1] ?? "";
-        const bin = atob(base64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        form.append("screenshot", new Blob([bytes], { type: "image/png" }), "screenshot.png");
+      if (screenshotFile) {
+        form.append("screenshot", screenshotFile, screenshotFile.name || "screenshot.png");
       }
 
       const res = await fetch(`${FUNCTIONS_BASE}/vendor-submit-bug-report`, {
@@ -159,35 +179,107 @@ export function BugReportModal({ open, onClose, initialScreenshot }: Props) {
                 />
               </div>
 
-              <div className="p-2.5 rounded border border-gray-200">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeScreenshot}
-                    onChange={(e) => setIncludeScreenshot(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5" /> Include a screenshot of this page
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      Captured automatically when you opened this dialog. Sensitive fields visible on the page will be in the image — review before sending.
-                    </p>
+              <div className="p-3 rounded border border-gray-200">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                    <Upload className="w-3.5 h-3.5" /> Screenshot (optional)
+                    <button
+                      type="button"
+                      onClick={() => setShowScreenshotHelp((s) => !s)}
+                      className="text-gray-400 hover:text-gray-600"
+                      title="How to take a screenshot"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                </label>
-                {includeScreenshot && screenshotDataUrl && (
-                  <div className="mt-2 ml-6">
+                  {screenshotFile && (
+                    <button
+                      type="button"
+                      onClick={clearScreenshot}
+                      className="text-[11px] text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Take a screenshot with your OS tool, save it, then upload it here. Helps us see exactly what you were looking at.
+                </p>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+
+                {screenshotPreview ? (
+                  <div className="mt-2">
                     <img
-                      src={screenshotDataUrl}
+                      src={screenshotPreview}
                       alt="Bug report screenshot preview"
                       className="max-h-48 w-auto border border-gray-200 rounded"
                     />
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      {screenshotFile?.name} ({((screenshotFile?.size ?? 0) / 1024).toFixed(0)} KB)
+                    </div>
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded hover:bg-teal-100"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Choose screenshot
+                  </button>
                 )}
-                {includeScreenshot && !screenshotDataUrl && (
-                  <div className="mt-2 ml-6 text-[11px] text-amber-700">
-                    Screenshot capture didn't succeed for this page. The report will go through without an image.
+
+                {showScreenshotHelp && (
+                  <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-700 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowScreenshotHelp(false)}
+                      className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 font-medium"
+                    >
+                      <ChevronDown className="w-3 h-3" /> Hide help
+                    </button>
+                    <div>
+                      <div className="font-semibold text-gray-900">Windows 10 / 11</div>
+                      <ol className="list-decimal pl-4 mt-0.5 space-y-0.5">
+                        <li>Press <kbd className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px]">Windows + Shift + S</kbd> to open Snipping Tool</li>
+                        <li>Drag to select the area you want</li>
+                        <li>The snip is copied — click the notification or open Snipping Tool to save it (PNG)</li>
+                        <li>Click "Choose screenshot" above and pick the saved file</li>
+                      </ol>
+                      <p className="mt-1 text-gray-600">Or: <kbd className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px]">PrtScn</kbd> → paste into Paint → File → Save As → PNG.</p>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">macOS</div>
+                      <ol className="list-decimal pl-4 mt-0.5 space-y-0.5">
+                        <li>Press <kbd className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px]">⌘ + Shift + 4</kbd> and drag to select an area (or <kbd className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px]">⌘ + Shift + 3</kbd> for full screen)</li>
+                        <li>The file is saved to your Desktop as <span className="font-mono">Screenshot …png</span></li>
+                        <li>Click "Choose screenshot" above and pick the file</li>
+                      </ol>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">iPhone / iPad</div>
+                      <ol className="list-decimal pl-4 mt-0.5 space-y-0.5">
+                        <li>Press <strong>Side button + Volume Up</strong> at the same time (or Home + Power on older devices)</li>
+                        <li>Tap the thumbnail → Done → Save to Photos</li>
+                        <li>Tap "Choose screenshot" above and pick from your photo library</li>
+                      </ol>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Android</div>
+                      <ol className="list-decimal pl-4 mt-0.5 space-y-0.5">
+                        <li>Press <strong>Power + Volume Down</strong> together</li>
+                        <li>The screenshot saves to your gallery (Screenshots album)</li>
+                        <li>Tap "Choose screenshot" above and pick the image</li>
+                      </ol>
+                    </div>
+                    <p className="text-gray-600">Max 5 MB. PNG, JPG, or WebP. Sensitive info visible in the shot will be included — review before uploading.</p>
                   </div>
                 )}
               </div>
