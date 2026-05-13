@@ -90,6 +90,21 @@ async function recordOptOut(
     console.error("cvp-unsubscribe upsert error:", error.message);
     return { ok: false, reason: error.message };
   }
+
+  // Unsubscribing also deactivates the vendor profile so no further
+  // job offers route to them. The unsubscribe UI tells the vendor this
+  // explicitly; reactivation is handled by support contact only.
+  const { error: deactErr } = await supabase
+    .from("vendors")
+    .update({ status: "inactive" })
+    .eq("id", vendorId);
+  if (deactErr) {
+    // Don't fail the unsubscribe itself — the opt-out row is already in,
+    // and the email-send filter will exclude this vendor either way.
+    // But log it so we can backfill if it happens.
+    console.error("cvp-unsubscribe: failed to deactivate vendor", vendorId, deactErr.message);
+  }
+
   return { ok: true };
 }
 

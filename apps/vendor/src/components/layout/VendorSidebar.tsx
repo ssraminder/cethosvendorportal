@@ -25,8 +25,8 @@ const mainNavItems = [
   { to: "/languages", label: "Languages", icon: Globe },
   { to: "/rates", label: "Services & Rates", icon: DollarSign },
   { to: "/payment", label: "Payment", icon: CreditCard },
-  { to: "/nda", label: "NDA", icon: ShieldCheck },
   { to: "/documents", label: "Documents", icon: Folder },
+  { to: "/nda", label: "NDA", icon: ShieldCheck },
   { to: "/request-test", label: "Competence tests", icon: GraduationCap },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },
@@ -51,7 +51,7 @@ export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSideba
       )}
 
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-60 bg-white border-r border-gray-200 shadow-sm transform transition-transform lg:translate-x-0 lg:static lg:z-auto ${
+        className={`fixed top-0 left-0 z-50 h-screen w-60 bg-white border-r border-gray-200 shadow-sm transform transition-transform lg:translate-x-0 lg:static lg:z-auto lg:h-auto lg:self-stretch lg:min-h-screen ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
