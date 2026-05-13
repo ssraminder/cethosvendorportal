@@ -2,8 +2,14 @@
 //   - vendor-resolve-doc-request    (public, token-gated read)
 //   - vendor-iso-evidence-complete-item (vendor session optional; token is
 //     authoritative; if session present, server cross-checks vendor_id)
+//   - list-doc-requests (Netlify proxy, vendor-session-authed) — backs
+//     the /documents page that surfaces open requests inside the portal.
 
 import { FUNCTIONS_BASE, safePost } from "./functionsBase";
+
+const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "localhost"
+  ? "/sb"
+  : null;
 
 // MCP-deployed edge functions land with verify_jwt=true. The Supabase
 // gateway accepts the publishable anon key in the apikey header to
@@ -60,6 +66,39 @@ export async function resolveDocRequest(token: string): Promise<ResolvedDocReque
     gatewayHeaders,
   );
   return (await res.json()) as ResolvedDocRequest | ResolveError;
+}
+
+export interface MyDocRequest {
+  id: string;
+  request_token: string;
+  request_token_expires_at: string;
+  status: "draft" | "sent" | "partial" | "completed" | "expired" | "superseded";
+  staff_message: string | null;
+  requested_items: IsoRequestItem[];
+  reminder_count: number;
+  last_reminder_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export async function listMyDocRequests(sessionToken: string): Promise<{ success: boolean; error?: string; requests?: MyDocRequest[] }> {
+  // Primary path: Netlify proxy → direct Postgres. Works in regions
+  // where *.supabase.co is blocked. Falls back to Supabase only in
+  // local dev (SB_BASE === null).
+  if (SB_BASE) {
+    const res = await fetch(`${SB_BASE}/list-doc-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ session_token: sessionToken }),
+    });
+    return (await res.json()) as { success: boolean; error?: string; requests?: MyDocRequest[] };
+  }
+  const res = await fetch(`${FUNCTIONS_BASE}/vendor-list-doc-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
+    body: JSON.stringify({}),
+  });
+  return (await res.json()) as { success: boolean; error?: string; requests?: MyDocRequest[] };
 }
 
 export async function explainIsoEvidenceItem(

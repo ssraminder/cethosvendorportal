@@ -10,6 +10,7 @@ import {
   X,
   GraduationCap,
   ShieldCheck,
+  Folder,
 } from "lucide-react";
 
 interface VendorSidebarProps {
@@ -25,6 +26,7 @@ const mainNavItems = [
   { to: "/rates", label: "Services & Rates", icon: DollarSign },
   { to: "/payment", label: "Payment", icon: CreditCard },
   { to: "/nda", label: "NDA", icon: ShieldCheck },
+  { to: "/documents", label: "Documents", icon: Folder },
   { to: "/request-test", label: "Request test", icon: GraduationCap },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },
