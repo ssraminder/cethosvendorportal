@@ -136,14 +136,26 @@ export function RequestTest() {
           body: JSON.stringify({ session_token: sessionToken }),
         });
         if (!resp.ok) {
-          const body = (await resp
-            .json()
-            .catch(() => ({ error: `http_${resp.status}` }))) as { error?: string };
-          const code = String(body?.error ?? `http_${resp.status}`);
+          // Read raw text first instead of resp.json(). Third-party fetch
+          // wrappers (Sentry tracing, Apollo extension) sometimes consume
+          // the body stream, which makes resp.json() throw "body already
+          // read" — we then lose the server's error code. text() is more
+          // resilient, and we attach the raw bytes to Sentry so any future
+          // case where parsing still fails is diagnosable.
+          const rawText = await resp.text().catch(() => "");
+          let parsed: { error?: string } = {};
+          try {
+            parsed = JSON.parse(rawText) as { error?: string };
+          } catch {
+            /* response wasn't JSON (or body was locked) — code falls
+               back to http_<status> below */
+          }
+          const code = String(parsed?.error ?? `http_${resp.status}`);
           reportApiError({
             endpoint: "cvp-get-my-domains",
             status: resp.status,
             code,
+            extra: { rawBody: rawText.slice(0, 500) },
           });
           // Dead session: bounce to login. logout() wipes localStorage
           // and clears auth state; the router renders /login on the
