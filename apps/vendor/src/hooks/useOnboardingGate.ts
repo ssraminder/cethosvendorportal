@@ -34,11 +34,17 @@ export interface OnboardingGateState {
   hasNda: boolean;
   cvCount: number;
   ndaSignedAt: string | null;
+  /** False for agencies — CV upload is waived. */
+  cvRequired: boolean;
   refresh: () => Promise<void>;
 }
 
 export function useOnboardingGate(): OnboardingGateState {
-  const { sessionToken } = useVendorAuth();
+  const { sessionToken, vendor } = useVendorAuth();
+  // Agencies don't need to upload a CV — they sign the NDA on behalf of
+  // the company and operate as an org. Freelancers / in-house / unknown
+  // types all keep both gates.
+  const cvRequired = (vendor?.vendor_type ?? "").toLowerCase() !== "agency";
   const [loading, setLoading] = useState(true);
   const [hasCv, setHasCv] = useState(false);
   const [hasNda, setHasNda] = useState(false);
@@ -94,11 +100,12 @@ export function useOnboardingGate(): OnboardingGateState {
 
   return {
     loading,
-    passes: hasCv && hasNda,
+    passes: (cvRequired ? hasCv : true) && hasNda,
     hasCv,
     hasNda,
     cvCount,
     ndaSignedAt,
+    cvRequired,
     refresh,
   };
 }
