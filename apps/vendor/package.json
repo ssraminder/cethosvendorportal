@@ -11,6 +11,7 @@
     "generate-jwt-keypair": "tsx scripts/generate-jwt-keypair.ts"
   },
   "dependencies": {
+    "@sentry/react": "^10.51.0",
     "jose": "^5.10.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.574.0",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@sentry/vite-plugin": "^5.2.1",
     "@tailwindcss/vite": "^4.1.18",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.2.7",
