@@ -7,6 +7,7 @@
 // goes direct for symmetry.
 
 import { FUNCTIONS_BASE } from "./functionsBase";
+import { convertDocxToPdf, isDocxFile, isPdfFile } from "../lib/convertDocxToPdf";
 
 export interface VendorCv {
   id: string;
@@ -49,8 +50,30 @@ export async function uploadCv(
   file: File,
   notes: string | null,
 ): Promise<UploadResult> {
+  // The backend only stores PDFs (the file ends up in our private bucket
+  // for ISO 17100 evidence and staff review). If the vendor picks a
+  // .docx, convert it to PDF here in the browser before upload so the
+  // pipeline stays single-format end-to-end.
+  let toUpload = file;
+  if (isDocxFile(file)) {
+    try {
+      toUpload = await convertDocxToPdf(file);
+    } catch (e) {
+      return {
+        success: false,
+        error: "Couldn't convert your Word file to PDF. Please save the document as PDF and upload that instead.",
+        detail: e instanceof Error ? e.message : String(e),
+      };
+    }
+  } else if (!isPdfFile(file)) {
+    return {
+      success: false,
+      error: "Please upload your CV as a PDF or Word (.docx) file.",
+    };
+  }
+
   const form = new FormData();
-  form.append("cv", file);
+  form.append("cv", toUpload);
   if (notes) form.append("notes", notes);
   // multipart/form-data is CORS-safelisted; the browser sets the
   // boundary header itself. Don't set Content-Type manually.
