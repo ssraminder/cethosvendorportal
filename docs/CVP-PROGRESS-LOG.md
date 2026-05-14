@@ -14,6 +14,24 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — May 14, 2026 (cvp-get-my-domains — root cause: gateway rejecting new publishable anon key)
+
+After PRs #155 and #156 landed (better error codes + Sentry rawBody capture), the 401 still fired. Sentry's `rawBody` came back as `[Filtered]` (Sentry PII filter caught a JWT-shaped substring), but the function logs showed v25/v26 returning 401. DB query showed the user **was** logged in (test vendor `ss.raminder+dutchtest@gmail.com`, session row valid and recently active). The function should have returned 200 with domain data. It didn't.
+
+Curl with the explicit legacy anon key (JWT) worked. Curl with the new `sb_publishable_*` key returned `sb-error-code: UNAUTHORIZED_INVALID_JWT_FORMAT` + body `{"code":"UNAUTHORIZED_INVALID_JWT_FORMAT","message":"Invalid JWT"}` — that's the actual response the browser was getting. Bundle inspection confirmed Netlify's `VITE_SUPABASE_ANON_KEY` ships `sb_publishable_1m5yceJyp7UB8KLHN3KtEg_D5ks4rOq` (no JWT anywhere in the bundle). PRs #140 / #155 / #156 all worked as designed but were upstream of the actual breakage — the gateway rejected the request before the function code could run.
+
+### What changed
+- **Function `cvp-get-my-domains` redeployed as v26 with `verify_jwt: false`** — the function does its own auth (`vendor_sessions.session_token` lookup), so the gateway JWT check was redundant and is now incompatible with the publishable-key envelope. Auth code also now treats `sb_publishable_*` / `sb_secret_*` as gateway envelopes (same as `eyJ...`), so they're ignored if mistakenly presented as Authorization Bearer.
+- `apps/vendor/src/components/profile/RequestTest.tsx` — defensive frontend hardening:
+  - Auto-logout now triggers on `resp.status === 401` directly, not on parsed body codes. Robust even if a fetch wrapper (Apollo extension, Sentry tracing) mangles the response.
+  - JWT-shaped substrings are pre-scrubbed in `rawBody` before sending to Sentry, so the PII filter doesn't redact the entire response. `extra.rawBodyLen` carries the original size for sanity.
+- `memory/decisions.md` — captured the verify_jwt vs publishable-key gotcha as an architectural decision so future MCP redeploys (which default `verify_jwt: true`) don't silently re-introduce the bug.
+
+### Known follow-up
+Other browser-callable functions still at `verify_jwt: true` will fail the same way the next time a user hits them: `vendor-iso-evidence-complete-item`, `vendor-iso-evidence-explain-item`, `vendor-iso-quiz-get`, `vendor-iso-quiz-submit`, `vendor-iso17100-assess`, `vendor-submit-bug-report`, `vendor-submit-reference-feedback`, `vendor-upload-certification`, `secure-upload-otp-send`, `secure-upload-otp-verify`, `upload-complete`, `upload-start`, `get-customer-files`. Several of these read `session_token` from the Authorization header (incompatible with the envelope pattern) and need both a `verify_jwt: false` redeploy AND a small frontend refactor to move session into the body. Not done in this session — flagged in `memory/decisions.md`.
+
+---
+
 ## Session — May 14, 2026 (cvp-get-my-domains — distinguishable 401s + auto-logout on dead session)
 
 The Request Test page in the vendor portal hit a bare `401 (Unauthorized)` from `cvp-get-my-domains`. The function returned the same `{ error: "unauthenticated" }` body for two different conditions (no token presented vs. `vendor_sessions` lookup missed), so the browser console couldn't distinguish them. The deployed function (v24) already had the gateway-friendly dual-auth fix from PR #140 — this session was just about making the failure mode legible.

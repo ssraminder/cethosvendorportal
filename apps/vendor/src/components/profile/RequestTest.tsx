@@ -140,27 +140,32 @@ export function RequestTest() {
           // wrappers (Sentry tracing, Apollo extension) sometimes consume
           // the body stream, which makes resp.json() throw "body already
           // read" — we then lose the server's error code. text() is more
-          // resilient, and we attach the raw bytes to Sentry so any future
-          // case where parsing still fails is diagnosable.
+          // resilient.
           const rawText = await resp.text().catch(() => "");
           let parsed: { error?: string } = {};
           try {
             parsed = JSON.parse(rawText) as { error?: string };
           } catch {
-            /* response wasn't JSON (or body was locked) — code falls
-               back to http_<status> below */
+            /* response wasn't JSON — code falls back to http_<status> */
           }
           const code = String(parsed?.error ?? `http_${resp.status}`);
+          // Pre-scrub JWT-shaped substrings before sending to Sentry,
+          // otherwise Sentry's PII filter replaces the entire `rawBody`
+          // with "[Filtered]" and we can't see the rest of the response.
+          const scrubbedBody = rawText
+            .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "<jwt-scrubbed>")
+            .slice(0, 500);
           reportApiError({
             endpoint: "cvp-get-my-domains",
             status: resp.status,
             code,
-            extra: { rawBody: rawText.slice(0, 500) },
+            extra: { rawBody: scrubbedBody, rawBodyLen: rawText.length },
           });
-          // Dead session: bounce to login. logout() wipes localStorage
-          // and clears auth state; the router renders /login on the
-          // next tick.
-          if (code === "session_not_found" || code === "session_expired") {
+          // Any 401 from this endpoint means the vendor session is
+          // dead (function returns 401 only for session_not_found or
+          // session_expired; no_token is 400). Act on the status alone
+          // so auto-logout is robust to body-mangling fetch wrappers.
+          if (resp.status === 401) {
             await logout();
             return;
           }
