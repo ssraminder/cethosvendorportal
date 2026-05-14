@@ -23,7 +23,7 @@ import { uploadCv } from "../../api/vendorCvs";
 
 export function OnboardingPage() {
   const { vendor, sessionToken } = useVendorAuth();
-  const { loading, passes, hasCv, hasNda, cvCount, ndaSignedAt, refresh } = useOnboardingGate();
+  const { loading, passes, hasCv, hasNda, cvCount, ndaSignedAt, cvRequired, refresh } = useOnboardingGate();
   const navigate = useNavigate();
   const [uploadingCv, setUploadingCv] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
@@ -93,48 +93,50 @@ export function OnboardingPage() {
           </div>
         )}
 
-        <div className={`bg-white rounded-xl border p-5 ${hasCv ? "border-emerald-200" : "border-gray-200"}`}>
-          <div className="flex items-start gap-3">
-            {hasCv ? (
-              <CheckCircle2 className="w-6 h-6 text-emerald-500 mt-0.5 shrink-0" />
-            ) : (
-              <FileText className="w-6 h-6 text-teal-600 mt-0.5 shrink-0" />
-            )}
-            <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold text-gray-900">Upload your CV</h2>
-              <p className="text-sm text-gray-600 mt-0.5">
-                A current CV / résumé is required for ISO 17100 compliance. PDF up to 10 MB.
-              </p>
+        {cvRequired && (
+          <div className={`bg-white rounded-xl border p-5 ${hasCv ? "border-emerald-200" : "border-gray-200"}`}>
+            <div className="flex items-start gap-3">
               {hasCv ? (
-                <p className="mt-2 text-xs text-emerald-700">CV on file (v{cvCount}).</p>
+                <CheckCircle2 className="w-6 h-6 text-emerald-500 mt-0.5 shrink-0" />
               ) : (
-                <div className="mt-3">
-                  <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${uploadingCv ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>
-                    {uploadingCv ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {uploadingCv ? "Uploading…" : "Upload PDF"}
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      disabled={uploadingCv}
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleCvUpload(f);
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
-                  {cvError && (
-                    <p className="mt-2 text-xs text-red-700 flex items-start gap-1">
-                      <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-                      {cvError}
-                    </p>
-                  )}
-                </div>
+                <FileText className="w-6 h-6 text-teal-600 mt-0.5 shrink-0" />
               )}
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-gray-900">Upload your CV</h2>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  A current CV / résumé is required for ISO 17100 compliance. PDF up to 10 MB.
+                </p>
+                {hasCv ? (
+                  <p className="mt-2 text-xs text-emerald-700">CV on file (v{cvCount}).</p>
+                ) : (
+                  <div className="mt-3">
+                    <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${uploadingCv ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>
+                      {uploadingCv ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      {uploadingCv ? "Uploading…" : "Upload PDF"}
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        disabled={uploadingCv}
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleCvUpload(f);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {cvError && (
+                      <p className="mt-2 text-xs text-red-700 flex items-start gap-1">
+                        <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        {cvError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <GateCard
           icon={ShieldCheck}
