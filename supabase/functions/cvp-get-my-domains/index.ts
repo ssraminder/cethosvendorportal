@@ -65,7 +65,11 @@ serve(async (req: Request) => {
   // UUID; the anon key is a JWT.
   const headerIsAnonJwt = headerToken.startsWith("eyJ");
   const token = bodyToken ?? (headerIsAnonJwt ? null : headerToken);
-  if (!token) return json({ success: false, error: "unauthenticated" }, 401);
+  // Distinguishable auth errors so the caller can react: no_token (400)
+  // means the client never sent credentials; session_not_found and
+  // session_expired (401) both mean the session is dead and the UI
+  // should bounce the user to login.
+  if (!token) return json({ success: false, error: "no_token" }, 400);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -76,9 +80,11 @@ serve(async (req: Request) => {
     .from("vendor_sessions")
     .select("vendor_id, expires_at")
     .eq("session_token", token)
-    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
-  if (!session) return json({ success: false, error: "unauthenticated" }, 401);
+  if (!session) return json({ success: false, error: "session_not_found" }, 401);
+  if (new Date(session.expires_at) <= new Date()) {
+    return json({ success: false, error: "session_expired" }, 401);
+  }
 
   const { data: vendor } = await supabase
     .from("vendors")

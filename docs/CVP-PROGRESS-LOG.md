@@ -14,6 +14,31 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — May 14, 2026 (cvp-get-my-domains — distinguishable 401s + auto-logout on dead session)
+
+The Request Test page in the vendor portal hit a bare `401 (Unauthorized)` from `cvp-get-my-domains`. The function returned the same `{ error: "unauthenticated" }` body for two different conditions (no token presented vs. `vendor_sessions` lookup missed), so the browser console couldn't distinguish them. The deployed function (v24) already had the gateway-friendly dual-auth fix from PR #140 — this session was just about making the failure mode legible.
+
+### What changed
+- `supabase/functions/cvp-get-my-domains/index.ts` — split the single 401 branch into three distinct codes:
+  - `400 no_token` — no `body.session_token` and the `Authorization` header is the anon JWT (gateway envelope, not a vendor session).
+  - `401 session_not_found` — token presented but no row in `vendor_sessions`.
+  - `401 session_expired` — row exists but `expires_at <= now()`.
+  - The `vendor_sessions` query no longer filters on `expires_at > now()` so we can tell "missing" apart from "expired".
+  - Deployed as v25 (verify_jwt remains true).
+- `apps/vendor/src/components/profile/RequestTest.tsx` — destructured `logout` from `useVendorAuth()` and updated the fetch error handler: on `session_not_found` / `session_expired`, call `await logout()` so the user is bounced to the login screen instead of seeing `Failed to load: HTTP 401`. Other error codes still surface in the existing `error` state.
+- `apps/vendor/src/lib/sentry.ts` — added `reportApiError({ endpoint, status?, code?, error?, extra? })` helper. Severity routes 5xx → `error`, 4xx → `warning`, `session_expired` → `info`, thrown/network/parse errors → `error`. Tags every event with `endpoint`, `status`, and `code` so Sentry can filter and group. `fetch()` doesn't throw on non-2xx and our call sites catch into local state, so without this helper Sentry sees nothing — `browserTracingIntegration` only records fetches as breadcrumbs attached to OTHER events.
+- `RequestTest.tsx` — wired `reportApiError` into both endpoints used by this page: `cvp-get-my-domains` (load) and `cvp-request-test` (button). Both branches reported (non-2xx HTTP and outer catch), with a guard to prevent double-reporting when the catch re-receives an error we already sent.
+
+### Verified
+- `POST /functions/v1/cvp-get-my-domains` with anon-only `Authorization` + empty body → `400 {"success":false,"error":"no_token"}`.
+- Same endpoint with `{ session_token: "00000000-..." }` → `401 {"success":false,"error":"session_not_found"}`.
+- Frontend type-check not run (no `node_modules` in worktree); edits are syntactically minimal — adds an awaitable error-branch inside an already-async function and pulls `logout` (already typed `() => Promise<void>` on `VendorAuthState`).
+
+### Follow-up for the user
+Reload the Request Test page in the browser. The network panel will now reveal whether your session is `session_not_found` or `session_expired`. Either way, after the next Netlify build the page will auto-bounce you to login rather than dead-end on the toast.
+
+---
+
 ## Session — May 11, 2026 (TMS-migration announcement broadcast — queue + 20/hr cron sender)
 
 One-time outreach to past-working vendors announcing the XTRF → Vendor Portal move. Three sequential waves: **Dutch → English**, **Arabic**, **CCJK**. Sender identity is `Vendor Manager <recruiting@vendors.cethos.com>` with reply-to `vm@cethos.com`; legal footer is **Cethos Solutions Inc.** Sends are paced at exactly **20 / hour** via pg_cron. Transport is **Brevo** (Mailgun's current From identity is bound to a different address — Brevo supports per-send sender override, and `_shared/notify-counter.ts` is already shipping Brevo sends to vendors in production).

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { GraduationCap, Loader2, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { FUNCTIONS_BASE } from "../../api/functionsBase";
+import { reportApiError } from "../../lib/sentry";
 
 /**
  * RequestTest — vendor self-service for adding a new domain to the
@@ -91,7 +92,7 @@ interface PairKey {
 }
 
 export function RequestTest() {
-  const { sessionToken } = useVendorAuth();
+  const { sessionToken, logout } = useVendorAuth();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TranslatorDomainRow[]>([]);
   const [langMap, setLangMap] = useState<Map<string, LanguageRow>>(new Map());
@@ -134,7 +135,25 @@ export function RequestTest() {
           },
           body: JSON.stringify({ session_token: sessionToken }),
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) {
+          const body = (await resp
+            .json()
+            .catch(() => ({ error: `http_${resp.status}` }))) as { error?: string };
+          const code = String(body?.error ?? `http_${resp.status}`);
+          reportApiError({
+            endpoint: "cvp-get-my-domains",
+            status: resp.status,
+            code,
+          });
+          // Dead session: bounce to login. logout() wipes localStorage
+          // and clears auth state; the router renders /login on the
+          // next tick.
+          if (code === "session_not_found" || code === "session_expired") {
+            await logout();
+            return;
+          }
+          throw new Error(code);
+        }
         const data = await resp.json();
         if (cancelled) return;
         setRows(data?.data?.rows ?? []);
@@ -143,6 +162,19 @@ export function RequestTest() {
         if (data?.data?.app_url) setAppUrl(String(data.data.app_url));
         setError("");
       } catch (err) {
+        // Network failure, JSON parse error, or the Error we re-threw
+        // above. The HTTP-status branch already reported via
+        // reportApiError, so this guard prevents a duplicate Sentry
+        // event for the same fetch.
+        const alreadyReported =
+          err instanceof Error
+            && (err.message === "session_not_found"
+              || err.message === "session_expired"
+              || /^http_\d+$/.test(err.message)
+              || err.message === "no_token");
+        if (!alreadyReported) {
+          reportApiError({ endpoint: "cvp-get-my-domains", error: err });
+        }
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
         }
@@ -154,7 +186,7 @@ export function RequestTest() {
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, lastResult]);
+  }, [sessionToken, lastResult, logout]);
 
   // Approved pairs — the translator can only request new domains on pairs
   // they're already active in.
@@ -214,6 +246,12 @@ export function RequestTest() {
       });
       const data = await resp.json();
       if (!resp.ok || data?.success === false) {
+        reportApiError({
+          endpoint: "cvp-request-test",
+          status: resp.status,
+          code: typeof data?.error === "string" ? data.error : undefined,
+          extra: { domain, srcId: pair.srcId, tgtId: pair.tgtId },
+        });
         setLastResult({
           ok: false,
           message: data?.detail || data?.error || `Failed (HTTP ${resp.status})`,
@@ -227,6 +265,11 @@ export function RequestTest() {
         });
       }
     } catch (err) {
+      reportApiError({
+        endpoint: "cvp-request-test",
+        error: err,
+        extra: { domain, srcId: pair.srcId, tgtId: pair.tgtId },
+      });
       setLastResult({
         ok: false,
         message: err instanceof Error ? err.message : String(err),
