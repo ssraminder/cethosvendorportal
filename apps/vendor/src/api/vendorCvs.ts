@@ -50,14 +50,16 @@ export async function uploadCv(
   file: File,
   notes: string | null,
 ): Promise<UploadResult> {
-  // The backend only stores PDFs (the file ends up in our private bucket
-  // for ISO 17100 evidence and staff review). If the vendor picks a
-  // .docx, convert it to PDF here in the browser before upload so the
-  // pipeline stays single-format end-to-end.
+  // The backend stores the PDF as the primary CV blob. If the vendor
+  // picks a .docx we convert in the browser AND ship the original docx
+  // alongside, so the source is preserved (re-render if conversion
+  // improves; staff fallback if rendering loses anything).
   let toUpload = file;
+  let sourceDocx: File | null = null;
   if (isDocxFile(file)) {
     try {
       toUpload = await convertDocxToPdf(file);
+      sourceDocx = file;
     } catch (e) {
       return {
         success: false,
@@ -74,6 +76,7 @@ export async function uploadCv(
 
   const form = new FormData();
   form.append("cv", toUpload);
+  if (sourceDocx) form.append("source_docx", sourceDocx);
   if (notes) form.append("notes", notes);
   // multipart/form-data is CORS-safelisted; the browser sets the
   // boundary header itself. Don't set Content-Type manually.
