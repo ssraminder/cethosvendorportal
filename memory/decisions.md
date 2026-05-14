@@ -18,6 +18,15 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-14 — Edge functions called from the browser must have `verify_jwt: false`
+
+- **Decision:** Any Supabase Edge Function called from the vendor portal browser bundle (or any other Vite app that uses the new-format `sb_publishable_*` anon key) **must** be deployed with `verify_jwt: false`. Authentication is the function's own responsibility — typically a `vendor_sessions.session_token` lookup or equivalent.
+- **Rationale:** Netlify's `VITE_SUPABASE_ANON_KEY` is now the new-format publishable key (`sb_publishable_1m5yceJyp7UB8KLHN3KtEg_D5ks4rOq`), which is **not** JWT-shaped. With `verify_jwt: true`, the Supabase gateway tries to parse the Bearer token as a JWT, fails with `sb-error-code: UNAUTHORIZED_INVALID_JWT_FORMAT`, and returns `401 {"code":"UNAUTHORIZED_INVALID_JWT_FORMAT","message":"Invalid JWT"}` before the function code ever runs. This was the root cause of the long-running `cvp-get-my-domains` 401 across PRs #140, #155, #156 — those PRs added dual-auth + better error reporting + auto-logout, all working as designed, but none of them fixed the gateway-level rejection because the legacy JWT anon key (still listed in the project as the "legacy" key) only worked from curl tests where we used it manually.
+- **MCP redeploy hazard:** The `mcp__supabase__deploy_edge_function` tool defaults `verify_jwt` to `true`. Every redeploy of a function via MCP without explicit `verify_jwt: false` re-introduces the bug. Always pass `verify_jwt: false` explicitly when deploying a browser-callable function.
+- **What's safe to keep at `verify_jwt: true`:** server-to-server callers (cron via `pg_cron`/Supabase scheduled functions, other edge functions, external services with their own JWT) that pass the legacy JWT anon key or the service role JWT.
+- **Status:** active.
+- **Affects:** [supabase/functions/cvp-get-my-domains/index.ts](supabase/functions/cvp-get-my-domains/index.ts) (fixed v26). **Known still-at-risk:** other browser-callable functions with `verify_jwt: true`, including `vendor-iso-evidence-complete-item`, `vendor-iso-evidence-explain-item`, `vendor-iso-quiz-get`, `vendor-iso-quiz-submit`, `vendor-iso17100-assess`, `vendor-submit-bug-report`, `vendor-submit-reference-feedback`, `vendor-upload-certification`, `secure-upload-otp-send`, `secure-upload-otp-verify`, `upload-complete`, `upload-start`, `get-customer-files`. Each needs per-function inspection (some read session_token from Authorization header, which is structurally incompatible with the publishable-key envelope pattern — they need both `verify_jwt: false` AND a frontend refactor to put session in body).
+
 ### 2026-05-14 — Sentry DSN env var must use the framework prefix; Netlify needs explicit clear-cache rebuilds
 
 - **Decision:** The browser-facing Sentry DSN env var on each site uses the prefix the build tool actually inlines:
