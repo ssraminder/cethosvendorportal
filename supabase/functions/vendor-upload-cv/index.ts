@@ -6,8 +6,13 @@
 // doesn't preflight (form-data is CORS-safelisted).
 //
 // Body (multipart/form-data):
-//   cv     File   required, PDF only, ≤ 10 MB
-//   notes  string optional, vendor-supplied note about what changed
+//   cv           File   required, PDF only, ≤ 10 MB
+//   source_docx  File   optional, .docx ≤ 10 MB — the original Word doc
+//                       the vendor picked, when the PDF in `cv` was
+//                       converted client-side. We keep both so the
+//                       source is preserved for ISO 17100 evidence and
+//                       so we can re-render if the converter improves.
+//   notes        string optional, vendor-supplied note about what changed
 //
 // Auth: vendor session token in Authorization: Bearer <token>.
 
@@ -30,6 +35,7 @@ function json(body: Record<string, unknown>, status = 200): Response {
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 const BUCKET = "vendor-cvs";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -63,6 +69,7 @@ serve(async (req: Request) => {
       return json({ success: false, error: "expected_multipart_form" }, 400);
     }
     const file = form.get("cv");
+    const sourceDocx = form.get("source_docx");
     const notes = (form.get("notes") as string | null)?.trim() || null;
     if (!(file instanceof File)) {
       return json({ success: false, error: "cv_file_required" }, 400);
@@ -72,6 +79,20 @@ serve(async (req: Request) => {
     }
     if (file.size > MAX_SIZE_BYTES) {
       return json({ success: false, error: "file_too_large", limit_bytes: MAX_SIZE_BYTES }, 400);
+    }
+    // Optional companion .docx — validate type + size separately so a bad
+    // source doesn't fail the whole upload silently.
+    let sourceDocxFile: File | null = null;
+    if (sourceDocx instanceof File && sourceDocx.size > 0) {
+      const isDocxByMime = sourceDocx.type === DOCX_MIME;
+      const isDocxByName = /\.docx$/i.test(sourceDocx.name);
+      if (!isDocxByMime && !isDocxByName) {
+        return json({ success: false, error: "source_docx_must_be_docx" }, 400);
+      }
+      if (sourceDocx.size > MAX_SIZE_BYTES) {
+        return json({ success: false, error: "source_docx_too_large", limit_bytes: MAX_SIZE_BYTES }, 400);
+      }
+      sourceDocxFile = sourceDocx;
     }
 
     // Compute next version atomically-ish (vendors won't double-submit
@@ -98,6 +119,26 @@ serve(async (req: Request) => {
       return json({ success: false, error: "storage_upload_failed", detail: upload.error.message }, 500);
     }
 
+    // Upload the companion .docx if one was provided. Stored under a
+    // /source/ subpath next to the PDF so it's easy to spot in the bucket.
+    let sourceDocxPath: string | null = null;
+    let sourceDocxName: string | null = null;
+    if (sourceDocxFile) {
+      const safeDocxName = (sourceDocxFile.name || "cv.docx").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+      const docxPath = `${vendorId}/source/v${nextVersion}-${Date.now()}-${safeDocxName}`;
+      const docxUpload = await supabase.storage
+        .from(BUCKET)
+        .upload(docxPath, sourceDocxFile, { contentType: DOCX_MIME, upsert: false });
+      if (docxUpload.error) {
+        // Don't fail the whole upload over the source — log and continue.
+        // The PDF is the canonical artifact; missing source is recoverable.
+        console.error("vendor-upload-cv: source_docx upload failed", docxUpload.error);
+      } else {
+        sourceDocxPath = docxPath;
+        sourceDocxName = safeDocxName;
+      }
+    }
+
     // Mark prior current row(s) as superseded.
     const nowIso = new Date().toISOString();
     await supabase
@@ -118,8 +159,11 @@ serve(async (req: Request) => {
         uploaded_by_vendor: true,
         notes,
         is_current: true,
+        source_docx_storage_path: sourceDocxPath,
+        source_docx_file_size_bytes: sourceDocxFile ? sourceDocxFile.size : null,
+        source_docx_original_name: sourceDocxName,
       })
-      .select("id, version, file_name, file_size_bytes, notes, created_at")
+      .select("id, version, file_name, file_size_bytes, notes, created_at, source_docx_storage_path")
       .single();
 
     if (insertErr) {

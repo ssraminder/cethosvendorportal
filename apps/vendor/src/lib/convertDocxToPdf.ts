@@ -1,37 +1,27 @@
 /**
- * Client-side .docx → .pdf conversion for the CV-upload flow.
+ * Client-side .docx → .pdf conversion for CV uploads.
  *
- * The CV-upload backend (vendor-upload-cv edge function) only accepts
- * PDFs, and the vendor's CV is stored long-term in our private bucket
- * for ISO 17100 evidence. So when the vendor picks a .docx file we
- * convert it here in the browser before upload — the backend never
- * sees the .docx.
+ * Two-pass:
+ *   1. mammoth → HTML (extracts text, headings, lists, tables, bold/italic).
+ *   2. html2canvas → canvas → jsPDF.addImage with per-page slicing.
  *
- * Pipeline: mammoth → HTML → jsPDF.html(...) → PDF Blob.
+ * Why not jsPDF.html()? The first cut used jsPDF.html() which drives
+ * html2canvas under the hood but sometimes produced blank PDFs on real
+ * CVs (offscreen positioning + autoPaging quirks). Running html2canvas
+ * directly + adding the canvas as a paginated image is more predictable.
+ * html2canvas is already in the vendor bundle (bug-report screenshot uses
+ * it), so the only extra weight is mammoth itself (lazy-loaded).
  *
- * mammoth extracts the document's text + heading structure (it ignores
- * absolute positioning and complex Word features). That's fine for a
- * CV: what matters is readable content, not pixel-perfect Word layout.
- * The output is a clean letter-sized PDF with the same content, ready
- * for staff review.
+ * The original docx is preserved alongside the PDF on upload — see
+ * vendor-upload-cv `source_docx` form field.
  */
 
 import { jsPDF } from "jspdf";
-
-// Mammoth is ~600 KB minified — heavy for a feature most vendors never
-// use. Lazy-load only when a vendor actually picks a .docx.
-async function loadMammoth() {
-  const mod = await import("mammoth");
-  // Some bundlers wrap default exports; tolerate both shapes.
-  return (mod as unknown as { default?: typeof import("mammoth") }).default ?? (mod as unknown as typeof import("mammoth"));
-}
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export function isDocxFile(file: File): boolean {
   if (file.type === DOCX_MIME) return true;
-  // Some browsers / OSes send empty content-type for docx; check the
-  // extension as a fallback.
   return /\.docx$/i.test(file.name);
 }
 
@@ -40,11 +30,35 @@ export function isPdfFile(file: File): boolean {
   return /\.pdf$/i.test(file.name);
 }
 
+// Mammoth is ~600 KB minified. Lazy-load so the main bundle stays small.
+async function loadMammoth(): Promise<typeof import("mammoth")> {
+  const mod = await import("mammoth");
+  return (mod as unknown as { default?: typeof import("mammoth") }).default
+    ?? (mod as unknown as typeof import("mammoth"));
+}
+
+async function loadHtml2Canvas() {
+  const mod = await import("html2canvas");
+  return (mod as unknown as { default: typeof import("html2canvas").default }).default;
+}
+
+function waitForFontsAndLayout(): Promise<void> {
+  // Two RAFs lets the browser run layout for the freshly-inserted node.
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(async () => {
+        if (typeof document !== "undefined" && document.fonts?.ready) {
+          try { await document.fonts.ready; } catch { /* ignore */ }
+        }
+        resolve();
+      });
+    });
+  });
+}
+
 /**
- * Convert a .docx File to a PDF File. The returned File has the same
- * base name as the input with the extension swapped to .pdf.
- *
- * Throws if mammoth can't parse the file (corrupt / not a real docx).
+ * Convert a .docx File to a PDF File. Same base name, .pdf extension.
+ * Throws if mammoth can't parse the file or html2canvas captures nothing.
  */
 export async function convertDocxToPdf(docxFile: File): Promise<File> {
   if (!isDocxFile(docxFile)) {
@@ -56,8 +70,6 @@ export async function convertDocxToPdf(docxFile: File): Promise<File> {
   const { value: html } = await mammoth.convertToHtml(
     { arrayBuffer },
     {
-      // Map common Word styles to sensible HTML tags so jsPDF.html()
-      // renders them with reasonable spacing.
       styleMap: [
         "p[style-name='Title'] => h1:fresh",
         "p[style-name='Heading 1'] => h1:fresh",
@@ -71,48 +83,90 @@ export async function convertDocxToPdf(docxFile: File): Promise<File> {
     },
   );
 
-  // jsPDF.html() reads layout from a real DOM element, so park the
-  // converted HTML in an offscreen div with print-friendly styles.
+  // Render container offscreen (left:-99999px), but with a real width so
+  // html2canvas captures a sensible layout. Keep it in normal flow so the
+  // browser actually computes layout / fonts before snapshot.
+  const RENDER_WIDTH_PX = 794; // ~A4 width at 96dpi, also reads well for letter
   const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-99999px";
-  container.style.top = "0";
-  container.style.width = "612pt";        // US Letter width
-  container.style.padding = "40pt";       // ~0.55in margins
-  container.style.background = "white";
-  container.style.color = "#111";
-  container.style.fontFamily = "Helvetica, Arial, sans-serif";
-  container.style.fontSize = "11pt";
-  container.style.lineHeight = "1.45";
+  container.style.cssText = [
+    "position:fixed",
+    "top:0",
+    "left:-99999px",
+    `width:${RENDER_WIDTH_PX}px`,
+    "padding:48px",
+    "background:#ffffff",
+    "color:#111",
+    "font-family:Helvetica,Arial,sans-serif",
+    "font-size:14px",
+    "line-height:1.5",
+    "box-sizing:border-box",
+  ].join(";");
   container.innerHTML = `
     <style>
-      h1 { font-size: 18pt; margin: 0 0 8pt; font-weight: 700; }
-      h2 { font-size: 14pt; margin: 14pt 0 6pt; font-weight: 700; }
-      h3 { font-size: 12pt; margin: 12pt 0 4pt; font-weight: 700; }
-      h4 { font-size: 11pt; margin: 10pt 0 4pt; font-weight: 700; }
-      p  { margin: 0 0 6pt; }
-      ul, ol { margin: 0 0 6pt; padding-left: 20pt; }
-      li { margin: 0 0 3pt; }
-      table { border-collapse: collapse; margin: 6pt 0; }
-      td, th { border: 0.5pt solid #999; padding: 3pt 6pt; vertical-align: top; }
+      h1 { font-size: 22px; margin: 0 0 10px; font-weight: 700; }
+      h2 { font-size: 18px; margin: 18px 0 8px; font-weight: 700; }
+      h3 { font-size: 16px; margin: 14px 0 6px; font-weight: 700; }
+      h4 { font-size: 14px; margin: 12px 0 4px; font-weight: 700; }
+      p, li { margin: 0 0 8px; }
+      ul, ol { margin: 0 0 8px; padding-left: 24px; }
+      table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+      td, th { border: 1px solid #999; padding: 4px 8px; vertical-align: top; }
       strong { font-weight: 700; }
       em { font-style: italic; }
+      a { color: #0a58ca; text-decoration: underline; }
+      img { max-width: 100%; height: auto; }
     </style>
     ${html}
   `;
   document.body.appendChild(container);
 
   try {
-    const pdf = new jsPDF({ unit: "pt", format: "letter", compress: true });
-    await pdf.html(container, {
-      // Render the container at its natural width into the PDF page.
-      x: 0,
-      y: 0,
-      width: 612,
-      windowWidth: 612,
-      autoPaging: "text",       // split long content across pages on text boundaries
-      margin: [0, 0, 0, 0],     // padding's in the container itself
+    await waitForFontsAndLayout();
+
+    const html2canvas = await loadHtml2Canvas();
+    const canvas = await html2canvas(container, {
+      scale: 1.5,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      logging: false,
+      windowWidth: RENDER_WIDTH_PX,
     });
+
+    if (canvas.width === 0 || canvas.height === 0) {
+      throw new Error("html2canvas produced a 0×0 canvas");
+    }
+
+    const pdf = new jsPDF({ unit: "pt", format: "letter", compress: true });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    // Scale canvas to page width; height is whatever it works out to.
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    // Slice the (potentially tall) canvas across multiple pages by
+    // shifting the image up by `pageHeight` per page. The canvas is
+    // anchored at y = -position; only the visible page slice renders.
+    let position = 0;
+    let pageNum = 0;
+    while (position < imgHeight) {
+      if (pageNum > 0) pdf.addPage();
+      pdf.addImage(
+        canvas,
+        "JPEG",
+        0,
+        -position,
+        imgWidth,
+        imgHeight,
+        undefined,
+        "FAST",
+      );
+      position += pageHeight;
+      pageNum++;
+      // Safety: bail out if the document is ridiculously long.
+      if (pageNum > 50) break;
+    }
+
     const blob = pdf.output("blob");
     const baseName = docxFile.name.replace(/\.docx$/i, "");
     return new File([blob], `${baseName}.pdf`, { type: "application/pdf" });
