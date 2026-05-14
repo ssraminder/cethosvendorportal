@@ -62,8 +62,10 @@ export function CvSection() {
     setError(null);
     setSuccess(null);
     if (!f) { setFile(null); return; }
-    if (f.type && f.type !== "application/pdf") {
-      setError("Only PDF files are accepted.");
+    const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+    const isDocx = f.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || /\.docx$/i.test(f.name);
+    if (!isPdf && !isDocx) {
+      setError("Please upload a PDF or Word (.docx) file.");
       setFile(null);
       return;
     }
@@ -164,12 +166,12 @@ export function CvSection() {
           </label>
           <input
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             disabled={uploading}
             onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
             className="block w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 disabled:opacity-50"
           />
-          <p className="text-[11px] text-gray-500 mt-1.5">PDF only, max 10 MB.</p>
+          <p className="text-[11px] text-gray-500 mt-1.5">PDF or Word (.docx), max 10 MB. Word files are converted to PDF on upload.</p>
 
           {file && (
             <div className="mt-3 space-y-2">

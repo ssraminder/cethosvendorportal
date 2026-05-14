@@ -104,7 +104,7 @@ export function OnboardingPage() {
               <div className="min-w-0 flex-1">
                 <h2 className="text-base font-semibold text-gray-900">Upload your CV</h2>
                 <p className="text-sm text-gray-600 mt-0.5">
-                  A current CV / résumé is required for ISO 17100 compliance. PDF up to 10 MB.
+                  A current CV / résumé is required for ISO 17100 compliance. PDF or Word (.docx), up to 10 MB. Word files are converted to PDF automatically.
                 </p>
                 {hasCv ? (
                   <p className="mt-2 text-xs text-emerald-700">CV on file (v{cvCount}).</p>
@@ -112,10 +112,10 @@ export function OnboardingPage() {
                   <div className="mt-3">
                     <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${uploadingCv ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>
                       {uploadingCv ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                      {uploadingCv ? "Uploading…" : "Upload PDF"}
+                      {uploadingCv ? "Uploading…" : "Upload file"}
                       <input
                         type="file"
-                        accept="application/pdf"
+                        accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         disabled={uploadingCv}
                         className="hidden"
                         onChange={(e) => {
