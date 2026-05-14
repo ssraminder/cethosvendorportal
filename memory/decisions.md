@@ -18,6 +18,18 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-14 — Sentry DSN env var must use the framework prefix; Netlify needs explicit clear-cache rebuilds
+
+- **Decision:** The browser-facing Sentry DSN env var on each site uses the prefix the build tool actually inlines:
+  - **Vite apps** (`apps/vendor`, future `apps/recruitment`): `VITE_SENTRY_DSN`. Only `VITE_*` is exposed via `import.meta.env`.
+  - **Next.js apps** (cethos.com at `D:\cethos\main_web`): `NEXT_PUBLIC_SENTRY_DSN`. Only `NEXT_PUBLIC_*` is exposed to the browser bundle.
+  - Server-side (Next.js edge + node runtimes, future Deno edge functions): `SENTRY_DSN` (no prefix).
+- **Rationale:** PR #153 (2026-05-14) instrumented `apps/vendor` with Sentry and shipped. Live Sentry recorded **zero events for ~5 hours** because the DSN was stored in Netlify as `NEXT_PUBLIC_SENTRY_DSN` — a name borrowed from the cethos.com Next.js project. Vite ignored it, `import.meta.env.VITE_SENTRY_DSN` resolved to empty string, `Sentry.init({ enabled: !!dsn })` initialized disabled. Renamed to `VITE_SENTRY_DSN` + clear-cache redeploy → events flowing.
+- **Netlify cache gotcha — related lesson:** A plain "Trigger deploy" with no commit change reuses cached build output ("All files already uploaded by a previous deploy with the same commits"). Env-var changes don't take effect until **Clear cache and deploy site** runs. Same trap that motivated commit `27aea53` ("force netlify rebuild — prior deploy of #151 hit stale build cache and produced identical bundle hash"). CLI equivalent: `netlify api createSiteBuild --data {"site_id":"...","clear_cache":true}`.
+- **Status:** active.
+- **Affects:** [apps/vendor/src/lib/sentry.ts](apps/vendor/src/lib/sentry.ts), [apps/vendor/.env.example](apps/vendor/.env.example), Netlify env vars on sites `cethos-vendor` (vendor.cethos.com, `9da179be-b32b-4168-afb1-ee89d806b1a7`) and `cethosweb` (cethos.com, `ad8cf6de-4e40-4e8a-a5e6-66357db61e9f`), and any future Vite app added under `apps/`.
+- **Outstanding:** `SENTRY_AUTH_TOKEN` is empty in Netlify on `cethos-vendor` → `sentryVitePlugin` can't upload source maps, so stack traces in Sentry point at minified positions like `index-XXXX.js:32`. Setting that token + one more clear-cache deploy fixes it. Same check pending on `cethosweb`.
+
 ### 2026-05-12 — Vendor broadcast email transport: Brevo, not Mailgun
 - **Decision:** Broadcast email to past-working vendors (announcements, opt-in changes, recruitment-pool comms) sends via **Brevo**, not Mailgun. The reusable helper is `supabase/functions/_shared/brevo.ts → sendBrevoRawEmail()`, which supports per-send `sender`, `replyTo`, `tags`, custom `headers` (for List-Unsubscribe), and returns `{ sent, messageId?, reason? }`.
 - **Rationale:** Mailgun's MAILGUN_DOMAIN binds the From address to a single configured value (`noreply@vendors.cethos.com`). Per-send From override isn't supported at the API-key level. Broadcasts need sender flexibility — e.g., the TMS-migration announcement sends from `Cethos Solutions Inc. — Vendor Manager <recruiting@vendors.cethos.com>`. Brevo accepts any verified sender per request, which is exactly the model we need. `_shared/notify-counter.ts` was already shipping vendor counter-offer emails via Brevo in production, so this isn't a new dependency.
