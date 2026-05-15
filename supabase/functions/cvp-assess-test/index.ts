@@ -528,15 +528,16 @@ Evaluate the applicant's translation against the source text and reference trans
       });
     }
 
-    // Determine routing based on score. Thresholds aligned with the prompt's
-    // eased pass band (2026-05-11 — style/polish excluded from penalties):
-    //   >= 75: auto-approved
-    //   60-74: staff review (borderline)
-    //   < 60:  auto-rejected
+    // Determine routing based on score. Thresholds relaxed 2026-05-15
+    // (alongside shift to beginner-level source texts for the stranded-
+    // applicant recovery batch). Previously 75/60; now 70/55:
+    //   >= 70: auto-approved
+    //   55-69: staff review (borderline)
+    //   < 55:  auto-rejected
     let combinationStatus: string;
-    if (aiScore >= 75) {
+    if (aiScore >= 70) {
       combinationStatus = "approved";
-    } else if (aiScore >= 60) {
+    } else if (aiScore >= 55) {
       combinationStatus = "assessed"; // Staff review needed
     } else {
       combinationStatus = "rejected";
@@ -617,8 +618,9 @@ Evaluate the applicant's translation against the source text and reference trans
       }
     }
 
-    // Update test library pass/fail stats
-    if (aiScore >= 75) {
+    // Update test library pass/fail stats (passing threshold matches the
+    // auto-approve cutoff above)
+    if (aiScore >= 70) {
       const { data: testRow } = await supabase
         .from("cvp_test_library")
         .select("total_pass_count")
@@ -631,7 +633,7 @@ Evaluate the applicant's translation against the source text and reference trans
           updated_at: now,
         })
         .eq("id", sub.test_id);
-    } else if (aiScore < 60) {
+    } else if (aiScore < 55) {
       const { data: testRow } = await supabase
         .from("cvp_test_library")
         .select("total_fail_count")
@@ -767,7 +769,7 @@ Evaluate the applicant's translation against the source text and reference trans
         combinationId,
         score: aiScore,
         status: combinationStatus,
-        pass: aiScore >= 75,
+        pass: aiScore >= 70,
       },
     });
   } catch (err) {
