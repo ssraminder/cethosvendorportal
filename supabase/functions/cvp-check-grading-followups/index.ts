@@ -18,6 +18,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import { buildV23GradingReminder } from "../_shared/email-templates.ts";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,6 +70,9 @@ serve(async (req: Request) => {
   if (req.method !== "POST" && req.method !== "GET") {
     return jsonResponse({ success: false, error: "method_not_allowed" }, 405);
   }
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return jsonResponse({ success: false, error: authed.error }, authed.status);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",

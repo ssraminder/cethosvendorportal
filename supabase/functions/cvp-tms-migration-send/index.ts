@@ -13,6 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -206,6 +207,12 @@ function renderAnnouncementEmail(args: {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return new Response(
+    JSON.stringify({ success: false, error: authed.error }),
+    { status: authed.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",

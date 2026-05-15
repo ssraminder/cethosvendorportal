@@ -5,6 +5,7 @@ import {
   buildV4TestReminder24hr,
   buildV5TestExpired,
 } from "../_shared/email-templates.ts";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,6 +59,10 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return jsonResponse({ success: false, error: authed.error }, authed.status);
+
   if (req.method !== "POST" && req.method !== "GET") {
     return jsonResponse({ success: false, error: "method_not_allowed" }, 405);
   }
