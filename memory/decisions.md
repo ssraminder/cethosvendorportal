@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-15 — Pre-deploy audit script + verify_jwt regression incident
+- **Incident:** Vendor reported "load failed (api.cethos.com)" on document upload. Root cause: 7 vendor-facing edge functions had silently regressed to `verify_jwt=true` after being redeployed via MCP or the Supabase Dashboard without the `--no-verify-jwt` flag. The Supabase gateway rejected vendor session UUIDs at the edge with `UNAUTHORIZED_NO_AUTH_HEADER` / `UNAUTHORIZED_INVALID_JWT_FORMAT` *before* the function code ran, so the internal `vendor_sessions` validation never executed. Affected: `vendor-upload-certification`, `vendor-iso-evidence-complete-item`, `vendor-iso-evidence-explain-item`, `vendor-iso-quiz-get`, `vendor-iso-quiz-submit`, `vendor-submit-bug-report`, `vendor-submit-reference-feedback`. All redeployed with `--no-verify-jwt`.
+- **Decision:** Land `supabase/scripts/audit-verify-jwt.sh` — probes every vendor-facing function with `POST {}` (no auth) and asserts the response body does NOT contain `UNAUTHORIZED_NO_AUTH_HEADER` / `UNAUTHORIZED_INVALID_JWT*`. Exits non-zero if any function regresses. Run before merging anything that touches edge-function deploys, and as a sanity check whenever the user reports an upload/auth break.
+- **MCP deploy gotcha:** `mcp__supabase__deploy_edge_function` defaults `verify_jwt` to `true` when the parameter is omitted. The Supabase CLI `--no-verify-jwt` flag is the safe path. When using the MCP, **always** pass `verify_jwt: false` for vendor-portal-facing functions (anything called by `apps/vendor/src/api/`, anything under the `/sb/*` Netlify redirect, anything the recruitment app calls publicly).
+- **Status:** active. Audit script at `supabase/scripts/audit-verify-jwt.sh` — 13 functions in the protected list, all green as of 2026-05-15.
+- **Affects:** `supabase/scripts/audit-verify-jwt.sh` (new). No code changes; this is a guardrail.
+
 ### 2026-05-14 — Edge functions called from the browser must have `verify_jwt: false`
 
 - **Decision:** Any Supabase Edge Function called from the vendor portal browser bundle (or any other Vite app that uses the new-format `sb_publishable_*` anon key) **must** be deployed with `verify_jwt: false`. Authentication is the function's own responsibility — typically a `vendor_sessions.session_token` lookup or equivalent.
