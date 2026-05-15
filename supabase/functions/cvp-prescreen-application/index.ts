@@ -937,23 +937,17 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
           safeMode: safeMode.active,
         });
         if (decision.allowed) {
-          // Resolve all English-variant language IDs so auto-send only fires
-          // for EN→Target combinations. Target→EN tests come from Phase 2
-          // harvest, not auto-send.
-          const { data: enLangs } = await supabase
-            .from("languages")
-            .select("id")
-            .ilike("name", "English%");
-          const englishVariantIds =
-            (enLangs ?? []).map((l) => (l as { id: string }).id);
-          // Fire-and-forget. cvp-send-tests handles its own retries / partial
-          // failures and writes per-combination status (test_sent /
-          // no_test_available). We don't await the result on the prescreen
-          // path because we don't want a slow test send to delay the
-          // prescreen response.
+          // Fire-and-forget. Under the applicant-choice routing (rolled
+          // out 2026-05-15), pre-screen success no longer dispatches a
+          // translation test directly — it issues a chooser invitation
+          // letting the applicant pick between the translation-test path
+          // and the ISO competence quiz path. The chosen path is
+          // dispatched downstream by cvp-record-instrument-choice. The
+          // EN→Target + general-domain restriction is enforced inside
+          // that function when it routes to the test path.
           const fnUrl =
             (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "") +
-            "/functions/v1/cvp-send-tests";
+            "/functions/v1/cvp-send-instrument-choice-invitation";
           fetch(fnUrl, {
             method: "POST",
             headers: {
@@ -962,14 +956,10 @@ Prior debrief report writing: ${app.cog_prior_debrief_reports ? "Yes" : "No"}`;
                 Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
               }`,
             },
-            body: JSON.stringify({
-              applicationId,
-              domainFilter: ["general"],
-              sourceLanguageFilter: englishVariantIds,
-            }),
+            body: JSON.stringify({ applicationId }),
           }).catch((e) =>
             console.error(
-              `Auto-send General failed for ${applicationId}:`,
+              `Auto-send choice invitation failed for ${applicationId}:`,
               e instanceof Error ? e.message : String(e),
             ),
           );
