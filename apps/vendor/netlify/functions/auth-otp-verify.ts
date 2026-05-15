@@ -27,7 +27,6 @@ import {
 interface OtpRow {
   id: string;
   vendor_id: string;
-  otp_code: string | null;
   otp_hash: string | null;
   salt: string | null;
   attempts: number;
@@ -57,7 +56,7 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
 
     // Find the latest non-verified, non-expired OTP for this email
     const otps = await query<OtpRow>(
-      `SELECT id, vendor_id, otp_code, otp_hash, salt, attempts, locked_until
+      `SELECT id, vendor_id, otp_hash, salt, attempts, locked_until
          FROM vendor_otp
         WHERE email = $1 AND verified = false AND expires_at > now()
         ORDER BY created_at DESC LIMIT 1`,
@@ -75,14 +74,11 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
       return err("Too many attempts. Request a new code.", 429);
     }
 
-    // Hash-and-compare. Backward-compat: if otp_hash is null (in-flight
-    // legacy row written before the H-4 migration), fall back to plaintext
-    // — still constant-time so the leak surface is identical.
+    // Hash-and-compare. Per M-6, the legacy `otp_code` column has been
+    // dropped; every active OTP row carries otp_hash + salt now.
     let match = false;
     if (otp.otp_hash && otp.salt) {
       match = timingSafeEqual(hashOtp(otpCode, otp.salt), otp.otp_hash);
-    } else if (otp.otp_code) {
-      match = timingSafeEqual(otp.otp_code, otpCode);
     }
 
     if (!match) {

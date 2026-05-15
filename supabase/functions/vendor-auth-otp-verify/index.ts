@@ -42,7 +42,7 @@ serve(async (req: Request) => {
     // Look up most recent non-verified, non-expired OTP for this email
     const { data: otp, error: otpErr } = await supabase
       .from("vendor_otp")
-      .select("id, vendor_id, otp_code, otp_hash, salt, attempts, locked_until")
+      .select("id, vendor_id, otp_hash, salt, attempts, locked_until")
       .eq("email", normalizedEmail)
       .eq("verified", false)
       .gt("expires_at", new Date().toISOString())
@@ -66,15 +66,12 @@ serve(async (req: Request) => {
       );
     }
 
-    // Hash-and-compare. Backward-compat: if otp_hash is null (in-flight
-    // legacy row written before the H-4 migration), fall back to plaintext
-    // compare — still constant-time so the leak surface is identical.
+    // Hash-and-compare. Per M-6, the legacy `otp_code` column has been
+    // dropped; every active OTP row carries otp_hash + salt now.
     let match = false;
     if (otp.otp_hash && otp.salt) {
       const computed = await hashOtp(otp_code, otp.salt as string);
       match = timingSafeEqual(computed, otp.otp_hash as string);
-    } else if (otp.otp_code) {
-      match = timingSafeEqual(otp.otp_code as string, otp_code);
     }
 
     if (!match) {
