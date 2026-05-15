@@ -12,6 +12,12 @@
 import { query } from "./_lib/db";
 import { requireSession } from "./_lib/session";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import {
+  hashOtp,
+  OTP_LOCKOUT_MINUTES,
+  OTP_MAX_ATTEMPTS,
+  timingSafeEqual,
+} from "./_lib/otp-crypto";
 
 export const handler = async (event: {
   body: string | null;
@@ -38,23 +44,56 @@ export const handler = async (event: {
 
     const ndaChannel = channel === "email" ? "nda_email" : "nda_phone";
 
-    // Latest unverified, unexpired OTP for this vendor + channel.
-    const rows = await query<{ id: string }>(
-      `SELECT id FROM vendor_otp
-       WHERE vendor_id = $1 AND channel = $2
-         AND otp_code = $3 AND verified = false
-         AND expires_at > now()
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [vendor_id, ndaChannel, code],
+    // Hash-and-compare (audit H-4 pattern). Latest unverified, unexpired
+    // OTP for this vendor + channel; then timing-safe hash match.
+    const rows = await query<{
+      id: string;
+      otp_hash: string | null;
+      salt: string | null;
+      attempts: number;
+      locked_until: string | null;
+    }>(
+      `SELECT id, otp_hash, salt, attempts, locked_until
+         FROM vendor_otp
+        WHERE vendor_id = $1 AND channel = $2 AND verified = false
+          AND expires_at > now()
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [vendor_id, ndaChannel],
     );
-    if (!rows[0]) {
+    const row = rows[0];
+    if (!row) {
       return err("Invalid or expired code", 400);
+    }
+
+    if (row.locked_until && new Date(row.locked_until) > new Date()) {
+      return err("Too many attempts. Request a new code.", 429);
+    }
+
+    const match =
+      row.otp_hash != null &&
+      row.salt != null &&
+      timingSafeEqual(hashOtp(code, row.salt), row.otp_hash);
+
+    if (!match) {
+      const newAttempts = row.attempts + 1;
+      const shouldLock = newAttempts >= OTP_MAX_ATTEMPTS;
+      const lockedUntil = shouldLock
+        ? new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000).toISOString()
+        : null;
+      await query(
+        `UPDATE vendor_otp SET attempts = $2, locked_until = $3 WHERE id = $1`,
+        [row.id, newAttempts, lockedUntil],
+      );
+      return err(
+        shouldLock ? "Too many attempts. Request a new code." : "Invalid or expired code",
+        shouldLock ? 429 : 400,
+      );
     }
 
     await query(
       `UPDATE vendor_otp SET verified = true WHERE id = $1`,
-      [rows[0].id],
+      [row.id],
     );
 
     return json({ success: true, channel });

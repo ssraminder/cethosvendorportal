@@ -17,6 +17,7 @@ import { sendBrevo } from "./_lib/brevo";
 import { sendMailgun } from "./_lib/mailgun";
 import { sendTwilioSms, maskPhone } from "./_lib/twilio";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
 
 interface VendorRow {
   id: string;
@@ -73,13 +74,18 @@ export const handler = async (event: {
       return err("Please wait before requesting another code", 429);
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Same hash-at-rest pattern as vendor-auth OTP (audit H-4). Raw code
+    // only lives in this scope + the email/SMS body; DB stores hash+salt.
+    const code = generateOtp();
+    const salt = generateSalt();
+    const otpHash = hashOtp(code, salt);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     await query(
-      `INSERT INTO vendor_otp (vendor_id, email, phone, channel, otp_code, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [vendor.id, vendor.email, vendor.phone, ndaChannel, code, expiresAt],
+      `INSERT INTO vendor_otp
+         (vendor_id, email, phone, channel, otp_hash, salt, attempts, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
+      [vendor.id, vendor.email, vendor.phone, ndaChannel, otpHash, salt, expiresAt],
     );
 
     if (channel === "email") {
