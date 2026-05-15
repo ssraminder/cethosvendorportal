@@ -17,11 +17,21 @@ import {
   type NetlifyResponse,
 } from "./_lib/response";
 import { buildSessionCookie } from "./_lib/cookies";
+import {
+  hashOtp,
+  OTP_LOCKOUT_MINUTES,
+  OTP_MAX_ATTEMPTS,
+  timingSafeEqual,
+} from "./_lib/otp-crypto";
 
 interface OtpRow {
   id: string;
   vendor_id: string;
-  otp_code: string;
+  otp_code: string | null;
+  otp_hash: string | null;
+  salt: string | null;
+  attempts: number;
+  locked_until: string | null;
 }
 
 interface VendorRow {
@@ -47,14 +57,48 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
 
     // Find the latest non-verified, non-expired OTP for this email
     const otps = await query<OtpRow>(
-      `SELECT id, vendor_id, otp_code FROM vendor_otp
-       WHERE email = $1 AND verified = false AND expires_at > now()
-       ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, vendor_id, otp_code, otp_hash, salt, attempts, locked_until
+         FROM vendor_otp
+        WHERE email = $1 AND verified = false AND expires_at > now()
+        ORDER BY created_at DESC LIMIT 1`,
       [email],
     );
     const otp = otps[0];
-    if (!otp || otp.otp_code !== otpCode) {
+    if (!otp) {
       return err("Invalid or expired code", 401);
+    }
+
+    // Per-row lockout. Combined with the 60s send-side rate limit, a
+    // brute-forcer can only try OTP_MAX_ATTEMPTS codes per minute against
+    // any single email.
+    if (otp.locked_until && new Date(otp.locked_until) > new Date()) {
+      return err("Too many attempts. Request a new code.", 429);
+    }
+
+    // Hash-and-compare. Backward-compat: if otp_hash is null (in-flight
+    // legacy row written before the H-4 migration), fall back to plaintext
+    // — still constant-time so the leak surface is identical.
+    let match = false;
+    if (otp.otp_hash && otp.salt) {
+      match = timingSafeEqual(hashOtp(otpCode, otp.salt), otp.otp_hash);
+    } else if (otp.otp_code) {
+      match = timingSafeEqual(otp.otp_code, otpCode);
+    }
+
+    if (!match) {
+      const newAttempts = otp.attempts + 1;
+      const shouldLock = newAttempts >= OTP_MAX_ATTEMPTS;
+      const lockedUntil = shouldLock
+        ? new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000).toISOString()
+        : null;
+      await query(
+        `UPDATE vendor_otp SET attempts = $2, locked_until = $3 WHERE id = $1`,
+        [otp.id, newAttempts, lockedUntil],
+      );
+      return err(
+        shouldLock ? "Too many attempts. Request a new code." : "Invalid or expired code",
+        shouldLock ? 429 : 401,
+      );
     }
 
     await query(`UPDATE vendor_otp SET verified = true WHERE id = $1`, [otp.id]);
