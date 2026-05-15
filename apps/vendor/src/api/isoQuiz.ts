@@ -7,16 +7,14 @@
 // in the body are the real authority.
 
 import { FUNCTIONS_BASE, safePost } from "./functionsBase";
+import { getSupabaseAnonKey } from "../lib/env";
 
-const PUBLISHABLE_ANON_KEY_FALLBACK =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
-const ANON_KEY: string =
-  (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY
-  || PUBLISHABLE_ANON_KEY_FALLBACK;
-const gatewayHeaders: Record<string, string> = {
-  apikey: ANON_KEY,
-  Authorization: `Bearer ${ANON_KEY}`,
-};
+// Anon key comes from build-time env, not a hardcoded fallback.
+// Audit finding M-1. See `../lib/env.ts`.
+function makeGatewayHeaders(): Record<string, string> {
+  const key = getSupabaseAnonKey();
+  return { apikey: key, Authorization: `Bearer ${key}` };
+}
 
 export interface QuizQuestion {
   id: string;
@@ -48,7 +46,7 @@ export async function getIsoQuiz(token: string, slug: string): Promise<QuizPaylo
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-quiz-get`,
     { token, slug },
-    gatewayHeaders,
+    makeGatewayHeaders(),
   );
   return (await res.json()) as QuizPayload | QuizError;
 }
@@ -75,7 +73,7 @@ export async function submitIsoQuiz(
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-quiz-submit`,
     { token, slug, answers },
-    gatewayHeaders,
+    makeGatewayHeaders(),
   );
   return (await res.json()) as QuizSubmitResult | QuizError;
 }

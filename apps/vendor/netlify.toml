@@ -188,3 +188,32 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ============================================================================
+# Security headers (audit finding M-4).
+#
+# Applied to every response served from vendor.cethos.com:
+#   * HSTS — force HTTPS, include subdomains, eligible for browser preload.
+#   * X-Frame-Options — block clickjacking via iframe embedding.
+#   * X-Content-Type-Options — disable MIME-type sniffing.
+#   * Referrer-Policy — never send referrer past origin (protects session
+#     tokens that could otherwise leak via Referer to outbound links).
+#   * Permissions-Policy — deny camera/microphone/geolocation/payment APIs
+#     that the vendor portal doesn't use.
+#   * Content-Security-Policy — restrict where scripts, styles, images,
+#     fonts, and XHR/fetch targets can come from. Allows the prod origins
+#     used today (Supabase REST, edge functions, storage; Sentry; Brevo);
+#     update when adding a new provider. `'unsafe-inline'` is needed for
+#     Vite's runtime style injection — accept until a CSP-friendly build
+#     pipeline lands.
+# ============================================================================
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://lmzoyezvsjgsxveoakdr.supabase.co https://*.supabase.co https://*.sentry.io https://api.brevo.com https://api.mailgun.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"

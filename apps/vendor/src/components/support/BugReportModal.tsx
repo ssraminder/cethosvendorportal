@@ -19,15 +19,12 @@ import { Loader2, X as XIcon, Upload, CheckCircle2, AlertCircle, Bug, HelpCircle
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getConsoleLogs } from "../../lib/consoleCapture";
 import { FUNCTIONS_BASE } from "../../api/functionsBase";
+import { getSupabaseAnonKey } from "../../lib/env";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-const ANON_KEY: string =
-  (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY
-  || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 
@@ -122,7 +119,10 @@ export function BugReportModal({ open, onClose }: Props) {
 
       const res = await fetch(`${FUNCTIONS_BASE}/vendor-submit-bug-report`, {
         method: "POST",
-        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
+        headers: (() => {
+          const key = getSupabaseAnonKey();
+          return { apikey: key, Authorization: `Bearer ${key}` };
+        })(),
         body: form,
       });
       const data = await res.json();
