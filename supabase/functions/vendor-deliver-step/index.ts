@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { notifyAdminVendorDelivered } from "../_shared/notify-step-lifecycle.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -149,6 +150,30 @@ serve(async (req: Request) => {
         notes_from_vendor: notesStr,
       })
       .eq("id", stepId);
+
+    // Fire-and-forget admin notification.
+    try {
+      const [{ data: vendor }, { data: stepRow }] = await Promise.all([
+        sb.from("vendors").select("id, full_name, email").eq("id", vendorId).maybeSingle(),
+        sb.from("order_workflow_steps").select("id, name, step_number, order_id").eq("id", stepId).maybeSingle(),
+      ]);
+      const { data: order } = stepRow?.order_id
+        ? await sb.from("orders").select("id, order_number").eq("id", stepRow.order_id).maybeSingle()
+        : { data: null };
+      if (vendor && order && stepRow) {
+        await notifyAdminVendorDelivered({
+          supabase: sb,
+          vendor: { id: vendor.id, full_name: vendor.full_name, email: vendor.email },
+          order: { id: order.id, order_number: order.order_number },
+          step: { id: stepRow.id, name: stepRow.name ?? null, step_number: stepRow.step_number ?? null },
+          fileCount: uploadedPaths.length,
+          version: delivery.version,
+          note: notesStr,
+        });
+      }
+    } catch (e: any) {
+      console.error("vendor_delivered email fan-out failed:", e?.message || e);
+    }
 
     return json({
       success: true,
