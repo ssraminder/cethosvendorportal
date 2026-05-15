@@ -3,6 +3,7 @@ import { useVendorAuth } from "../../context/VendorAuthContext";
 import { GraduationCap, Loader2, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { FUNCTIONS_BASE } from "../../api/functionsBase";
 import { reportApiError } from "../../lib/sentry";
+import { getSupabaseAnonKey } from "../../lib/env";
 
 /**
  * RequestTest — vendor self-service for adding a new domain to the
@@ -122,10 +123,7 @@ export function RequestTest() {
         // (MCP defaults to verify_jwt=true; vendor session UUID would
         // otherwise be rejected at the gateway). The function itself
         // prefers body.session_token over the header.
-        const anonKey =
-          (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env
-            ?.VITE_SUPABASE_ANON_KEY
-          ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
+        const anonKey = getSupabaseAnonKey();
         const resp = await fetch(base, {
           method: "POST",
           headers: {

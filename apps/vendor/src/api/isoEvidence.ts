@@ -6,6 +6,7 @@
 //     the /documents page that surfaces open requests inside the portal.
 
 import { FUNCTIONS_BASE, safePost } from "./functionsBase";
+import { getSupabaseAnonKey } from "../lib/env";
 
 const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "localhost"
   ? "/sb"
@@ -14,25 +15,13 @@ const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "l
 // MCP-deployed edge functions land with verify_jwt=true. The Supabase
 // gateway accepts the publishable anon key in the apikey header to
 // satisfy that check; the function itself does its own token validation
-// inside the body. Inclusion is safe — this key is the project's
-// publishable key, designed to ship with the client bundle.
-//
-// We try the build-time env var first, then fall back to the literal
-// publishable key. The fallback exists because production Netlify is
-// not currently exposing VITE_SUPABASE_ANON_KEY to the build, which
-// silently strands these endpoints behind the gateway with 401s. The
-// key is bound to project ref `lmzoyezvsjgsxveoakdr` and rotation
-// (rare) will require a code update, but that's a worthwhile trade
-// for resilience.
-const PUBLISHABLE_ANON_KEY_FALLBACK =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtem95ZXp2c2pnc3h2ZW9ha2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NDkzNTIsImV4cCI6MjA4NDQyNTM1Mn0.6XtRrAuganzIb65FbG_NKQ8JuOxoPLSXBYsffZg2Y3c";
-const ANON_KEY: string =
-  (import.meta as { env?: { VITE_SUPABASE_ANON_KEY?: string } }).env?.VITE_SUPABASE_ANON_KEY
-  || PUBLISHABLE_ANON_KEY_FALLBACK;
-const gatewayHeaders: Record<string, string> = {
-  apikey: ANON_KEY,
-  Authorization: `Bearer ${ANON_KEY}`,
-};
+// inside the body. The publishable key is designed to ship with the
+// client bundle — but it must come from Netlify env, NOT a hardcoded
+// string. See `../lib/env.ts` and audit finding M-1.
+function makeGatewayHeaders(): Record<string, string> {
+  const key = getSupabaseAnonKey();
+  return { apikey: key, Authorization: `Bearer ${key}` };
+}
 
 export interface IsoRequestItem {
   slug: string;
@@ -83,7 +72,7 @@ export async function resolveDocRequest(token: string): Promise<ResolvedDocReque
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-resolve-doc-request`,
     { token },
-    gatewayHeaders,
+    makeGatewayHeaders(),
   );
   return (await res.json()) as ResolvedDocRequest | ResolveError;
 }
@@ -146,7 +135,7 @@ export async function explainIsoEvidenceItem(
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-evidence-explain-item`,
     { token, slug, reason },
-    gatewayHeaders,
+    makeGatewayHeaders(),
   );
   return await res.json();
 }
@@ -159,7 +148,7 @@ export async function completeIsoEvidenceItem(
   const res = await safePost(
     `${FUNCTIONS_BASE}/vendor-iso-evidence-complete-item`,
     { token, slug },
-    gatewayHeaders,
+    makeGatewayHeaders(),
   );
   return await res.json();
 }

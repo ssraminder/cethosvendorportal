@@ -2,6 +2,80 @@ import * as Sentry from "@sentry/react";
 
 const dsn = import.meta.env.VITE_SENTRY_DSN || "";
 
+// Query-string keys that may carry a session token, OTP, signed-URL
+// signature, doc-request token, or password-reset token. We strip them
+// from breadcrumb URLs + the event request URL before shipping to Sentry.
+// Audit finding M-5.
+const SENSITIVE_QS_KEYS = new Set([
+  "token",
+  "session_token",
+  "sessionToken",
+  "otp",
+  "otp_code",
+  "code",
+  "password",
+  "secret",
+  "signature",
+  "Signature",
+  "sig",
+  "key",
+  "applicationId", // CV-URL guessable UUID — keep off the wire
+]);
+
+// Body field names to redact if we see them inside breadcrumb fetch
+// payloads (Sentry's fetch integration captures request body by default).
+const SENSITIVE_BODY_KEYS = new Set([
+  "password",
+  "new_password",
+  "current_password",
+  "otp_code",
+  "token",
+  "session_token",
+  "payment_details",
+  "credit_card",
+  "card_number",
+  "cvv",
+]);
+
+function redactUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    let mutated = false;
+    for (const k of Array.from(u.searchParams.keys())) {
+      if (SENSITIVE_QS_KEYS.has(k)) {
+        u.searchParams.set(k, "[REDACTED]");
+        mutated = true;
+      }
+    }
+    return mutated ? u.toString() : url;
+  } catch {
+    return url;
+  }
+}
+
+function redactBody(value: unknown): unknown {
+  if (typeof value === "string") {
+    // Try JSON parse; if successful, redact + reserialize. Otherwise
+    // leave alone (free-text bodies are unlikely to carry secrets).
+    try {
+      const parsed = JSON.parse(value);
+      const redacted = redactBody(parsed);
+      return JSON.stringify(redacted);
+    } catch {
+      return value;
+    }
+  }
+  if (Array.isArray(value)) return value.map(redactBody);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = SENSITIVE_BODY_KEYS.has(k) ? "[REDACTED]" : redactBody(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 Sentry.init({
   dsn,
   enabled: !!dsn,
@@ -13,10 +87,55 @@ Sentry.init({
   tracesSampleRate: 0.2,
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 1.0,
+
+  // Strip tokens / passwords / OTP codes from URLs and request bodies
+  // before they leave the browser. Audit finding M-5.
+  beforeBreadcrumb(breadcrumb) {
+    if (breadcrumb.data && typeof breadcrumb.data === "object") {
+      const data = breadcrumb.data as Record<string, unknown>;
+      if (typeof data.url === "string") {
+        data.url = redactUrl(data.url);
+      }
+      if ("body" in data) {
+        data.body = redactBody(data.body);
+      }
+      if ("request_body_size" in data) {
+        // size is fine; just ensure we don't accidentally leak a
+        // stringified body via the wrong field
+      }
+      if ("response" in data) {
+        data.response = redactBody(data.response);
+      }
+    }
+    if (typeof breadcrumb.message === "string") {
+      breadcrumb.message = redactUrl(breadcrumb.message);
+    }
+    return breadcrumb;
+  },
+
   beforeSend(event) {
     const exception = event.exception?.values?.[0];
     if (exception?.type === "AbortError") return null;
     if (exception?.value?.includes("AbortError")) return null;
+
+    // Redact sensitive query params from the event-level request URL.
+    if (event.request?.url) {
+      event.request.url = redactUrl(event.request.url);
+    }
+    // And from any breadcrumbs that slipped through beforeBreadcrumb
+    // (defence-in-depth for breadcrumbs added by integrations after our
+    // hook).
+    if (event.breadcrumbs) {
+      for (const b of event.breadcrumbs) {
+        if (b.data && typeof b.data === "object") {
+          const data = b.data as Record<string, unknown>;
+          if (typeof data.url === "string") {
+            data.url = redactUrl(data.url);
+          }
+          if ("body" in data) data.body = redactBody(data.body);
+        }
+      }
+    }
     return event;
   },
 });
