@@ -12,6 +12,7 @@ import { query } from "./_lib/db";
 import { sendBrevo } from "./_lib/brevo";
 import { sendMailgun } from "./_lib/mailgun";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
 
 interface Vendor {
   id: string;
@@ -62,13 +63,19 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
       return err("Please wait before requesting another code", 429);
     }
 
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Crypto-strong 6-digit OTP + per-row salt. Store only the hash in
+    // the DB; the raw code lives just in this scope + the email body.
+    // Audit finding H-4.
+    const otpCode = generateOtp();
+    const salt = generateSalt();
+    const otpHash = hashOtp(otpCode, salt);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     await query(
-      `INSERT INTO vendor_otp (vendor_id, email, phone, channel, otp_code, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [vendor.id, vendor.email, vendor.phone, channel, otpCode, expiresAt],
+      `INSERT INTO vendor_otp
+         (vendor_id, email, phone, channel, otp_code, otp_hash, salt, attempts, expires_at)
+       VALUES ($1, $2, $3, $4, NULL, $5, $6, 0, $7)`,
+      [vendor.id, vendor.email, vendor.phone, channel, otpHash, salt, expiresAt],
     );
 
     const html = `

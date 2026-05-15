@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  hashOtp,
+  OTP_LOCKOUT_MINUTES,
+  OTP_MAX_ATTEMPTS,
+  timingSafeEqual,
+} from "../_shared/otp-crypto.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +42,7 @@ serve(async (req: Request) => {
     // Look up most recent non-verified, non-expired OTP for this email
     const { data: otp, error: otpErr } = await supabase
       .from("vendor_otp")
-      .select("id, vendor_id, otp_code")
+      .select("id, vendor_id, otp_code, otp_hash, salt, attempts, locked_until")
       .eq("email", normalizedEmail)
       .eq("verified", false)
       .gt("expires_at", new Date().toISOString())
@@ -51,10 +57,43 @@ serve(async (req: Request) => {
       );
     }
 
-    if (otp.otp_code !== otp_code) {
+    // Honor per-row lockout. Combined with the 60s send-side rate limit,
+    // a brute-forcer can only try OTP_MAX_ATTEMPTS codes per minute.
+    if (otp.locked_until && new Date(otp.locked_until as string) > new Date()) {
       return new Response(
-        JSON.stringify({ error: "Invalid or expired code" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Too many attempts. Request a new code." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Hash-and-compare. Backward-compat: if otp_hash is null (in-flight
+    // legacy row written before the H-4 migration), fall back to plaintext
+    // compare — still constant-time so the leak surface is identical.
+    let match = false;
+    if (otp.otp_hash && otp.salt) {
+      const computed = await hashOtp(otp_code, otp.salt as string);
+      match = timingSafeEqual(computed, otp.otp_hash as string);
+    } else if (otp.otp_code) {
+      match = timingSafeEqual(otp.otp_code as string, otp_code);
+    }
+
+    if (!match) {
+      const newAttempts = (otp.attempts as number) + 1;
+      const shouldLock = newAttempts >= OTP_MAX_ATTEMPTS;
+      const lockedUntil = shouldLock
+        ? new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000).toISOString()
+        : null;
+      await supabase
+        .from("vendor_otp")
+        .update({ attempts: newAttempts, locked_until: lockedUntil })
+        .eq("id", otp.id);
+      return new Response(
+        JSON.stringify({
+          error: shouldLock
+            ? "Too many attempts. Request a new code."
+            : "Invalid or expired code",
+        }),
+        { status: shouldLock ? 429 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

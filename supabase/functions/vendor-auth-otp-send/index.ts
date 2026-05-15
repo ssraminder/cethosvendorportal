@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
+import { generateOtp, generateSalt, hashOtp } from "../_shared/otp-crypto.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -87,8 +88,12 @@ serve(async (req: Request) => {
       );
     }
 
-    // Generate 6-digit OTP
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit OTP (crypto-strong, not Math.random) + per-row salt.
+    // Store only the hash in the DB; the raw code lives just in this scope
+    // and in the email/SMS body. See audit finding H-4.
+    const otpCode = generateOtp();
+    const salt = generateSalt();
+    const otpHash = await hashOtp(otpCode, salt);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     // Insert OTP record
@@ -97,7 +102,10 @@ serve(async (req: Request) => {
       email: vendor.email,
       phone: vendor.phone,
       channel,
-      otp_code: otpCode,
+      otp_code: null,
+      otp_hash: otpHash,
+      salt,
+      attempts: 0,
       expires_at: expiresAt,
     });
 
