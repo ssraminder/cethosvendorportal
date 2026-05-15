@@ -12,7 +12,7 @@
 //   * Verifies the step is currently assigned to this vendor and in a
 //     deliverable state (accepted, in_progress, or revision_requested).
 //   * Uploads every file under
-//       step-deliveries/<step_id>/v<version>/<sanitized-filename>
+//       vendor-deliveries/<step_id>/v<version>/<sanitized-filename>
 //     where <version> is the next step_deliveries.version for the step
 //     (1 on first delivery, +1 on each revision).
 //   * Inserts a step_deliveries row with file_paths[] + notes.
@@ -101,7 +101,7 @@ serve(async (req: Request) => {
       const path = `${stepId}/v${nextVersion}/${sanitize(file.name)}`;
       const bytes = new Uint8Array(await file.arrayBuffer());
       const { error: upErr } = await sb.storage
-        .from("step-deliveries")
+        .from("vendor-deliveries")
         .upload(path, bytes, {
           contentType: file.type || "application/octet-stream",
           upsert: true,
@@ -126,7 +126,7 @@ serve(async (req: Request) => {
       .insert({
         step_id: stepId,
         version: nextVersion,
-        actor_type: "vendor",
+        actor_type: "external_vendor",
         delivered_by_id: vendorId,
         delivered_by_name: vendorName,
         delivered_at: nowIso,
