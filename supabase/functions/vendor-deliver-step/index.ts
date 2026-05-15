@@ -132,7 +132,7 @@ serve(async (req: Request) => {
         delivered_at: nowIso,
         file_paths: filePayload,
         notes: notesStr,
-        review_status: "pending",
+        review_status: "pending_review",
       })
       .select("id, version")
       .single();
