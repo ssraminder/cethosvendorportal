@@ -5,7 +5,9 @@
 // full audit trail to cvp_application_decisions.
 //
 // POST body:
-//   { applicationId, staffNotes, staffId?, reapplyAfterMonths? (default 6) }
+//   { applicationId, staffNotes, reapplyAfterMonths? (default 6) }
+// Auth: requires Authorization: Bearer <staff JWT>; staffId derived from
+// auth context via `_shared/require-staff.ts`.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -15,6 +17,7 @@ import {
   logDecision,
   REJECT_REASON_SYSTEM_PROMPT,
 } from "../_shared/decision-ai.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,7 +36,6 @@ function json(body: Record<string, unknown>, status = 200): Response {
 interface Body {
   applicationId?: string;
   staffNotes?: string;
-  staffId?: string;
   reapplyAfterMonths?: number;
   /** When true, runs AI + renders preview but does NOT update status or queue email. */
   dryRun?: boolean;
@@ -46,6 +48,10 @@ interface Body {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
+
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+  const staffId = authed.staff.staffId;
 
   let body: Body;
   try {
@@ -138,7 +144,7 @@ serve(async (req: Request) => {
       rejection_email_status: "queued",
       rejection_email_queued_at: now.toISOString(),
       can_reapply_after: reapplyAfter.toISOString().split("T")[0],
-      staff_reviewed_by: body.staffId ?? null,
+      staff_reviewed_by: staffId,
       staff_reviewed_at: now.toISOString(),
       staff_review_notes: staffNotes,
       updated_at: now.toISOString(),
@@ -160,7 +166,7 @@ serve(async (req: Request) => {
     aiError: ai.ok ? null : ai.error,
     messageSentSubject: subject,
     messageSentBody: tpl.html,
-    staffUserId: body.staffId ?? null,
+    staffUserId: staffId,
   });
 
   return json({

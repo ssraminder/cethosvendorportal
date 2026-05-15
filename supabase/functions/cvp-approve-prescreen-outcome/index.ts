@@ -7,7 +7,6 @@
 //   {
 //     applicationId: string,
 //     outcome: 'prescreened' | 'staff_review_notice' | 'silent',
-//     staffId?: string,
 //     staffNotes?: string,
 //   }
 //
@@ -27,6 +26,7 @@ import {
   buildV8UnderManualReview,
 } from "../_shared/email-templates.ts";
 import { logDecision } from "../_shared/decision-ai.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,13 +52,16 @@ const VALID_OUTCOMES = new Set<Outcome>([
 interface Body {
   applicationId?: string;
   outcome?: string;
-  staffId?: string;
   staffNotes?: string;
 }
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
+
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+  const staffId = authed.staff.staffId;
 
   let body: Body;
   try {
@@ -140,7 +143,7 @@ serve(async (req: Request) => {
     .from("cvp_applications")
     .update({
       status: newStatus,
-      staff_reviewed_by: body.staffId ?? null,
+      staff_reviewed_by: staffId,
       staff_reviewed_at: now.toISOString(),
       staff_review_notes: body.staffNotes ?? null,
       updated_at: now.toISOString(),
@@ -186,7 +189,7 @@ serve(async (req: Request) => {
     aiError: null,
     messageSentSubject: subject,
     messageSentBody: html,
-    staffUserId: body.staffId ?? null,
+    staffUserId: staffId,
   });
 
   return json({

@@ -19,7 +19,9 @@
  *   dryRun?              preview only
  *   editedSubject?
  *   editedBody?          alias for staffMessage when sending after preview
- *   staffId?
+ *
+ * Auth: requires Authorization: Bearer <staff JWT>; staffId derived from
+ * auth context via `_shared/require-staff.ts`.
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -27,6 +29,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import { buildV18ReferencesRequest } from "../_shared/email-templates.ts";
 import { MODEL_QUALITY } from "../_shared/ai-models.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +106,10 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+  const staffId = authed.staff.staffId;
+
   let body: {
     applicationId?: string;
     staffMessage?: string;
@@ -111,7 +118,6 @@ serve(async (req: Request) => {
     dryRun?: boolean;
     editedSubject?: string;
     editedBody?: string;
-    staffId?: string;
   };
   try {
     body = await req.json();
@@ -185,7 +191,7 @@ serve(async (req: Request) => {
     .insert({
       application_id: body.applicationId,
       request_token_expires_at: expiresAt,
-      staff_id: body.staffId ?? null,
+      staff_id: staffId,
       staff_message: finalBody || null,
       ai_drafted_message: aiDraft,
       status: "sent",
@@ -215,7 +221,7 @@ serve(async (req: Request) => {
     trackContext: {
       applicationId: body.applicationId,
       templateTag: "v18-references-request",
-      staffUserId: body.staffId,
+      staffUserId: staffId,
     },
   });
 

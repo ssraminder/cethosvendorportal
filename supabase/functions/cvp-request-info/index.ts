@@ -4,7 +4,9 @@
 // sends V17, and writes the full audit trail to cvp_application_decisions.
 //
 // POST body:
-//   { applicationId, staffNotes, staffId?, deadlineDays? (default 7) }
+//   { applicationId, staffNotes, deadlineDays? (default 7) }
+// Auth: requires Authorization: Bearer <staff JWT>; staffId derived from
+// auth context via `_shared/require-staff.ts`.
 // (legacy `requestDetails` accepted as alias for staffNotes)
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -16,6 +18,7 @@ import {
   logDecision,
   REQUEST_INFO_SYSTEM_PROMPT,
 } from "../_shared/decision-ai.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +39,6 @@ interface Body {
   staffNotes?: string;
   /** Legacy alias for staffNotes (early callers used this name). */
   requestDetails?: string;
-  staffId?: string;
   deadlineDays?: number;
   /** Preview-only: run AI + render V17, return without sending or updating status. */
   dryRun?: boolean;
@@ -49,6 +51,10 @@ interface Body {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
+
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+  const staffId = authed.staff.staffId;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -128,7 +134,7 @@ serve(async (req: Request) => {
     .update({
       status: "info_requested",
       staff_review_notes: staffNotes,
-      staff_reviewed_by: body.staffId ?? null,
+      staff_reviewed_by: staffId,
       staff_reviewed_at: now.toISOString(),
       updated_at: now.toISOString(),
     })
@@ -144,7 +150,7 @@ serve(async (req: Request) => {
     trackContext: {
       applicationId: body.applicationId,
       templateTag: "v17-request-more-info",
-      staffUserId: body.staffId,
+      staffUserId: staffId,
     },
   });
 
@@ -158,7 +164,7 @@ serve(async (req: Request) => {
     aiError: ai.ok ? null : ai.error,
     messageSentSubject: subject,
     messageSentBody: tpl.html,
-    staffUserId: body.staffId ?? null,
+    staffUserId: staffId,
   });
 
   return json({
