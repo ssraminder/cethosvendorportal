@@ -81,7 +81,7 @@ serve(async (req: Request) => {
       .select(
         "id, vendor_id, status, vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, " +
           "deadline, expires_at, instructions, negotiation_allowed, max_rate, max_total, " +
-          "latest_deadline, auto_accept_within_limits",
+          "latest_deadline, auto_accept_within_limits, counter_status, counter_round",
       )
       .eq("id", offerId)
       .eq("vendor_id", vendorId)
@@ -95,6 +95,16 @@ serve(async (req: Request) => {
         .eq("id", offer.id);
       return json({ success: false, error: "Offer has expired" }, 409);
     }
+    // A counter already accepted by admin shouldn't be re-counterable — the
+    // accept path also flips offer.status to 'accepted', so this is defensive.
+    if (offer.counter_status === "accepted") {
+      return json({ success: false, error: "Counter has already been accepted" }, 409);
+    }
+    // After a rejection, the vendor can submit a new counter (that's the
+    // "negotiate again" path). We deliberately allow this, but the round
+    // bump below preserves the prior round in the audit trail rather than
+    // letting the vendor silently overwrite the rejected counter's history.
+    const nextCounterRound = (Number(offer.counter_round) || 0) + 1;
 
     // ── Auto-accept evaluation ──
     let withinLimits = true;
@@ -135,6 +145,7 @@ serve(async (req: Request) => {
           counter_at: nowIso,
           counter_responded_at: nowIso,
           responded_at: nowIso,
+          counter_round: nextCounterRound,
         })
         .eq("id", offer.id);
 
@@ -204,6 +215,9 @@ serve(async (req: Request) => {
     }
 
     // ── Queued for admin review ──
+    // Re-counter after a rejection: clear the prior counter_responded_at
+    // and rejection_reason so the row's "is there an undecided counter?"
+    // signal is unambiguous. Round number preserves audit history.
     await sb.from("vendor_step_offers")
       .update({
         counter_status: "proposed",
@@ -214,6 +228,9 @@ serve(async (req: Request) => {
         counter_deadline: counterDeadline,
         counter_note: counterNote,
         counter_at: nowIso,
+        counter_responded_at: null,
+        counter_rejection_reason: null,
+        counter_round: nextCounterRound,
       })
       .eq("id", offer.id);
 
