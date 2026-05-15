@@ -2,7 +2,9 @@
 // password-setup token, and send the V11 welcome email.
 //
 // Invoked by the CETHOS portal's RecruitmentDetail page via POST with body
-// { applicationId, combinationIds? (optional; defaults to all pending), staffId? }.
+// { applicationId, combinationIds? (optional; defaults to all pending) }.
+// Auth: requires Authorization: Bearer <staff JWT>; staffId derived from
+// auth context via `_shared/require-staff.ts`.
 //
 // Idempotent: re-calling on an already-approved application is a no-op.
 
@@ -15,6 +17,7 @@ import {
   logDecision,
   APPROVE_NOTE_SYSTEM_PROMPT,
 } from "../_shared/decision-ai.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,7 +35,6 @@ function json(body: Record<string, unknown>, status = 200): Response {
 interface ApprovePayload {
   applicationId: string;
   combinationIds?: string[];
-  staffId?: string;
   /** Optional staff notes — captured + AI-rephrased for inclusion in V11. */
   staffNotes?: string;
   /** Preview-only: runs AI + renders V11 with placeholder setup link. No
@@ -47,6 +49,10 @@ interface ApprovePayload {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
+
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+  const staffId = authed.staff.staffId;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -199,7 +205,7 @@ serve(async (req: Request) => {
     .update({
       status: "approved",
       approved_at: new Date().toISOString(),
-      approved_by: body.staffId ?? null,
+      approved_by: staffId,
     })
     .in("id", approveIds);
 
@@ -334,7 +340,7 @@ serve(async (req: Request) => {
     .update({
       status: "approved",
       translator_id: translatorId,
-      staff_reviewed_by: body.staffId ?? null,
+      staff_reviewed_by: staffId,
       staff_reviewed_at: now.toISOString(),
       staff_review_notes: staffNotes || null,
       updated_at: now.toISOString(),
@@ -390,7 +396,7 @@ serve(async (req: Request) => {
     status: "approved",
     approval_source: c.status === "skip_manual_review" ? "staff_manual" : "application",
     approved_at: now.toISOString(),
-    approved_by: body.staffId ?? null,
+    approved_by: staffId,
     test_combination_id: c.id,
     last_submission_id: (c.test_submission_id as string | null) ?? null,
   }));
@@ -428,7 +434,7 @@ serve(async (req: Request) => {
     trackContext: {
       applicationId: body.applicationId,
       templateTag: "v11-approved-welcome",
-      staffUserId: body.staffId,
+      staffUserId: staffId,
     },
   });
 
@@ -442,7 +448,7 @@ serve(async (req: Request) => {
     aiError,
     messageSentSubject: subject,
     messageSentBody: tpl.html,
-    staffUserId: body.staffId ?? null,
+    staffUserId: staffId,
   });
 
   return json({

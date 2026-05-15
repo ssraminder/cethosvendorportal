@@ -5,15 +5,17 @@
  * private `cvp-applicant-cvs` bucket. Used by the admin RecruitmentDetail
  * page to preview + download the CV.
  *
- * Body: { applicationId: string, expirySeconds?: number (default 600) }
+ * Body: { applicationId: string, expirySeconds?: number (default 300) }
  *
- * verify_jwt is disabled (same as other admin-portal endpoints that check
- * staff context via Supabase auth cookies on the dashboard side). Service
- * role fetches the signed URL so we don't need extra storage RLS policies.
+ * Deployed with verify_jwt=false (project convention). Auth enforced
+ * internally via `_shared/require-staff.ts`: caller must hold a valid
+ * staff Supabase JWT with an active row in `staff_users`. Service role
+ * fetches the signed URL so we don't need extra storage RLS policies.
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +39,9 @@ interface Body {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
+
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
 
   let body: Body;
   try {
@@ -73,7 +78,7 @@ serve(async (req: Request) => {
   }
 
   const expiry = Math.min(
-    Math.max(Number(body.expirySeconds ?? 600), 60),
+    Math.max(Number(body.expirySeconds ?? 300), 60),
     3600,
   );
 

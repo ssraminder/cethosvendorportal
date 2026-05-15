@@ -24,13 +24,17 @@
  *   dryRun?            preview only
  *   editedSubject?     override rendered subject
  *   editedBody?        override the AI/plain body text
- *   staffId?           staff_users.id for attribution
+ *
+ * Auth: requires a signed-in staff Authorization: Bearer JWT — see
+ * `_shared/require-staff.ts`. `staffId` is derived from auth context, not
+ * trusted from the body.
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import { MODEL_QUALITY } from "../_shared/ai-models.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,6 +164,10 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
+  const authed = await requireStaff(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+  const staffId = authed.staff.staffId;
+
   let body: {
     applicationId?: string;
     inboundEmailId?: string;
@@ -170,7 +178,6 @@ serve(async (req: Request) => {
     editedSubject?: string;
     editedBody?: string;
     dryRun?: boolean;
-    staffId?: string;
   };
   try {
     body = await req.json();
@@ -289,7 +296,7 @@ serve(async (req: Request) => {
     trackContext: {
       applicationId: String(body.applicationId),
       templateTag: "staff-reply",
-      staffUserId: body.staffId,
+      staffUserId: staffId,
     },
   });
 
@@ -299,7 +306,7 @@ serve(async (req: Request) => {
       .from("cvp_inbound_emails")
       .update({
         acknowledged_at: new Date().toISOString(),
-        acknowledged_by: body.staffId ?? null,
+        acknowledged_by: staffId,
       })
       .eq("id", body.inboundEmailId);
   }
