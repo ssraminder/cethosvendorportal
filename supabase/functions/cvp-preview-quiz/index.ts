@@ -18,6 +18,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
+import { requireStaff } from "../_shared/require-staff.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -66,6 +67,14 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") {
     return jsonResponse({ success: false, error: "method_not_allowed" }, 405);
+  }
+
+  // Staff-only — the preview email contains correct answers + explanations.
+  // Callers must invoke via supabase.functions.invoke() from a signed-in
+  // admin session so the Supabase auth JWT travels in Authorization.
+  const auth = await requireStaff(req);
+  if (!auth.ok) {
+    return jsonResponse({ success: false, error: auth.error }, auth.status);
   }
 
   let body: {
