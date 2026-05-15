@@ -102,7 +102,6 @@ serve(async (req: Request) => {
       email: vendor.email,
       phone: vendor.phone,
       channel,
-      otp_code: null,
       otp_hash: otpHash,
       salt,
       attempts: 0,

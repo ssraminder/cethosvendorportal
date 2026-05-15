@@ -73,8 +73,8 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
 
     await query(
       `INSERT INTO vendor_otp
-         (vendor_id, email, phone, channel, otp_code, otp_hash, salt, attempts, expires_at)
-       VALUES ($1, $2, $3, $4, NULL, $5, $6, 0, $7)`,
+         (vendor_id, email, phone, channel, otp_hash, salt, attempts, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
       [vendor.id, vendor.email, vendor.phone, channel, otpHash, salt, expiresAt],
     );
 
