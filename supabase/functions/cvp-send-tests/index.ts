@@ -61,8 +61,8 @@ function jsonResponse(body: Record<string, unknown>, status = 200): Response {
  * cvp-send-tests
  *
  * Assigns tests from the test library to each pending combination for an application.
- * Creates cvp_test_submissions records with unique tokens (48hr expiry).
- * Sends batch test invitation email (Brevo V3).
+ * Creates cvp_test_submissions records with unique tokens (10-day expiry).
+ * Sends batch test invitation email (V3).
  *
  * Triggered: automatically after pre-screen passes (score >= 70), or manually by staff.
  *
@@ -823,7 +823,10 @@ serve(async (req: Request) => {
         applicationNumber: app.application_number,
         testCount: assigned.length,
         testLinksHtml: fullBodyHtml,
-        expiryHours: 48,
+        // Token actually lives 10 days (see tokenExpiresAt above). The
+        // template text reads "expires in X hours" — render as 240h so the
+        // applicant isn't misled into thinking they have 2 days.
+        expiryHours: 240,
       });
       await sendMailgunEmail({
         to: { email: app.email, name: app.full_name },
