@@ -365,7 +365,7 @@ serve(async (req: Request) => {
       : [];
     for (const f of deliveryFileList) {
       if (!f?.storage_path) continue;
-      const signed = await signQuoteFile(sb, "step-deliveries", f.storage_path);
+      const signed = await signQuoteFile(sb, "vendor-deliveries", f.storage_path);
       deliveredFiles.push({
         storage_path: f.storage_path,
         filename: f.original_filename || f.filename || "delivered_file",
