@@ -2,6 +2,19 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
 
+// Activation tokens are 128-bit UUIDs — already crypto-strong. Unsalted
+// SHA-256 is sufficient: the high entropy makes rainbow tables infeasible,
+// and a deterministic hash lets the verify side look up the row by exact
+// match instead of scanning every unverified row. Audit H-4 / M-6 — the
+// raw token never lands in the DB.
+async function hashToken(token: string): Promise<string> {
+  const data = new TextEncoder().encode(token);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -57,8 +70,10 @@ serve(async (req: Request) => {
       .eq("channel", "activation")
       .eq("verified", false);
 
-    // Generate activation token (UUID)
+    // Generate activation token (UUID) + store its SHA-256 hash (M-6).
+    // Raw token only goes in the email body.
     const activationToken = crypto.randomUUID();
+    const tokenHash = await hashToken(activationToken);
     const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(); // 72 hours
 
     const { error: insertErr } = await supabase.from("vendor_otp").insert({
@@ -66,7 +81,8 @@ serve(async (req: Request) => {
       email: vendor.email,
       phone: vendor.phone,
       channel: "activation",
-      otp_code: activationToken,
+      otp_hash: tokenHash,
+      attempts: 0,
       expires_at: expiresAt,
     });
 

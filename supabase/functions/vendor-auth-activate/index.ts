@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
+// Mirror of `hashToken` in vendor-auth-invite — keep these two in sync.
+// UUID activation tokens have enough entropy that unsalted SHA-256 is safe
+// and lets us look up the row by exact hash match.
+async function hashToken(token: string): Promise<string> {
+  const data = new TextEncoder().encode(token);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -28,11 +39,14 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Look up activation token
+    // Look up activation token via its SHA-256 hash (M-6). Deterministic
+    // unsalted hash is safe for UUIDs (128-bit entropy makes rainbow
+    // tables infeasible).
+    const tokenHash = await hashToken(token);
     const { data: otp, error: otpErr } = await supabase
       .from("vendor_otp")
       .select("id, vendor_id, email")
-      .eq("otp_code", token)
+      .eq("otp_hash", tokenHash)
       .eq("channel", "activation")
       .eq("verified", false)
       .gt("expires_at", new Date().toISOString())

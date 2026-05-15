@@ -1,5 +1,13 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import {
+  generateOtp,
+  generateSalt,
+  hashOtp,
+  OTP_LOCKOUT_MINUTES,
+  OTP_MAX_ATTEMPTS,
+  timingSafeEqual,
+} from "../_shared/otp-crypto.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -91,7 +99,11 @@ serve(async (req: Request) => {
         );
       }
 
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      // Hash-at-rest (audit H-4): only the hash + salt land in DB; the raw
+      // code travels in the SMS body and stays in this scope.
+      const otpCode = generateOtp();
+      const salt = generateSalt();
+      const otpHash = await hashOtp(otpCode, salt);
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
       // Store OTP with channel=phone_verify and the NEW phone in the phone field
@@ -100,7 +112,9 @@ serve(async (req: Request) => {
         email: vendor.email,
         phone,
         channel: "phone_verify",
-        otp_code: otpCode,
+        otp_hash: otpHash,
+        salt,
+        attempts: 0,
         expires_at: expiresAt,
       });
 
@@ -173,10 +187,10 @@ serve(async (req: Request) => {
         );
       }
 
-      // Find matching OTP
+      // Find matching OTP (hash-at-rest, audit H-4 pattern).
       const { data: otp, error: otpErr } = await supabase
         .from("vendor_otp")
-        .select("id, otp_code")
+        .select("id, otp_hash, salt, attempts, locked_until")
         .eq("vendor_id", session.vendor_id)
         .eq("phone", phone)
         .eq("channel", "phone_verify")
@@ -193,10 +207,35 @@ serve(async (req: Request) => {
         );
       }
 
-      if (otp.otp_code !== otpCode) {
+      if (otp.locked_until && new Date(otp.locked_until as string) > new Date()) {
         return new Response(
-          JSON.stringify({ error: "Invalid code" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Too many attempts. Request a new code." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const match =
+        otp.otp_hash != null &&
+        otp.salt != null &&
+        timingSafeEqual(await hashOtp(otpCode, otp.salt as string), otp.otp_hash as string);
+
+      if (!match) {
+        const newAttempts = (otp.attempts as number) + 1;
+        const shouldLock = newAttempts >= OTP_MAX_ATTEMPTS;
+        const lockedUntil = shouldLock
+          ? new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000).toISOString()
+          : null;
+        await supabase
+          .from("vendor_otp")
+          .update({ attempts: newAttempts, locked_until: lockedUntil })
+          .eq("id", otp.id);
+        return new Response(
+          JSON.stringify({
+            error: shouldLock
+              ? "Too many attempts. Request a new code."
+              : "Invalid code",
+          }),
+          { status: shouldLock ? 429 : 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
