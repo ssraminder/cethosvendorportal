@@ -33,6 +33,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { MODEL_BASELINE, MODEL_QUALITY } from "../_shared/ai-models.ts";
+import { requireCronSecret } from "../_shared/require-cron-secret.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -246,6 +247,9 @@ serve(async (req: Request) => {
   if (req.method !== "POST") {
     return json({ success: false, error: "method_not_allowed" }, 405);
   }
+
+  const authed = await requireCronSecret(req);
+  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
