@@ -191,6 +191,9 @@ async function dispatchTestPath(
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  // Restrict to EN→Target + general domain. Non-general domains (legal,
+  // medical, certified_official) stay pending and are staff-driven later,
+  // matching the pre-existing auto-send-General policy.
   const resp = await fetch(`${supabaseUrl}/functions/v1/cvp-send-tests`, {
     method: "POST",
     headers: {
@@ -200,6 +203,7 @@ async function dispatchTestPath(
     body: JSON.stringify({
       applicationId,
       sourceLanguageFilter: englishIds,
+      domainFilter: ["general"],
       staffId,
     }),
   });
@@ -220,8 +224,9 @@ async function dispatchQuizPath(
 
   const { data: combos, error: comboErr } = await supabase
     .from("cvp_test_combinations")
-    .select("id, target_language_id, source_language_id, status")
+    .select("id, target_language_id, source_language_id, domain, status")
     .eq("application_id", applicationId)
+    .eq("domain", "general")
     .in("status", ["pending", "test_sent", "skip_manual_review"])
     .in("source_language_id", englishIds);
   if (comboErr) {
@@ -280,6 +285,7 @@ async function dispatchQuizPath(
       })
       .eq("application_id", applicationId)
       .eq("target_language_id", targetLanguageId)
+      .eq("domain", "general")
       .in("source_language_id", englishIds)
       .in("status", ["pending", "skip_manual_review"]);
   }
