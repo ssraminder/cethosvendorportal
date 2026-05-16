@@ -21,8 +21,12 @@ import { query } from "./_lib/db";
 import { requireSession } from "./_lib/session";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
 
+// Product-approved methods only (2026-05-16). 'wise' is grandfathered
+// at the DB layer for 8 legacy rows but is NOT accepted for new writes
+// here — the UI also drops it from the dropdown, so legacy wise vendors
+// are forced to pick a current method on their next save.
 const VALID_METHODS = new Set([
-  "bank_transfer", "paypal", "cheque", "e_transfer", "wire_transfer", "wise",
+  "bank_transfer", "paypal", "wire_transfer", "cheque",
 ]);
 
 interface Body {

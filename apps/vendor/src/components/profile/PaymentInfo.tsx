@@ -8,13 +8,17 @@ import {
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { CalendarClock, CreditCard, Loader2, Save, CheckCircle, AlertTriangle } from "lucide-react";
 
+// Product-approved methods only (2026-05-16: "direct deposit, wire
+// transfer, cheque, paypal should work. no other payment method").
+// 'wise' is grandfathered at the DB layer for ~8 legacy rows but is
+// intentionally NOT in this dropdown — those vendors must re-pick one
+// of the four below on their next save. The Netlify update-payment-info
+// VALID_METHODS Set + the DB CHECK constraint both enforce this.
 const PAYMENT_METHODS = [
-  { value: "e_transfer", label: "Interac e-Transfer" },
-  { value: "wire_transfer", label: "Wire Transfer" },
-  { value: "paypal", label: "PayPal" },
   { value: "bank_transfer", label: "Direct Deposit / Bank Transfer" },
-  { value: "wise", label: "Wise" },
+  { value: "wire_transfer", label: "Wire Transfer" },
   { value: "cheque", label: "Cheque" },
+  { value: "paypal", label: "PayPal" },
 ] as const;
 
 export function PaymentInfo() {
@@ -33,7 +37,8 @@ export function PaymentInfo() {
   // on a vendor that already has payment_info on file.
   const [changeAcknowledged, setChangeAcknowledged] = useState(false);
 
-  // Payment details (varies by method)
+  // Payment details (varies by method). e_transfer + wise removed
+  // 2026-05-16 per product directive (see PAYMENT_METHODS comment).
   const [paypalEmail, setPaypalEmail] = useState("");
   const [bankName, setBankName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
@@ -41,8 +46,6 @@ export function PaymentInfo() {
   const [bankInstitution, setBankInstitution] = useState("");
   const [bankSwiftCode, setBankSwiftCode] = useState("");
   const [bankAddress, setBankAddress] = useState("");
-  const [eTransferEmail, setETransferEmail] = useState("");
-  const [wiseEmail, setWiseEmail] = useState("");
   const [chequeAddress, setChequeAddress] = useState("");
 
   // Snapshot of original values so we can detect "did payout-routing fields
@@ -97,10 +100,6 @@ export function PaymentInfo() {
           swift_code: bankSwiftCode,
           bank_address: bankAddress,
         };
-      case "e_transfer":
-        return { e_transfer_email: eTransferEmail };
-      case "wise":
-        return { wise_email: wiseEmail };
       case "cheque":
         return { mailing_address: chequeAddress };
       default:
@@ -120,7 +119,7 @@ export function PaymentInfo() {
     // Server re-checks on submit, so this is just for showing the warning.
     const details = buildPaymentDetails();
     return Object.values(details).some((v) => typeof v === "string" && v.length > 0);
-  }, [paymentInfo, originalSnapshot, method, currency, paypalEmail, bankName, bankAccountNumber, bankTransitNumber, bankInstitution, bankSwiftCode, bankAddress, eTransferEmail, wiseEmail, chequeAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentInfo, originalSnapshot, method, currency, paypalEmail, bankName, bankAccountNumber, bankTransitNumber, bankInstitution, bankSwiftCode, bankAddress, chequeAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needsAcknowledgement = isPayoutChange;
   const saveDisabled = saving || (needsAcknowledgement && !changeAcknowledged);
@@ -327,36 +326,6 @@ export function PaymentInfo() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
             </div>
-          </div>
-        )}
-
-        {method === "e_transfer" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              e-Transfer Email
-            </label>
-            <input
-              type="email"
-              value={eTransferEmail}
-              onChange={(e) => setETransferEmail(e.target.value)}
-              placeholder="your-email@example.com"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-            />
-          </div>
-        )}
-
-        {method === "wise" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Wise Email or Account ID
-            </label>
-            <input
-              type="text"
-              value={wiseEmail}
-              onChange={(e) => setWiseEmail(e.target.value)}
-              placeholder="your-email@example.com or account ID"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-            />
           </div>
         )}
 
