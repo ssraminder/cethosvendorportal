@@ -183,6 +183,21 @@
   status = 200
   force = true
 
+# CV upload + list — proxied through Netlify so vendors in geo-blocked
+# regions (Pakistan confirmed 2026-05-16) can still upload/manage their
+# CV. Outbound call from the Lambda to api.cethos.com is unaffected.
+[[redirects]]
+  from = "/sb/upload-cv"
+  to = "/.netlify/functions/upload-cv"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/list-cvs"
+  to = "/.netlify/functions/list-cvs"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"
