@@ -1,13 +1,21 @@
 // Vendor CV upload & history.
 //
-// These endpoints hit Supabase Edge Functions directly (not via the
-// /sb Netlify proxy) because file upload uses multipart/form-data,
-// which is a CORS-safelisted Content-Type — no preflight, so direct
-// calls work without the proxy. The list/download URL endpoint also
-// goes direct for symmetry.
+// Routed through the same-origin /sb/* Netlify proxy so vendors in
+// geo-blocked regions (Pakistan confirmed 2026-05-16) can still
+// upload their CV — the previous direct fetch to api.cethos.com hit
+// a network-level "Failed to fetch" for those users. The Lambda's
+// outbound call to the Supabase edge function isn't subject to the
+// browser-side geo restriction.
+//
+// Local dev (no Netlify proxy) falls back to FUNCTIONS_BASE.
 
 import { FUNCTIONS_BASE } from "./functionsBase";
 import { convertDocxToPdf, isDocxFile, isPdfFile } from "../lib/convertDocxToPdf";
+
+const SB_BASE =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "/sb"
+    : null;
 
 export interface VendorCv {
   id: string;
@@ -80,7 +88,10 @@ export async function uploadCv(
   if (notes) form.append("notes", notes);
   // multipart/form-data is CORS-safelisted; the browser sets the
   // boundary header itself. Don't set Content-Type manually.
-  const res = await fetch(`${FUNCTIONS_BASE}/vendor-upload-cv`, {
+  const url = SB_BASE
+    ? `${SB_BASE}/upload-cv`
+    : `${FUNCTIONS_BASE}/vendor-upload-cv`;
+  const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${sessionToken}` },
     body: form,
@@ -89,6 +100,17 @@ export async function uploadCv(
 }
 
 export async function listCvs(sessionToken: string): Promise<ListResult> {
+  // /sb/list-cvs is the Netlify proxy; it expects session_token in the
+  // body (text/plain → CORS-simple) and forwards as Authorization:
+  // Bearer to the upstream Supabase edge function.
+  if (SB_BASE) {
+    const res = await fetch(`${SB_BASE}/list-cvs`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ session_token: sessionToken }),
+    });
+    return (await res.json()) as ListResult;
+  }
   const res = await fetch(`${FUNCTIONS_BASE}/vendor-list-cvs`, {
     method: "POST",
     headers: {
