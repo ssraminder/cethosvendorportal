@@ -1,4 +1,5 @@
 import { FUNCTIONS_BASE } from "./functionsBase";
+import { NetworkUnreachableError } from "./vendorAuth";
 
 const BASE = FUNCTIONS_BASE;
 
@@ -10,22 +11,45 @@ const SB_BASE = typeof window !== "undefined" && window.location.hostname !== "l
   ? "/sb"
   : null;
 
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function postSb<T>(sbPath: string, body: unknown): Promise<T> {
-  if (SB_BASE) {
-    const res = await fetch(`${SB_BASE}/${sbPath}`, {
+  const url = SB_BASE ? `${SB_BASE}/${sbPath}` : `${BASE}/${sbPath}`;
+  const contentType = SB_BASE ? "text/plain" : "application/json";
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": contentType },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+
+    // Detect non-JSON responses (Netlify platform error pages: 502 Bad Gateway,
+    // 504 timeout, or origin HTML interceptors on geo-blocked networks) before
+    // res.json() throws a cryptic SyntaxError. Surfaces an actionable error
+    // with the HTTP status instead of "Unexpected token '<', '<HTML>'".
+    const respContentType = res.headers.get("content-type") ?? "";
+    if (!respContentType.includes("application/json")) {
+      throw new NetworkUnreachableError(
+        `server returned ${res.status} ${res.statusText || "(no status text)"} — non-JSON response`,
+      );
+    }
+
     return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new NetworkUnreachableError(`request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    if (err instanceof TypeError) {
+      throw new NetworkUnreachableError(err);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  // Local dev: hit Supabase Edge Function directly.
-  const res = await fetch(`${BASE}/${sbPath}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return (await res.json()) as T;
 }
 
 // --- Types ---
