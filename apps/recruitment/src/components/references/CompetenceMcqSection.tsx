@@ -14,20 +14,50 @@ import {
   REFERENCE_MCQS,
   WOULD_WORK_AGAIN_OPTIONS,
   DOMAIN_SPECIALTY_OPTIONS,
+  REFERENCE_YEAR_MIN,
+  referenceYearMax,
+  referenceYearOptions,
   type CompetenceResponses,
   type McqAnswer,
+  type ReferenceYearAnswer,
+  type YearMatchChoice,
 } from "../../data/referenceMcqs";
 
 interface Props {
   vendorFirstName: string;
   value: Partial<CompetenceResponses>;
   onChange: (next: Partial<CompetenceResponses>) => void;
+  /** Applicant-stated start year passed through from the reference-feedback
+   *  validateOnly call. When null OR applicantYearUnknown=true, the year-
+   *  verification block is hidden. */
+  applicantStatedYear: number | null;
+  applicantYearUnknown: boolean;
+  yearAnswer: ReferenceYearAnswer;
+  onYearAnswerChange: (next: ReferenceYearAnswer) => void;
 }
 
-export function CompetenceMcqSection({ vendorFirstName, value, onChange }: Props) {
+export function CompetenceMcqSection({
+  vendorFirstName,
+  value,
+  onChange,
+  applicantStatedYear,
+  applicantYearUnknown,
+  yearAnswer,
+  onYearAnswerChange,
+}: Props) {
   const setAnswer = (slug: keyof CompetenceResponses, v: McqAnswer | string | null) => {
     onChange({ ...value, [slug]: v });
   };
+
+  const setYearChoice = (choice: YearMatchChoice) => {
+    if (choice === "actually_different") {
+      onYearAnswerChange({ choice, correctedYear: yearAnswer.correctedYear ?? null });
+    } else {
+      onYearAnswerChange({ choice, correctedYear: null });
+    }
+  };
+
+  const showYearBlock = !applicantYearUnknown && applicantStatedYear != null;
 
   return (
     <div className="space-y-6">
@@ -36,6 +66,85 @@ export function CompetenceMcqSection({ vendorFirstName, value, onChange }: Props
           Please answer the next questions about <strong>{vendorFirstName}</strong>'s work. Pick the option that best matches what you actually saw — if a question doesn't apply, choose <em>"Can't speak to this"</em>.
         </p>
       </div>
+
+      {showYearBlock && (
+        <fieldset className="border border-gray-200 rounded-lg p-4 bg-amber-50/40">
+          <legend className="px-1 text-sm font-medium text-gray-900">
+            {vendorFirstName} said you started working together around{" "}
+            <span className="font-mono">{applicantStatedYear}</span>. Does that match your recollection?
+          </legend>
+          <div className="space-y-1.5 mt-2">
+            <label
+              className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                yearAnswer.choice === "yes_matches"
+                  ? "bg-teal-50 border border-teal-200"
+                  : "hover:bg-gray-50 border border-transparent"
+              }`}
+            >
+              <input
+                type="radio"
+                name="year_match"
+                checked={yearAnswer.choice === "yes_matches"}
+                onChange={() => setYearChoice("yes_matches")}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-800">Yes, roughly that year</span>
+            </label>
+            <label
+              className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                yearAnswer.choice === "actually_different"
+                  ? "bg-teal-50 border border-teal-200"
+                  : "hover:bg-gray-50 border border-transparent"
+              }`}
+            >
+              <input
+                type="radio"
+                name="year_match"
+                checked={yearAnswer.choice === "actually_different"}
+                onChange={() => setYearChoice("actually_different")}
+                className="mt-0.5"
+              />
+              <div className="text-sm text-gray-800 flex-1">
+                <div className="mb-1">Actually, it was more like…</div>
+                {yearAnswer.choice === "actually_different" && (
+                  <select
+                    value={yearAnswer.correctedYear == null ? "" : String(yearAnswer.correctedYear)}
+                    onChange={(e) => {
+                      const y = e.target.value ? Number.parseInt(e.target.value, 10) : null;
+                      onYearAnswerChange({ choice: "actually_different", correctedYear: y });
+                    }}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    <option value="">Select year…</option>
+                    {referenceYearOptions().map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </label>
+            <label
+              className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                yearAnswer.choice === "cant_recall"
+                  ? "bg-teal-50 border border-teal-200"
+                  : "hover:bg-gray-50 border border-transparent"
+              }`}
+            >
+              <input
+                type="radio"
+                name="year_match"
+                checked={yearAnswer.choice === "cant_recall"}
+                onChange={() => setYearChoice("cant_recall")}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-800">I can't recall the exact year</span>
+            </label>
+          </div>
+          <div className="text-xs text-gray-500 mt-2">
+            Range accepted: {REFERENCE_YEAR_MIN}–{referenceYearMax()}. Approximate is fine.
+          </div>
+        </fieldset>
+      )}
 
       {REFERENCE_MCQS.map((q) => {
         const prompt = q.prompt.replace(/\{\{name\}\}/g, vendorFirstName);
