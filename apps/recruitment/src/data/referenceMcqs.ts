@@ -229,14 +229,15 @@ export function emptyReferenceDomainAnswer(): ReferenceDomainAnswer {
 }
 
 export function isReferenceDomainAnswerValid(
-  applicantStatedDomains: DomainCode[] | null,
-  applicantDomainsUnknown: boolean,
+  _applicantStatedDomains: DomainCode[] | null,
+  _applicantDomainsUnknown: boolean,
   answer: ReferenceDomainAnswer,
 ): boolean {
   // Multi-select is always shown to the reference now (PR #188): either
   // anchored to applicant's declared list, or as a free pick across all 8
   // options when applicant skipped. Either way, the reference must pick at
-  // least one OR explicitly opt out.
+  // least one OR explicitly opt out. Params kept for call-site symmetry
+  // with the pre-#188 signature.
   if (answer.cantRecall) return true;
   return answer.confirmedDomains.length > 0;
 }

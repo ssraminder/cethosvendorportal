@@ -141,7 +141,9 @@ export function ReferenceFeedback() {
         );
         return;
       }
-      competenceResponses = mcqValidation.data;
+      // mcqValidation.data is typed as CompetenceResponses (closed interface
+      // with no index signature); we widen it for the polymorphic payload.
+      competenceResponses = mcqValidation.data as unknown as Record<string, unknown>;
     }
     const applicantYear = preview?.applicantStatedStartYear ?? null;
     const applicantYearUnknown = preview?.applicantYearUnknown ?? false;
