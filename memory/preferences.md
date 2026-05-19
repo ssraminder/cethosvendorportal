@@ -20,6 +20,10 @@ _(Naming, structure, patterns, libraries to prefer or avoid)_
 
 - **Treat planning documents dated *today* with the same skepticism as code:** when a doc describes work as "to be built," verify by querying the running system, not by trusting the doc. Documents-folder briefings can be authored without awareness of recent shipping.
 
+- **When an applicant reports "I submitted, but I'm still getting reminders" — go to TM-Cethos's `jobs` table first.** The TM-Cethos → vendor-portal callback (`cvp-record-tm-submission`) is unreliable: many vendor-portal `cvp_test_submissions` rows are stuck because the callback never fired even though TM-side has `status='submitted'`. The `external_ref` column on TM `jobs` (format: `test_submission:<vp_uuid>`) is the linkage. Query TM (project `idzwtssftpxrsprzjael`) cross-project via Supabase MCP, then reconcile via the deployed `cvp-reconcile-tm-stuck` function — don't trust the vendor-portal status in isolation.
+  - **Why:** 2026-05-19 incident — 24 of 29 TM submissions never propagated to vendor-portal. The cron correctly skipped reminders for properly-submitted rows; the bug was upstream in the callback. See `decisions.md` entry for the same date.
+  - **How to apply:** Diagnose first by counting `WHERE TM.status='submitted' AND VP.status NOT IN ('submitted','assessed')`. Then pause `cvp-check-test-followups-hourly` (jobid in `cron.job`), reconcile via `cvp-reconcile-tm-stuck`, expire any duplicate stale siblings, re-enable.
+
 ## Communication
 _(Response length, format, when to ask vs. proceed, summary style)_
 
