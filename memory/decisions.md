@@ -18,6 +18,17 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-05-19 — `requireStaff()` invalid_token incident: pass JWT to `auth.getUser(token)`, use service_role as apikey
+
+- **Symptom:** Admin portal returned 401 on every staff-only edge function (`cvp-get-cv-url`, `cvp-approve-application`, …). Response body was `{"success":false,"error":"invalid_token"}`. The user's JWT was valid (decodable, unexpired) and `GET /auth/v1/user` with that bearer returned 200 OK — yet the function's internal `requireStaff()` rejected it.
+- **Root cause (two stacked bugs in [supabase/functions/_shared/require-staff.ts](supabase/functions/_shared/require-staff.ts)):**
+  1. `auth.getUser()` was called **without** the token argument. supabase-js v2 then falls back to the client's stored session, but the client was constructed with `persistSession: false`. With no session, the auth library sent no Authorization header to `/auth/v1/user`, which returned `invalid_token`. The `global.headers.Authorization` config only applies to db/storage/functions calls, *not* the auth client.
+  2. The validator client was constructed with `SUPABASE_ANON_KEY` as its apikey. Per the 2026-05-14 key-format rollout, the anon key is now ambiguous (legacy JWT vs new `sb_publishable_*`). A mismatched apikey makes `/auth/v1/user` return `Invalid API key`. service_role is universally accepted.
+- **Fix (PR #184):** pass the JWT explicitly (`auth.getUser(token)`) **and** use `service_role` as the apikey for the validator client. Redeploy every function that imports `requireStaff`: `cvp-get-cv-url`, `cvp-approve-application`, `cvp-approve-prescreen-outcome`, `cvp-reject-application`, `cvp-request-info`, `cvp-request-references`, `cvp-staff-reply`, `cvp-preview-quiz`.
+- **Diagnostic note:** The bug was finally pinned via **Chrome MCP** — the Claude-in-Chrome extension let us read the live admin tab's localStorage session and run direct fetches against the function with the actual bearer. Three back-to-back fetches told the whole story: `/auth/v1/user` 200, function 401, function with no apikey still 401 — confirming the failure was inside the function's call to `getUser()`, not at the gateway, not in the client. Future debugging tip: if a function says invalid_token but the JWT is decodable and `/auth/v1/user` accepts it, check **how** the function is validating (token-arg present? apikey correct?).
+- **Status:** active. All 8 functions redeployed via `supabase functions deploy --no-verify-jwt --project-ref lmzoyezvsjgsxveoakdr`. Confirmed via Chrome MCP probe with bogus applicationId: every function returns 404/400 (post-auth content validation) instead of 401.
+- **Affects:** every existing and future edge function calling `requireStaff`. Single point of validation, so the fix is permanent.
+
 ### 2026-05-19 — TM-Cethos → vendor-portal callback is the durable break point for test-submission state
 
 - **Incident:** Of 29 TM-Cethos test jobs marked `jobs.status='submitted'` between Apr 30 and May 18, **only 5** were properly reconciled to the vendor-portal side. 24 vendor-portal rows were stuck in `expired`/`sent`/`viewed` despite TM having the submission. The hourly `cvp-check-test-followups` cron kept sending V4 reminders for the still-pending VP rows, so applicants who had genuinely submitted received "your test expires in Xh" reminders — many complained "I submitted, why are you emailing me again?"
