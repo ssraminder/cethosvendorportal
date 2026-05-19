@@ -233,30 +233,27 @@ export function isReferenceDomainAnswerValid(
   applicantDomainsUnknown: boolean,
   answer: ReferenceDomainAnswer,
 ): boolean {
-  // No question shown when applicant didn't declare anything.
-  if (applicantDomainsUnknown || !applicantStatedDomains || applicantStatedDomains.length === 0) {
-    return true;
-  }
+  // Multi-select is always shown to the reference now (PR #188): either
+  // anchored to applicant's declared list, or as a free pick across all 8
+  // options when applicant skipped. Either way, the reference must pick at
+  // least one OR explicitly opt out.
   if (answer.cantRecall) return true;
-  // Need at least one confirmation or an explicit cant_recall. Empty
-  // confirmation with no opt-out leaves verification ambiguous.
   return answer.confirmedDomains.length > 0;
 }
 
 /** Maps reference-side answer to the payload cvp-submit-reference-feedback
- *  expects. Returns null when applicant didn't declare anything. */
+ *  expects. Always returns a payload (even when applicant didn't anchor) so
+ *  the reference's declared domains get recorded — server marks
+ *  domain_verification=NULL when there's no applicant anchor to compare. */
 export function referenceDomainAnswerToPayload(
-  applicantStatedDomains: DomainCode[] | null,
-  applicantDomainsUnknown: boolean,
+  _applicantStatedDomains: DomainCode[] | null,
+  _applicantDomainsUnknown: boolean,
   answer: ReferenceDomainAnswer,
 ): {
   confirmedDomains: DomainCode[];
   confirmedOtherDomainText: string | null;
   domainsCantRecall: boolean;
-} | null {
-  if (applicantDomainsUnknown || !applicantStatedDomains || applicantStatedDomains.length === 0) {
-    return null;
-  }
+} {
   if (answer.cantRecall) {
     return { confirmedDomains: [], confirmedOtherDomainText: null, domainsCantRecall: true };
   }
@@ -279,6 +276,34 @@ export interface CompetenceResponses {
   domain_competence: McqAnswer;
   domain_specialty: string | null;
   would_work_again: WouldWorkAgain;
+}
+
+/** One full 6-MCQ answer set (without the global would_work_again /
+ *  domain_specialty fields). Used by per-domain mode. */
+export type McqSet = Partial<Pick<
+  CompetenceResponses,
+  | "translation_competence"
+  | "linguistic_textual_competence"
+  | "research_competence"
+  | "cultural_competence"
+  | "technical_competence"
+  | "domain_competence"
+>>;
+
+export const MCQ_SLUGS = [
+  "translation_competence",
+  "linguistic_textual_competence",
+  "research_competence",
+  "cultural_competence",
+  "technical_competence",
+  "domain_competence",
+] as const;
+
+export function isMcqSetComplete(set: McqSet | undefined): boolean {
+  if (!set) return false;
+  return MCQ_SLUGS.every((slug) =>
+    ["a", "b", "c", "d", "e"].includes((set[slug] as string) ?? ""),
+  );
 }
 
 /**

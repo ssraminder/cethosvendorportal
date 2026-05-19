@@ -11,10 +11,14 @@ import {
   emptyReferenceDomainAnswer,
   isReferenceDomainAnswerValid,
   referenceDomainAnswerToPayload,
+  isMcqSetComplete,
+  MCQ_SLUGS,
+  DOMAIN_LABEL,
   type CompetenceResponses,
   type ReferenceYearAnswer,
   type ReferenceDomainAnswer,
   type DomainCode,
+  type McqSet,
 } from "../data/referenceMcqs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -49,6 +53,8 @@ export function ReferenceFeedback() {
   const [domainAnswer, setDomainAnswer] = useState<ReferenceDomainAnswer>(
     emptyReferenceDomainAnswer(),
   );
+  const [answeredPerDomain, setAnsweredPerDomain] = useState(false);
+  const [mcqByDomain, setMcqByDomain] = useState<Partial<Record<DomainCode, McqSet>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<"submitted" | "declined" | null>(null);
   const [showDecline, setShowDecline] = useState(false);
@@ -88,17 +94,54 @@ export function ReferenceFeedback() {
   }, [token]);
 
   const handleSubmit = async () => {
-    const mcqValidation = validateCompetenceResponses(mcq);
-    if (!mcqValidation.ok) {
-      const slug = mcqValidation.error.replace(/^missing or invalid: /, "");
-      const q = REFERENCE_MCQS.find((qq) => qq.slug === slug);
-      const name = preview?.applicantName?.split(" ")[0] || "this applicant";
-      setError(
-        q
-          ? `Please answer: "${q.prompt.replace(/\{\{name\}\}/g, name)}"`
-          : "Please answer all questions before submitting.",
-      );
+    // Per-domain mode is active only when the reference confirmed 2+ domains.
+    const perDomainActive =
+      answeredPerDomain &&
+      domainAnswer.confirmedDomains.length >= 2 &&
+      !domainAnswer.cantRecall;
+
+    // would_work_again is required in either mode — validate via the shared
+    // validator on a "minimal" shape first.
+    if (!["yes", "probably", "probably_not", "no"].includes(mcq.would_work_again as string)) {
+      setError(`Please answer: "Would you work with ${preview?.applicantName?.split(" ")[0] || "this applicant"} again?"`);
       return;
+    }
+
+    let competenceResponses: Record<string, unknown>;
+    if (perDomainActive) {
+      // Validate each confirmed domain has a complete MCQ set.
+      const byDomain: Record<string, Record<string, string>> = {};
+      for (const code of domainAnswer.confirmedDomains) {
+        const set = mcqByDomain[code];
+        if (!isMcqSetComplete(set)) {
+          setError(
+            `Please answer all 6 questions for domain "${DOMAIN_LABEL[code] ?? code}".`,
+          );
+          return;
+        }
+        const cleaned: Record<string, string> = {};
+        for (const slug of MCQ_SLUGS) cleaned[slug] = (set as McqSet)[slug] as string;
+        byDomain[code] = cleaned;
+      }
+      competenceResponses = {
+        would_work_again: mcq.would_work_again,
+        domain_specialty: null,
+        by_domain: byDomain,
+      };
+    } else {
+      const mcqValidation = validateCompetenceResponses(mcq);
+      if (!mcqValidation.ok) {
+        const slug = mcqValidation.error.replace(/^missing or invalid: /, "");
+        const q = REFERENCE_MCQS.find((qq) => qq.slug === slug);
+        const name = preview?.applicantName?.split(" ")[0] || "this applicant";
+        setError(
+          q
+            ? `Please answer: "${q.prompt.replace(/\{\{name\}\}/g, name)}"`
+            : "Please answer all questions before submitting.",
+        );
+        return;
+      }
+      competenceResponses = mcqValidation.data;
     }
     const applicantYear = preview?.applicantStatedStartYear ?? null;
     const applicantYearUnknown = preview?.applicantYearUnknown ?? false;
@@ -139,7 +182,7 @@ export function ReferenceFeedback() {
           action: "submit",
           feedbackText: feedbackText.trim() || null,
           feedbackRating: rating,
-          competenceResponses: mcqValidation.data,
+          competenceResponses,
           confirmedStartYear: yearPayload?.confirmedStartYear ?? null,
           yearCantRecall: yearPayload?.yearCantRecall ?? false,
           confirmedDomains: domainPayload?.confirmedDomains ?? null,
@@ -290,6 +333,10 @@ export function ReferenceFeedback() {
             applicantDomainsUnknown={preview?.applicantDomainsUnknown ?? false}
             domainAnswer={domainAnswer}
             onDomainAnswerChange={setDomainAnswer}
+            answeredPerDomain={answeredPerDomain}
+            onAnsweredPerDomainChange={setAnsweredPerDomain}
+            mcqByDomain={mcqByDomain}
+            onMcqByDomainChange={setMcqByDomain}
           />
 
           <div>

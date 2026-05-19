@@ -24,6 +24,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunEmail } from "../_shared/mailgun.ts";
 import { buildV19ReferenceFeedbackRequest } from "../_shared/email-templates.ts";
+import { isPublicEmailDomain } from "../_shared/public-email-domains.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -214,10 +215,15 @@ serve(async (req: Request) => {
     otherDomainText: string | null;
     domainsUnknown: boolean;
   }> = [];
+  const publicEmailRejections: string[] = [];
   for (const r of body.references ?? []) {
     const name = (r.name ?? "").trim();
     const email = (r.email ?? "").trim().toLowerCase();
     if (name.length < 2 || !/\S+@\S+\.\S+/.test(email)) continue;
+    if (isPublicEmailDomain(email)) {
+      publicEmailRejections.push(email);
+      continue;
+    }
     const yearResult = normaliseStartYear(r.startYear, r.startYearUnknown === true);
     if (!yearResult.ok) {
       return json(
@@ -247,6 +253,18 @@ serve(async (req: Request) => {
       otherDomainText: domainsResult.otherText,
       domainsUnknown: domainsResult.unknown,
     });
+  }
+  if (publicEmailRejections.length > 0) {
+    return json(
+      {
+        success: false,
+        error: "public_email_not_allowed",
+        detail:
+          `Reference contacts must use a business email (e.g. firstname@company.com). We can't accept consumer providers like Gmail, Outlook, Yahoo, iCloud, etc. — they make it impossible to verify the working relationship you described. Please ask each reference for their work address. Rejected: ${publicEmailRejections.join(", ")}`,
+        rejectedEmails: publicEmailRejections,
+      },
+      400,
+    );
   }
   if (cleanedRefs.length < 1 || cleanedRefs.length > 3) {
     return json(
