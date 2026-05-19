@@ -53,6 +53,7 @@ Rules:
 - If the response is very short (<30 words), strength_score caps at 3 — minimal evidence.
 - Red flags include: refusal to recommend, mentions of conflicts / professional issues, vague hedging, contradiction with the applicant's claims.
 - The "Year verification" line in the input describes how the applicant's stated start year compares with the reference's recollection. If it says DISAGREES, you MUST include a red flag along the lines of "reference contradicts applicant's stated working timeline (X-year gap)". If it says MATCHES, you MAY mention "timeline corroborated" as a theme. cant_recall is not a red flag.
+- The "Domain verification" line describes whether the reference confirmed at least one of the domains the applicant claimed they worked together on. DISJOINT (zero overlap, reference said they worked on something completely different) MUST be a red flag — applicant's claimed expertise is not corroborated by this reference. PARTIAL is the normal case (reference saw some but not all of the applicant's claimed work) — not a red flag. MATCHES MAY be a positive theme. cant_recall is not a red flag.
 - Don't infer beyond the text. If the reference doesn't mention something, don't include it as a theme.`;
 
 interface YearVerificationContext {
@@ -145,6 +146,124 @@ function computeYearVerification(
   };
 }
 
+const DOMAIN_CODES_FB = new Set<string>([
+  "legal",
+  "medical_pharma",
+  "marketing_transcreation",
+  "technical_it",
+  "financial_banking",
+  "literary_publishing",
+  "government_ngo",
+  "other",
+]);
+
+const DOMAIN_LABEL_FB: Record<string, string> = {
+  legal: "Legal",
+  medical_pharma: "Medical / Pharmaceutical",
+  marketing_transcreation: "Marketing / Transcreation",
+  technical_it: "Technical / IT",
+  financial_banking: "Financial / Banking",
+  literary_publishing: "Literary / Publishing",
+  government_ngo: "Government / NGO",
+  other: "Other",
+};
+
+interface DomainVerificationContext {
+  applicantStatedDomains: string[] | null;
+  applicantOtherDomainText: string | null;
+  applicantDomainsUnknown: boolean;
+  referenceConfirmedDomains: string[];
+  referenceOtherDomainText: string | null;
+  domainsCantRecall: boolean;
+  /** Computed bucket: matches / partial / disjoint / cant_recall, or null
+   *  when no verification was asked (applicant_domains_unknown). */
+  verification: "matches" | "partial" | "disjoint" | "cant_recall" | null;
+}
+
+function computeDomainVerification(
+  applicantStatedDomains: string[] | null,
+  applicantOtherDomainText: string | null,
+  applicantDomainsUnknown: boolean,
+  rawConfirmedDomains: unknown,
+  rawConfirmedOtherText: unknown,
+  domainsCantRecall: boolean,
+): { ok: true; ctx: DomainVerificationContext } | { ok: false; error: string } {
+  // No verification asked when the applicant didn't declare anything.
+  if (
+    applicantDomainsUnknown ||
+    !applicantStatedDomains ||
+    applicantStatedDomains.length === 0
+  ) {
+    return {
+      ok: true,
+      ctx: {
+        applicantStatedDomains,
+        applicantOtherDomainText,
+        applicantDomainsUnknown,
+        referenceConfirmedDomains: [],
+        referenceOtherDomainText: null,
+        domainsCantRecall: false,
+        verification: null,
+      },
+    };
+  }
+  if (domainsCantRecall) {
+    return {
+      ok: true,
+      ctx: {
+        applicantStatedDomains,
+        applicantOtherDomainText,
+        applicantDomainsUnknown,
+        referenceConfirmedDomains: [],
+        referenceOtherDomainText: null,
+        domainsCantRecall: true,
+        verification: "cant_recall",
+      },
+    };
+  }
+  if (rawConfirmedDomains != null && !Array.isArray(rawConfirmedDomains)) {
+    return { ok: false, error: "confirmedDomains must be an array" };
+  }
+  const confirmed = new Set<string>();
+  for (const d of (rawConfirmedDomains ?? []) as unknown[]) {
+    if (typeof d !== "string") return { ok: false, error: "confirmedDomains entries must be strings" };
+    const code = d.trim().toLowerCase();
+    if (!DOMAIN_CODES_FB.has(code)) return { ok: false, error: `invalid domain: ${code}` };
+    // Reference can only confirm domains the applicant actually stated.
+    if (applicantStatedDomains.includes(code)) confirmed.add(code);
+  }
+  const otherText = confirmed.has("other") && typeof rawConfirmedOtherText === "string"
+    ? rawConfirmedOtherText.trim().slice(0, 200) || null
+    : null;
+  const confirmedArr = Array.from(confirmed).sort();
+  const applicantSet = new Set(applicantStatedDomains);
+
+  let verification: "matches" | "partial" | "disjoint";
+  if (confirmedArr.length === 0) {
+    verification = "disjoint";
+  } else if (
+    confirmedArr.length === applicantSet.size &&
+    confirmedArr.every((c) => applicantSet.has(c))
+  ) {
+    verification = "matches";
+  } else {
+    verification = "partial";
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      applicantStatedDomains,
+      applicantOtherDomainText,
+      applicantDomainsUnknown,
+      referenceConfirmedDomains: confirmedArr,
+      referenceOtherDomainText: otherText,
+      domainsCantRecall: false,
+      verification,
+    },
+  };
+}
+
 async function analyseWithOpus(args: {
   applicantName: string;
   referenceName: string;
@@ -153,6 +272,7 @@ async function analyseWithOpus(args: {
   feedbackText: string;
   feedbackRating: number | null;
   yearVerification: YearVerificationContext;
+  domainVerification: DomainVerificationContext;
 }): Promise<{ ok: boolean; data: Record<string, unknown> | null; error: string | null }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return { ok: false, data: null, error: "ANTHROPIC_API_KEY not configured" };
@@ -178,10 +298,40 @@ async function analyseWithOpus(args: {
     }
   }
 
+  const dv = args.domainVerification;
+  const labelDomains = (codes: string[], otherText: string | null) => {
+    const parts = codes.map((c) =>
+      c === "other" && otherText ? `Other (${otherText})` : (DOMAIN_LABEL_FB[c] ?? c),
+    );
+    return parts.length > 0 ? parts.join(", ") : "(none)";
+  };
+  let domainVerificationLine = "Domain verification: (applicant did not declare any domains, so no verification was asked)";
+  if (!dv.applicantDomainsUnknown && dv.applicantStatedDomains && dv.applicantStatedDomains.length > 0) {
+    const applicantLabel = labelDomains(dv.applicantStatedDomains, dv.applicantOtherDomainText);
+    if (dv.verification === "cant_recall") {
+      domainVerificationLine =
+        `Domain verification: applicant said they worked together on [${applicantLabel}]; reference said they can't recall the domains. Weak signal but not a red flag on its own.`;
+    } else if (dv.verification === "matches") {
+      domainVerificationLine =
+        `Domain verification: applicant said [${applicantLabel}]; reference confirmed exactly the same set. MATCHES — corroborates the claimed expertise.`;
+    } else if (dv.verification === "partial") {
+      const confirmedLabel = labelDomains(dv.referenceConfirmedDomains, dv.referenceOtherDomainText);
+      domainVerificationLine =
+        `Domain verification: applicant said [${applicantLabel}]; reference confirmed only [${confirmedLabel}]. PARTIAL — normal pattern where reference only saw some of the applicant's work; not a red flag.`;
+    } else if (dv.verification === "disjoint") {
+      const extra = dv.referenceOtherDomainText
+        ? ` Reference instead said they worked on: "${dv.referenceOtherDomainText}".`
+        : "";
+      domainVerificationLine =
+        `Domain verification: applicant said [${applicantLabel}]; reference confirmed NONE of those domains.${extra} DISJOINT — this is a red flag. Applicant's claimed expertise is not corroborated.`;
+    }
+  }
+
   const userMessage = `Applicant: ${args.applicantName}
 Reference: ${args.referenceName} (${args.referenceCompany ?? "company unspecified"} — ${args.referenceRelationship ?? "relationship unspecified"})
 Reference's overall rating: ${args.feedbackRating ?? "not given"} / 5
 ${yearVerificationLine}
+${domainVerificationLine}
 
 Reference's free-text response:
 ---
@@ -247,6 +397,13 @@ serve(async (req: Request) => {
     confirmedStartYear?: number | string | null;
     /** True when reference picked "I can't recall the year". */
     yearCantRecall?: boolean;
+    /** Domain codes the reference confirmed (subset of applicant_stated_domains).
+     *  Ignored when applicant didn't declare domains. */
+    confirmedDomains?: string[];
+    /** Reference's free-text "we worked on something else" entry. */
+    confirmedOtherDomainText?: string | null;
+    /** True when reference picked "I can't recall the domains". */
+    domainsCantRecall?: boolean;
   };
   try {
     body = await req.json();
@@ -265,7 +422,7 @@ serve(async (req: Request) => {
   const { data: refRow } = await supabase
     .from("cvp_application_references")
     .select(
-      "id, application_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token_expires_at, status, applicant_stated_start_year, applicant_year_unknown",
+      "id, application_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token_expires_at, status, applicant_stated_start_year, applicant_year_unknown, applicant_stated_domains, applicant_other_domain_text, applicant_domains_unknown",
     )
     .eq("feedback_token", body.feedbackToken)
     .maybeSingle();
@@ -291,11 +448,17 @@ serve(async (req: Request) => {
         applicationNumber: app.application_number,
         alreadySubmitted: refRow.status === "received" || refRow.status === "declined",
         previousStatus: refRow.status,
-        // Surface what the applicant said about when they started working with
-        // this reference so the questionnaire can render the verification block
-        // (or skip it if the applicant ticked "I don't remember").
+        // Year-verification context.
         applicantStatedStartYear: refRow.applicant_stated_start_year as number | null,
         applicantYearUnknown: refRow.applicant_year_unknown as boolean,
+        // Domain-verification context. When applicantStatedDomains is non-empty
+        // (or applicantDomainsUnknown=false but the array is null = legacy row),
+        // the questionnaire shows confirmation checkboxes. When applicant said
+        // "I don't remember", the questionnaire falls back to the legacy single
+        // domain_specialty dropdown inside the MCQ form.
+        applicantStatedDomains: (refRow.applicant_stated_domains as string[] | null) ?? null,
+        applicantOtherDomainText: (refRow.applicant_other_domain_text as string | null) ?? null,
+        applicantDomainsUnknown: refRow.applicant_domains_unknown as boolean,
       },
     });
   }
@@ -355,6 +518,23 @@ serve(async (req: Request) => {
     );
   }
 
+  // Domain verification (2026-05-19). Computes matches/partial/disjoint
+  // from the applicant's declared domains and the reference's confirmation.
+  const dv = computeDomainVerification(
+    (refRow.applicant_stated_domains as string[] | null) ?? null,
+    (refRow.applicant_other_domain_text as string | null) ?? null,
+    (refRow.applicant_domains_unknown as boolean) ?? false,
+    body.confirmedDomains ?? null,
+    body.confirmedOtherDomainText ?? null,
+    body.domainsCantRecall === true,
+  );
+  if (!dv.ok) {
+    return json(
+      { success: false, error: "invalid_confirmed_domains", detail: dv.error },
+      400,
+    );
+  }
+
   // Persist immediately; AI runs after so a slow / failing AI doesn't
   // make the reference think their submission failed.
   await supabase
@@ -366,6 +546,11 @@ serve(async (req: Request) => {
       competence_responses: competence.data,
       reference_confirmed_start_year: yv.ctx.referenceConfirmedStartYear,
       year_verification: yv.ctx.verification,
+      reference_confirmed_domains: dv.ctx.referenceConfirmedDomains.length > 0
+        ? dv.ctx.referenceConfirmedDomains
+        : null,
+      reference_other_domain_text: dv.ctx.referenceOtherDomainText,
+      domain_verification: dv.ctx.verification,
       feedback_received_at: new Date().toISOString(),
     })
     .eq("id", refRow.id);
@@ -396,6 +581,7 @@ serve(async (req: Request) => {
     feedbackText,
     feedbackRating: rating,
     yearVerification: yv.ctx,
+    domainVerification: dv.ctx,
   });
   if (analysis.ok && analysis.data) {
     await supabase
@@ -423,6 +609,7 @@ serve(async (req: Request) => {
       aiAnalysed: analysis.ok,
       yearVerification: yv.ctx.verification,
       yearGap: yv.ctx.yearGap,
+      domainVerification: dv.ctx.verification,
     },
   });
 });

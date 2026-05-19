@@ -6,6 +6,8 @@ import {
   REFERENCE_YEAR_MIN,
   referenceYearMax,
   referenceYearOptions,
+  DOMAIN_OPTIONS,
+  type DomainCode,
 } from "../data/referenceMcqs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -18,6 +20,9 @@ interface RefRow {
   relationship: string;
   startYear: string;       // "" = no selection
   startYearUnknown: boolean;
+  domains: DomainCode[];
+  otherDomainText: string;
+  domainsUnknown: boolean;
 }
 
 interface PreviewData {
@@ -34,6 +39,9 @@ const blankRef = (): RefRow => ({
   relationship: "",
   startYear: "",
   startYearUnknown: false,
+  domains: [],
+  otherDomainText: "",
+  domainsUnknown: false,
 });
 
 // Magic preview token the admin Request References modal generates so staff
@@ -96,14 +104,35 @@ export function ReferencesEntry() {
     };
   }, [token, isPreview]);
 
-  const updateRef = (i: number, field: keyof RefRow, value: string | boolean) => {
+  const updateRef = <K extends keyof RefRow>(i: number, field: K, value: RefRow[K]) => {
     setRefs((prev) =>
       prev.map((r, idx) => {
         if (idx !== i) return r;
         const next = { ...r, [field]: value } as RefRow;
-        // Toggling "I don't remember" clears the year, and vice versa.
+        // Toggling "I don't remember" clears the year/domains, and vice versa.
         if (field === "startYearUnknown" && value === true) next.startYear = "";
         if (field === "startYear" && value !== "") next.startYearUnknown = false;
+        if (field === "domainsUnknown" && value === true) {
+          next.domains = [];
+          next.otherDomainText = "";
+        }
+        if (field === "domains" && (value as DomainCode[]).length > 0) next.domainsUnknown = false;
+        return next;
+      }),
+    );
+  };
+
+  const toggleDomain = (i: number, code: DomainCode) => {
+    setRefs((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== i) return r;
+        const has = r.domains.includes(code);
+        const next = {
+          ...r,
+          domains: has ? r.domains.filter((c) => c !== code) : [...r.domains, code],
+        };
+        if (next.domains.length > 0) next.domainsUnknown = false;
+        if (!next.domains.includes("other")) next.otherDomainText = "";
         return next;
       }),
     );
@@ -134,6 +163,12 @@ export function ReferencesEntry() {
         relationship: r.relationship.trim(),
         startYear: yearValid ? yearNum : null,
         startYearUnknown: r.startYearUnknown,
+        domains: r.domainsUnknown ? [] : r.domains,
+        otherDomainText:
+          !r.domainsUnknown && r.domains.includes("other") && r.otherDomainText.trim().length > 0
+            ? r.otherDomainText.trim().slice(0, 200)
+            : null,
+        domainsUnknown: r.domainsUnknown,
       };
     })
     .filter((r) => r.name.length >= 2 && /\S+@\S+\.\S+/.test(r.email));
@@ -352,6 +387,50 @@ export function ReferencesEntry() {
                 <div className="text-xs text-gray-500 mt-1">
                   Approximate is fine. We'll ask your reference to confirm the year — small differences are expected.
                 </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Which domain(s) did you work together on?
+                  <span className="text-gray-400 font-normal"> (optional, tick all that apply)</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {DOMAIN_OPTIONS.map((opt) => {
+                    const checked = r.domains.includes(opt.code);
+                    return (
+                      <label
+                        key={opt.code}
+                        className={`flex items-center gap-2 px-2 py-1 rounded text-sm cursor-pointer ${
+                          r.domainsUnknown ? "opacity-50" : "hover:bg-gray-50"
+                        } ${checked ? "bg-teal-50 border border-teal-200" : "border border-transparent"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={r.domainsUnknown}
+                          onChange={() => toggleDomain(i, opt.code)}
+                        />
+                        <span className="text-gray-800">{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {r.domains.includes("other") && !r.domainsUnknown && (
+                  <input
+                    type="text"
+                    value={r.otherDomainText}
+                    onChange={(e) => updateRef(i, "otherDomainText", e.target.value.slice(0, 200))}
+                    placeholder="Describe the other domain (e.g. patent law, oncology trials)"
+                    className="mt-2 w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                )}
+                <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={r.domainsUnknown}
+                    onChange={(e) => updateRef(i, "domainsUnknown", e.target.checked)}
+                  />
+                  I don't remember the domains
+                </label>
               </div>
             </div>
           ))}

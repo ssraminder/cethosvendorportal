@@ -182,6 +182,94 @@ export function referenceYearAnswerToPayload(
   return null;
 }
 
+// --- Domain verification (2026-05-19) ------------------------------------
+// Applicant picks (multi-select) the domains they worked on with each
+// reference. Reference confirms by ticking matches + can add free text.
+// Server (cvp-submit-reference-feedback) classifies the overlap into
+// matches/partial/disjoint/cant_recall.
+
+export type DomainCode =
+  | "legal"
+  | "medical_pharma"
+  | "marketing_transcreation"
+  | "technical_it"
+  | "financial_banking"
+  | "literary_publishing"
+  | "government_ngo"
+  | "other";
+
+export const DOMAIN_OPTIONS: { code: DomainCode; label: string }[] = [
+  { code: "legal", label: "Legal" },
+  { code: "medical_pharma", label: "Medical / Pharmaceutical" },
+  { code: "marketing_transcreation", label: "Marketing / Transcreation" },
+  { code: "technical_it", label: "Technical / IT" },
+  { code: "financial_banking", label: "Financial / Banking" },
+  { code: "literary_publishing", label: "Literary / Publishing" },
+  { code: "government_ngo", label: "Government / NGO" },
+  { code: "other", label: "Other" },
+];
+
+export const DOMAIN_LABEL: Record<DomainCode, string> = Object.fromEntries(
+  DOMAIN_OPTIONS.map((o) => [o.code, o.label]),
+) as Record<DomainCode, string>;
+
+/** Reference-side state for the domain-verification block. */
+export interface ReferenceDomainAnswer {
+  /** Domain codes the reference ticked (subset of applicant's stated list). */
+  confirmedDomains: DomainCode[];
+  /** Free text for the "Other" entry when the applicant included `other`,
+   *  OR when the reference adds a new "actually we worked on..." entry. */
+  otherDomainText: string;
+  /** True when reference picked "I can't recall the domains". */
+  cantRecall: boolean;
+}
+
+export function emptyReferenceDomainAnswer(): ReferenceDomainAnswer {
+  return { confirmedDomains: [], otherDomainText: "", cantRecall: false };
+}
+
+export function isReferenceDomainAnswerValid(
+  applicantStatedDomains: DomainCode[] | null,
+  applicantDomainsUnknown: boolean,
+  answer: ReferenceDomainAnswer,
+): boolean {
+  // No question shown when applicant didn't declare anything.
+  if (applicantDomainsUnknown || !applicantStatedDomains || applicantStatedDomains.length === 0) {
+    return true;
+  }
+  if (answer.cantRecall) return true;
+  // Need at least one confirmation or an explicit cant_recall. Empty
+  // confirmation with no opt-out leaves verification ambiguous.
+  return answer.confirmedDomains.length > 0;
+}
+
+/** Maps reference-side answer to the payload cvp-submit-reference-feedback
+ *  expects. Returns null when applicant didn't declare anything. */
+export function referenceDomainAnswerToPayload(
+  applicantStatedDomains: DomainCode[] | null,
+  applicantDomainsUnknown: boolean,
+  answer: ReferenceDomainAnswer,
+): {
+  confirmedDomains: DomainCode[];
+  confirmedOtherDomainText: string | null;
+  domainsCantRecall: boolean;
+} | null {
+  if (applicantDomainsUnknown || !applicantStatedDomains || applicantStatedDomains.length === 0) {
+    return null;
+  }
+  if (answer.cantRecall) {
+    return { confirmedDomains: [], confirmedOtherDomainText: null, domainsCantRecall: true };
+  }
+  return {
+    confirmedDomains: answer.confirmedDomains,
+    confirmedOtherDomainText:
+      answer.confirmedDomains.includes("other") && answer.otherDomainText.trim().length > 0
+        ? answer.otherDomainText.trim().slice(0, 200)
+        : null,
+    domainsCantRecall: false,
+  };
+}
+
 export interface CompetenceResponses {
   translation_competence: McqAnswer;
   linguistic_textual_competence: McqAnswer;
