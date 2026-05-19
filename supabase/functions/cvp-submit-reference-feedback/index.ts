@@ -54,6 +54,7 @@ Rules:
 - Red flags include: refusal to recommend, mentions of conflicts / professional issues, vague hedging, contradiction with the applicant's claims.
 - The "Year verification" line in the input describes how the applicant's stated start year compares with the reference's recollection. If it says DISAGREES, you MUST include a red flag along the lines of "reference contradicts applicant's stated working timeline (X-year gap)". If it says MATCHES, you MAY mention "timeline corroborated" as a theme. cant_recall is not a red flag.
 - The "Domain verification" line describes whether the reference confirmed at least one of the domains the applicant claimed they worked together on. DISJOINT (zero overlap, reference said they worked on something completely different) MUST be a red flag — applicant's claimed expertise is not corroborated by this reference. PARTIAL is the normal case (reference saw some but not all of the applicant's claimed work) — not a red flag. MATCHES MAY be a positive theme. cant_recall is not a red flag.
+- The MCQ answers may come in two shapes. When "single answer set" — one rating per competence applies to all confirmed domains. When "separately for each confirmed domain" — interpret per-domain variance: if the reference rates the applicant 'a' (strong) in one domain and 'd' (weak) in another, surface that as a theme (e.g. "uneven by domain: strong in legal, weak in medical") and consider whether the weak domain crosses into red-flag territory. Letter scale: a=strong positive, b=solid positive, c=mixed/partial, d=negative, e=can't speak to this.
 - Don't infer beyond the text. If the reference doesn't mention something, don't include it as a theme.`;
 
 interface YearVerificationContext {
@@ -188,24 +189,8 @@ function computeDomainVerification(
   rawConfirmedOtherText: unknown,
   domainsCantRecall: boolean,
 ): { ok: true; ctx: DomainVerificationContext } | { ok: false; error: string } {
-  // No verification asked when the applicant didn't declare anything.
-  if (
-    applicantDomainsUnknown ||
-    !applicantStatedDomains ||
-    applicantStatedDomains.length === 0
-  ) {
-    return {
-      ok: true,
-      ctx: {
-        applicantStatedDomains,
-        applicantOtherDomainText,
-        applicantDomainsUnknown,
-        referenceConfirmedDomains: [],
-        referenceOtherDomainText: null,
-        domainsCantRecall: false,
-        verification: null,
-      },
-    };
+  if (rawConfirmedDomains != null && !Array.isArray(rawConfirmedDomains)) {
+    return { ok: false, error: "confirmedDomains must be an array" };
   }
   if (domainsCantRecall) {
     return {
@@ -221,33 +206,41 @@ function computeDomainVerification(
       },
     };
   }
-  if (rawConfirmedDomains != null && !Array.isArray(rawConfirmedDomains)) {
-    return { ok: false, error: "confirmedDomains must be an array" };
-  }
   const confirmed = new Set<string>();
+  const hasApplicantAnchor =
+    !applicantDomainsUnknown &&
+    applicantStatedDomains != null &&
+    applicantStatedDomains.length > 0;
   for (const d of (rawConfirmedDomains ?? []) as unknown[]) {
     if (typeof d !== "string") return { ok: false, error: "confirmedDomains entries must be strings" };
     const code = d.trim().toLowerCase();
     if (!DOMAIN_CODES_FB.has(code)) return { ok: false, error: `invalid domain: ${code}` };
-    // Reference can only confirm domains the applicant actually stated.
-    if (applicantStatedDomains.includes(code)) confirmed.add(code);
+    // When applicant declared, restrict to that set (verification anchor).
+    // When applicant didn't declare, accept any code — reference's self-
+    // volunteered domain experience still useful even without verification.
+    if (!hasApplicantAnchor || applicantStatedDomains!.includes(code)) {
+      confirmed.add(code);
+    }
   }
   const otherText = confirmed.has("other") && typeof rawConfirmedOtherText === "string"
     ? rawConfirmedOtherText.trim().slice(0, 200) || null
     : null;
   const confirmedArr = Array.from(confirmed).sort();
-  const applicantSet = new Set(applicantStatedDomains);
 
-  let verification: "matches" | "partial" | "disjoint";
-  if (confirmedArr.length === 0) {
-    verification = "disjoint";
-  } else if (
-    confirmedArr.length === applicantSet.size &&
-    confirmedArr.every((c) => applicantSet.has(c))
-  ) {
-    verification = "matches";
-  } else {
-    verification = "partial";
+  // verification: only computed when applicant anchored.
+  let verification: "matches" | "partial" | "disjoint" | null = null;
+  if (hasApplicantAnchor) {
+    const applicantSet = new Set(applicantStatedDomains!);
+    if (confirmedArr.length === 0) {
+      verification = "disjoint";
+    } else if (
+      confirmedArr.length === applicantSet.size &&
+      confirmedArr.every((c) => applicantSet.has(c))
+    ) {
+      verification = "matches";
+    } else {
+      verification = "partial";
+    }
   }
 
   return {
@@ -273,6 +266,7 @@ async function analyseWithOpus(args: {
   feedbackRating: number | null;
   yearVerification: YearVerificationContext;
   domainVerification: DomainVerificationContext;
+  competenceResponses: Record<string, unknown>;
 }): Promise<{ ok: boolean; data: Record<string, unknown> | null; error: string | null }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return { ok: false, data: null, error: "ANTHROPIC_API_KEY not configured" };
@@ -327,11 +321,37 @@ async function analyseWithOpus(args: {
     }
   }
 
+  // MCQ summary — flat vs per-domain.
+  const cr = args.competenceResponses;
+  let mcqBlock: string;
+  if (cr.by_domain && typeof cr.by_domain === "object") {
+    const byDomain = cr.by_domain as Record<string, Record<string, string>>;
+    const lines: string[] = ["MCQ answers (reference answered SEPARATELY for each confirmed domain):"];
+    for (const [code, answers] of Object.entries(byDomain)) {
+      const label = DOMAIN_LABEL_FB[code] ?? code;
+      lines.push(`- ${label}:`);
+      for (const slug of REQUIRED_SLUGS) {
+        lines.push(`    ${slug}: ${answers[slug]}`);
+      }
+    }
+    mcqBlock = lines.join("\n");
+  } else {
+    const lines: string[] = ["MCQ answers (single answer set covering all confirmed domains):"];
+    for (const slug of REQUIRED_SLUGS) {
+      lines.push(`- ${slug}: ${cr[slug] ?? "?"}`);
+    }
+    mcqBlock = lines.join("\n");
+  }
+  const wwa = cr.would_work_again ?? "(not given)";
+
   const userMessage = `Applicant: ${args.applicantName}
 Reference: ${args.referenceName} (${args.referenceCompany ?? "company unspecified"} — ${args.referenceRelationship ?? "relationship unspecified"})
 Reference's overall rating: ${args.feedbackRating ?? "not given"} / 5
+Would work with applicant again: ${wwa}
 ${yearVerificationLine}
 ${domainVerificationLine}
+
+${mcqBlock}
 
 Reference's free-text response:
 ---
@@ -582,6 +602,7 @@ serve(async (req: Request) => {
     feedbackRating: rating,
     yearVerification: yv.ctx,
     domainVerification: dv.ctx,
+    competenceResponses: competence.data,
   });
   if (analysis.ok && analysis.data) {
     await supabase
@@ -614,7 +635,10 @@ serve(async (req: Request) => {
   });
 });
 
-// Inline MCQ validator — mirrors apps/vendor/src/data/referenceMcqs.ts.
+// Inline MCQ validator — mirrors apps/recruitment/src/data/referenceMcqs.ts.
+// Accepts two shapes:
+//   1) Flat (legacy / single-mode): all 6 slugs at top level.
+//   2) Per-domain (PR #188): { would_work_again, by_domain: { <code>: {...6 slugs} } }
 const REQUIRED_SLUGS = [
   "translation_competence",
   "linguistic_textual_competence",
@@ -623,27 +647,78 @@ const REQUIRED_SLUGS = [
   "technical_competence",
   "domain_competence",
 ];
+const VALID_MCQ_VALUES = new Set(["a", "b", "c", "d", "e"]);
+const VALID_WWA = new Set(["yes", "probably", "probably_not", "no"]);
+
+function validateMcqAnswerSet(
+  obj: Record<string, unknown>,
+  domainLabel: string | null,
+): { ok: true; out: Record<string, string> } | { ok: false; error: string } {
+  const out: Record<string, string> = {};
+  for (const slug of REQUIRED_SLUGS) {
+    const v = obj[slug];
+    if (typeof v !== "string" || !VALID_MCQ_VALUES.has(v)) {
+      const prefix = domainLabel ? `for domain "${domainLabel}", ` : "";
+      return { ok: false, error: `${prefix}missing or invalid: ${slug}` };
+    }
+    out[slug] = v;
+  }
+  return { ok: true, out };
+}
 
 function validateCompetenceResponses(input: unknown):
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string } {
   if (!input || typeof input !== "object") return { ok: false, error: "missing" };
   const obj = input as Record<string, unknown>;
-  for (const slug of REQUIRED_SLUGS) {
-    if (!["a", "b", "c", "d", "e"].includes(obj[slug] as string)) {
-      return { ok: false, error: `missing or invalid: ${slug}` };
-    }
-  }
-  if (!["yes", "probably", "probably_not", "no"].includes(obj.would_work_again as string)) {
+  if (!VALID_WWA.has(obj.would_work_again as string)) {
     return { ok: false, error: "missing or invalid: would_work_again" };
   }
   if (obj.domain_specialty != null && typeof obj.domain_specialty !== "string") {
     return { ok: false, error: "domain_specialty must be string or null" };
   }
+
+  // Per-domain shape: must contain `by_domain` as a non-empty object whose
+  // keys are valid domain codes and values are full MCQ sets.
+  if (obj.by_domain != null) {
+    if (typeof obj.by_domain !== "object" || Array.isArray(obj.by_domain)) {
+      return { ok: false, error: "by_domain must be an object keyed by domain code" };
+    }
+    const byDomain = obj.by_domain as Record<string, unknown>;
+    const codes = Object.keys(byDomain);
+    if (codes.length === 0) {
+      return { ok: false, error: "by_domain is empty — pick at least one domain or use single-mode" };
+    }
+    const cleanedByDomain: Record<string, Record<string, string>> = {};
+    for (const code of codes) {
+      if (!DOMAIN_CODES_FB.has(code)) {
+        return { ok: false, error: `by_domain has invalid domain code: ${code}` };
+      }
+      const dObj = byDomain[code];
+      if (!dObj || typeof dObj !== "object") {
+        return { ok: false, error: `by_domain.${code} must be an object` };
+      }
+      const v = validateMcqAnswerSet(dObj as Record<string, unknown>, code);
+      if (!v.ok) return v;
+      cleanedByDomain[code] = v.out;
+    }
+    return {
+      ok: true,
+      data: {
+        would_work_again: obj.would_work_again,
+        domain_specialty: obj.domain_specialty ? String(obj.domain_specialty).slice(0, 200) : null,
+        by_domain: cleanedByDomain,
+      },
+    };
+  }
+
+  // Flat shape (single-mode / legacy).
+  const flat = validateMcqAnswerSet(obj, null);
+  if (!flat.ok) return flat;
   const data: Record<string, unknown> = {
     would_work_again: obj.would_work_again,
     domain_specialty: obj.domain_specialty ? String(obj.domain_specialty).slice(0, 200) : null,
+    ...flat.out,
   };
-  for (const slug of REQUIRED_SLUGS) data[slug] = obj[slug];
   return { ok: true, data };
 }

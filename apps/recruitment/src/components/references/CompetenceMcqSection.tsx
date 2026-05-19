@@ -13,10 +13,10 @@
 import {
   REFERENCE_MCQS,
   WOULD_WORK_AGAIN_OPTIONS,
-  DOMAIN_SPECIALTY_OPTIONS,
   REFERENCE_YEAR_MIN,
   referenceYearMax,
   referenceYearOptions,
+  DOMAIN_OPTIONS,
   DOMAIN_LABEL,
   type CompetenceResponses,
   type McqAnswer,
@@ -24,6 +24,7 @@ import {
   type YearMatchChoice,
   type DomainCode,
   type ReferenceDomainAnswer,
+  type McqSet,
 } from "../../data/referenceMcqs";
 
 interface Props {
@@ -37,15 +38,22 @@ interface Props {
   applicantYearUnknown: boolean;
   yearAnswer: ReferenceYearAnswer;
   onYearAnswerChange: (next: ReferenceYearAnswer) => void;
-  /** Domain-verification context. When applicantStatedDomains is non-empty
-   *  AND applicantDomainsUnknown=false, the questionnaire renders the
-   *  domain confirmation block above the MCQs AND hides the legacy
-   *  domain_specialty dropdown (since the applicant's claim is the anchor). */
+  /** Domain-verification context. Multi-select always shown — anchored to
+   *  applicant's declared list when present, free pick of all 8 options
+   *  otherwise. */
   applicantStatedDomains: DomainCode[] | null;
   applicantOtherDomainText: string | null;
   applicantDomainsUnknown: boolean;
   domainAnswer: ReferenceDomainAnswer;
   onDomainAnswerChange: (next: ReferenceDomainAnswer) => void;
+  /** Per-domain MCQ mode (PR #188). When false (default), the 6-MCQ block
+   *  is shown once and the reference's answers apply to all confirmed
+   *  domains. When true, the block repeats per confirmed domain so the
+   *  reference can rate the applicant differently across domains. */
+  answeredPerDomain: boolean;
+  onAnsweredPerDomainChange: (v: boolean) => void;
+  mcqByDomain: Partial<Record<DomainCode, McqSet>>;
+  onMcqByDomainChange: (next: Partial<Record<DomainCode, McqSet>>) => void;
 }
 
 export function CompetenceMcqSection({
@@ -61,9 +69,18 @@ export function CompetenceMcqSection({
   applicantDomainsUnknown,
   domainAnswer,
   onDomainAnswerChange,
+  answeredPerDomain,
+  onAnsweredPerDomainChange,
+  mcqByDomain,
+  onMcqByDomainChange,
 }: Props) {
   const setAnswer = (slug: keyof CompetenceResponses, v: McqAnswer | string | null) => {
     onChange({ ...value, [slug]: v });
+  };
+
+  const setPerDomainAnswer = (code: DomainCode, slug: keyof McqSet, v: McqAnswer) => {
+    const prev = mcqByDomain[code] ?? {};
+    onMcqByDomainChange({ ...mcqByDomain, [code]: { ...prev, [slug]: v } });
   };
 
   const setYearChoice = (choice: YearMatchChoice) => {
@@ -75,8 +92,14 @@ export function CompetenceMcqSection({
   };
 
   const showYearBlock = !applicantYearUnknown && applicantStatedYear != null;
-  const showDomainBlock =
+  // Domain block now ALWAYS shows (PR #188): anchored to applicant's
+  // declared list when present, free pick of all 8 options when applicant
+  // skipped/didn't declare.
+  const hasApplicantDomainAnchor =
     !applicantDomainsUnknown && applicantStatedDomains != null && applicantStatedDomains.length > 0;
+  const domainCheckboxCodes: DomainCode[] = hasApplicantDomainAnchor
+    ? applicantStatedDomains!
+    : DOMAIN_OPTIONS.map((o) => o.code);
 
   const toggleConfirmDomain = (code: DomainCode) => {
     const has = domainAnswer.confirmedDomains.includes(code);
@@ -185,115 +208,187 @@ export function CompetenceMcqSection({
         </fieldset>
       )}
 
-      {showDomainBlock && (
-        <fieldset className="border border-gray-200 rounded-lg p-4 bg-amber-50/40">
+      <fieldset className="border border-gray-200 rounded-lg p-4 bg-amber-50/40">
+        <legend className="px-1 text-sm font-medium text-gray-900">
+          {hasApplicantDomainAnchor
+            ? `${vendorFirstName} said you worked together on the domain(s) below. Tick the ones that match what you actually did together.`
+            : `Which domain(s) did you work with ${vendorFirstName} in?`}
+        </legend>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+          {domainCheckboxCodes.map((code) => {
+            const checked = domainAnswer.confirmedDomains.includes(code);
+            return (
+              <label
+                key={code}
+                className={`flex items-center gap-2 px-2 py-1 rounded text-sm cursor-pointer ${
+                  domainAnswer.cantRecall ? "opacity-50" : "hover:bg-gray-50"
+                } ${checked ? "bg-teal-50 border border-teal-200" : "border border-transparent"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={domainAnswer.cantRecall}
+                  onChange={() => toggleConfirmDomain(code)}
+                />
+                <span className="text-gray-800">{labelForCode(code)}</span>
+              </label>
+            );
+          })}
+        </div>
+        {domainAnswer.confirmedDomains.includes("other") && !domainAnswer.cantRecall && (
+          <input
+            type="text"
+            value={domainAnswer.otherDomainText}
+            onChange={(e) =>
+              onDomainAnswerChange({
+                ...domainAnswer,
+                otherDomainText: e.target.value.slice(0, 200),
+              })
+            }
+            placeholder={
+              hasApplicantDomainAnchor
+                ? "Describe the 'Other' domain in your own words (optional)"
+                : "Describe the domain (e.g. patent law)"
+            }
+            className="mt-2 w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500"
+          />
+        )}
+        <label className="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={domainAnswer.cantRecall}
+            onChange={(e) =>
+              onDomainAnswerChange({
+                confirmedDomains: e.target.checked ? [] : domainAnswer.confirmedDomains,
+                otherDomainText: e.target.checked ? "" : domainAnswer.otherDomainText,
+                cantRecall: e.target.checked,
+              })
+            }
+          />
+          I can't recall the domains we worked on
+        </label>
+      </fieldset>
+
+      {/* Per-domain MCQ toggle — only shown when reference confirmed
+          2+ domains. With one domain, "per-domain" and "single" are
+          equivalent so we hide the toggle. */}
+      {domainAnswer.confirmedDomains.length >= 2 && !domainAnswer.cantRecall && (
+        <fieldset className="border border-gray-200 rounded-lg p-4 bg-sky-50/40">
           <legend className="px-1 text-sm font-medium text-gray-900">
-            {vendorFirstName} said you worked together on the domain(s) below. Tick the ones that match what you actually did together.
+            How would you like to answer the questions below?
           </legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
-            {applicantStatedDomains!.map((code) => {
-              const checked = domainAnswer.confirmedDomains.includes(code);
-              return (
-                <label
-                  key={code}
-                  className={`flex items-center gap-2 px-2 py-1 rounded text-sm cursor-pointer ${
-                    domainAnswer.cantRecall ? "opacity-50" : "hover:bg-gray-50"
-                  } ${checked ? "bg-teal-50 border border-teal-200" : "border border-transparent"}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={domainAnswer.cantRecall}
-                    onChange={() => toggleConfirmDomain(code)}
-                  />
-                  <span className="text-gray-800">{labelForCode(code)}</span>
-                </label>
-              );
-            })}
+          <div className="space-y-1.5 mt-2">
+            <label
+              className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                !answeredPerDomain
+                  ? "bg-teal-50 border border-teal-200"
+                  : "hover:bg-gray-50 border border-transparent"
+              }`}
+            >
+              <input
+                type="radio"
+                name="answered_per_domain"
+                checked={!answeredPerDomain}
+                onChange={() => onAnsweredPerDomainChange(false)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-800">
+                <strong>Once</strong> — my answers apply to all the domains I confirmed above.
+              </span>
+            </label>
+            <label
+              className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                answeredPerDomain
+                  ? "bg-teal-50 border border-teal-200"
+                  : "hover:bg-gray-50 border border-transparent"
+              }`}
+            >
+              <input
+                type="radio"
+                name="answered_per_domain"
+                checked={answeredPerDomain}
+                onChange={() => onAnsweredPerDomainChange(true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-800">
+                <strong>Separately for each domain</strong> — I'll rate {vendorFirstName} differently across the domains we worked on.
+              </span>
+            </label>
           </div>
-          {domainAnswer.confirmedDomains.includes("other") && !domainAnswer.cantRecall && (
-            <input
-              type="text"
-              value={domainAnswer.otherDomainText}
-              onChange={(e) =>
-                onDomainAnswerChange({
-                  ...domainAnswer,
-                  otherDomainText: e.target.value.slice(0, 200),
-                })
-              }
-              placeholder="Describe the 'Other' domain in your own words (optional)"
-              className="mt-2 w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500"
-            />
-          )}
-          <label className="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={domainAnswer.cantRecall}
-              onChange={(e) =>
-                onDomainAnswerChange({
-                  confirmedDomains: e.target.checked ? [] : domainAnswer.confirmedDomains,
-                  otherDomainText: e.target.checked ? "" : domainAnswer.otherDomainText,
-                  cantRecall: e.target.checked,
-                })
-              }
-            />
-            I can't recall the domains we worked on
-          </label>
         </fieldset>
       )}
 
-      {REFERENCE_MCQS.map((q) => {
-        const prompt = q.prompt.replace(/\{\{name\}\}/g, vendorFirstName);
-        const current = value[q.slug] as McqAnswer | undefined;
-        return (
-          <fieldset key={q.slug} className="border border-gray-200 rounded-lg p-4">
-            <legend className="px-1 text-sm font-medium text-gray-900">{prompt}</legend>
-            <div className="space-y-1.5 mt-2">
-              {q.options.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
-                    current === opt.value ? "bg-teal-50 border border-teal-200" : "hover:bg-gray-50 border border-transparent"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={q.slug}
-                    value={opt.value}
-                    checked={current === opt.value}
-                    onChange={() => setAnswer(q.slug, opt.value)}
-                    className="mt-0.5"
-                  />
-                  <span className="text-sm text-gray-800">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Inline specialty picker shown only when applicant didn't
-                declare any domains (legacy fallback). When the applicant
-                provided a domain list, the verification block above is the
-                source of truth and asking for "primary domain" here would be
-                redundant. */}
-            {q.slug === "domain_competence" && current && current !== "e" && !showDomainBlock && (
-              <div className="mt-3 pt-3 border-t border-gray-100">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Which domain did you primarily work with {vendorFirstName} in?
-                </label>
-                <select
-                  value={value.domain_specialty ?? ""}
-                  onChange={(e) => setAnswer("domain_specialty", e.target.value || null)}
-                  className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
-                >
-                  <option value="">Select a domain…</option>
-                  {DOMAIN_SPECIALTY_OPTIONS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+      {/* MCQ block(s): single set OR repeated per confirmed domain. */}
+      {answeredPerDomain && domainAnswer.confirmedDomains.length >= 2 && !domainAnswer.cantRecall
+        ? domainAnswer.confirmedDomains.map((code) => (
+            <div key={`mcq-${code}`} className="space-y-3">
+              <div className="text-sm font-semibold text-gray-900 px-1">
+                Domain: <span className="text-teal-700">{labelForCode(code)}</span>
               </div>
-            )}
-          </fieldset>
-        );
-      })}
+              {REFERENCE_MCQS.map((q) => {
+                const prompt = q.prompt.replace(/\{\{name\}\}/g, vendorFirstName);
+                const current = (mcqByDomain[code] ?? {})[q.slug] as McqAnswer | undefined;
+                return (
+                  <fieldset key={`${code}-${q.slug}`} className="border border-gray-200 rounded-lg p-4">
+                    <legend className="px-1 text-sm font-medium text-gray-900">{prompt}</legend>
+                    <div className="space-y-1.5 mt-2">
+                      {q.options.map((opt) => (
+                        <label
+                          key={opt.value}
+                          className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                            current === opt.value
+                              ? "bg-teal-50 border border-teal-200"
+                              : "hover:bg-gray-50 border border-transparent"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`${code}-${q.slug}`}
+                            value={opt.value}
+                            checked={current === opt.value}
+                            onChange={() => setPerDomainAnswer(code, q.slug, opt.value)}
+                            className="mt-0.5"
+                          />
+                          <span className="text-sm text-gray-800">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                );
+              })}
+            </div>
+          ))
+        : REFERENCE_MCQS.map((q) => {
+            const prompt = q.prompt.replace(/\{\{name\}\}/g, vendorFirstName);
+            const current = value[q.slug] as McqAnswer | undefined;
+            return (
+              <fieldset key={q.slug} className="border border-gray-200 rounded-lg p-4">
+                <legend className="px-1 text-sm font-medium text-gray-900">{prompt}</legend>
+                <div className="space-y-1.5 mt-2">
+                  {q.options.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`flex items-start gap-2 p-2 rounded cursor-pointer ${
+                        current === opt.value
+                          ? "bg-teal-50 border border-teal-200"
+                          : "hover:bg-gray-50 border border-transparent"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={q.slug}
+                        value={opt.value}
+                        checked={current === opt.value}
+                        onChange={() => setAnswer(q.slug, opt.value)}
+                        className="mt-0.5"
+                      />
+                      <span className="text-sm text-gray-800">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            );
+          })}
 
       <fieldset className="border border-gray-200 rounded-lg p-4">
         <legend className="px-1 text-sm font-medium text-gray-900">

@@ -9,6 +9,7 @@ import {
   DOMAIN_OPTIONS,
   type DomainCode,
 } from "../data/referenceMcqs";
+import { isPublicEmailDomain } from "../data/publicEmailDomains";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -148,6 +149,10 @@ export function ReferencesEntry() {
     setRefs((prev) => prev.filter((_, idx) => idx !== i));
   };
 
+  const publicEmailRefs = refs
+    .map((r) => r.email.trim().toLowerCase())
+    .filter((e) => /\S+@\S+\.\S+/.test(e) && isPublicEmailDomain(e));
+
   const validRefs = refs
     .map((r) => {
       const yearNum = r.startYear ? Number.parseInt(r.startYear, 10) : null;
@@ -158,7 +163,7 @@ export function ReferencesEntry() {
         yearNum <= referenceYearMax();
       return {
         name: r.name.trim(),
-        email: r.email.trim(),
+        email: r.email.trim().toLowerCase(),
         company: r.company.trim(),
         relationship: r.relationship.trim(),
         startYear: yearValid ? yearNum : null,
@@ -171,15 +176,26 @@ export function ReferencesEntry() {
         domainsUnknown: r.domainsUnknown,
       };
     })
-    .filter((r) => r.name.length >= 2 && /\S+@\S+\.\S+/.test(r.email));
+    .filter(
+      (r) =>
+        r.name.length >= 2 &&
+        /\S+@\S+\.\S+/.test(r.email) &&
+        !isPublicEmailDomain(r.email),
+    );
 
   const handleSubmit = async () => {
     if (isPreview) {
       setError("This is a preview — nothing is submitted. The applicant will see this exact form.");
       return;
     }
+    if (publicEmailRefs.length > 0) {
+      setError(
+        `Reference emails must be business addresses (e.g. firstname@company.com). We can't accept consumer providers like Gmail, Outlook, Yahoo, or iCloud because we can't verify the working relationship from them. Please ask your reference for their work email. Currently flagged: ${publicEmailRefs.join(", ")}`,
+      );
+      return;
+    }
     if (validRefs.length < 1) {
-      setError("Please add at least one reference with name + email.");
+      setError("Please add at least one reference with a business email.");
       return;
     }
     setError("");
@@ -285,13 +301,16 @@ export function ReferencesEntry() {
         )}
         <h1 className="text-2xl font-semibold text-gray-900 mb-2">Share your references</h1>
         {preview && (
-          <p className="text-sm text-gray-600 mb-6">
+          <p className="text-sm text-gray-600 mb-4">
             Hi {preview.applicantName.split(" ")[0]} — for application{" "}
             <span className="font-mono text-gray-900">{preview.applicationNumber}</span>, please
             list 1–3 professional references below. We'll email each one a short questionnaire
             directly.
           </p>
         )}
+        <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-900">
+          <strong>Use business email addresses only.</strong> We can't accept Gmail, Outlook, Yahoo, iCloud or other free webmail providers — we need a verifiable work address (e.g. <span className="font-mono">firstname@company.com</span>) so we can corroborate the working relationship.
+        </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800 flex items-start gap-2">
@@ -328,14 +347,21 @@ export function ReferencesEntry() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Business email *</label>
                   <input
                     type="email"
                     value={r.email}
                     onChange={(e) => updateRef(i, "email", e.target.value)}
-                    placeholder="maria@example.com"
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    placeholder="maria@company.com"
+                    className={`w-full px-3 py-2 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 ${
+                      r.email && isPublicEmailDomain(r.email.trim()) ? "border-red-400 bg-red-50" : "border-gray-300"
+                    }`}
                   />
+                  {r.email && isPublicEmailDomain(r.email.trim()) && (
+                    <div className="mt-1 text-xs text-red-700">
+                      Free webmail providers (Gmail, Outlook, etc.) aren't accepted for references — please use a business address.
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Company / org</label>
