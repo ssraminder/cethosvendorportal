@@ -43,23 +43,27 @@ export async function requireStaff(req: Request): Promise<RequireStaffResult> {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const anonKey =
-    Deno.env.get("SUPABASE_ANON_KEY") ??
-    Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
-    "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  if (!supabaseUrl || !anonKey || !serviceKey) {
+  if (!supabaseUrl || !serviceKey) {
     return { ok: false, status: 401, error: "auth_env_missing" };
   }
 
-  // Verify the JWT with Supabase auth. Use a client scoped to the caller's
-  // token; getUser() then returns the user if and only if the JWT is valid
-  // and unexpired.
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+  // Verify the JWT by passing it explicitly to auth.getUser(token). Two
+  // important details fixed here vs. the previous implementation:
+  //   1) getUser() with no arg uses the client's stored session — but we
+  //      run with persistSession:false, so there's no session and the
+  //      auth library sends no Authorization header, causing the call to
+  //      /auth/v1/user to return invalid_token. Passing the JWT
+  //      explicitly is the supported supabase-js v2 pattern.
+  //   2) We construct the validator client with the service_role key as
+  //      `apikey`. The anon key used previously is now ambiguous (legacy
+  //      JWT vs new sb_publishable_* format) per the 2026-05-14 key-format
+  //      rollout, and a mismatched apikey causes /auth/v1/user to return
+  //      "Invalid API key" 401. service_role is universally accepted.
+  const userClient = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: userData, error: authErr } = await userClient.auth.getUser();
+  const { data: userData, error: authErr } = await userClient.auth.getUser(token);
   if (authErr || !userData?.user) {
     return { ok: false, status: 401, error: "invalid_token" };
   }
