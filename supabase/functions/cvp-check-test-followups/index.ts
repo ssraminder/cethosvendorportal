@@ -16,6 +16,7 @@ const corsHeaders = {
 
 interface TestSubmissionRow {
   id: string;
+  combination_id: string;
   application_id: string;
   token: string;
   token_expires_at: string;
@@ -95,6 +96,39 @@ serve(async (req: Request) => {
       return data ? (data as unknown as ApplicationRow) : null;
     }
 
+    /**
+     * Defensive: a vendor whose test landed on TM-Cethos but whose vendor-portal
+     * callback failed (or whose original submission expired before the May 1
+     * TM→VP callback shipped) will have a SIBLING submission on the same
+     * combination that's already in submitted/assessed/approved state. Sending
+     * a V4 / V5 to the stale row is the bug the 2026-05-18 incident exposed —
+     * many vendors received "your test is expiring" emails after they'd already
+     * submitted. This check auto-expires the stale row instead of nudging.
+     *
+     * Returns true if we expired the row and the caller should skip it.
+     */
+    async function expireIfSiblingDone(
+      submissionId: string,
+      combinationId: string,
+    ): Promise<boolean> {
+      const { data: siblings } = await supabase
+        .from("cvp_test_submissions")
+        .select("id, status")
+        .eq("combination_id", combinationId)
+        .neq("id", submissionId)
+        .in("status", ["submitted", "assessed", "approved", "rejected"]);
+      if (!siblings || siblings.length === 0) return false;
+      await supabase
+        .from("cvp_test_submissions")
+        .update({
+          status: "expired",
+          submitted_notes: `[Auto-expired by cvp-check-test-followups at ${now.toISOString()}: duplicate of submission ${(siblings[0] as { id: string }).id} on the same combination — applicant already submitted via the prior row]`,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", submissionId);
+      return true;
+    }
+
     function hoursLeft(row: TestSubmissionRow): number {
       return Math.max(
         0,
@@ -130,7 +164,7 @@ serve(async (req: Request) => {
       const { data: rows } = await supabase
         .from("cvp_test_submissions")
         .select(
-          "id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
+          "id, combination_id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
         )
         .in("status", ["sent", "viewed", "draft_saved"])
         .is("reminder_1_sent_at", null)
@@ -139,6 +173,7 @@ serve(async (req: Request) => {
 
       for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
         if (new Date(row.token_expires_at) <= now) continue;
+        if (await expireIfSiblingDone(row.id, row.combination_id)) continue;
         try {
           const app = await fetchApp(row.application_id);
           if (!app) continue;
@@ -163,7 +198,7 @@ serve(async (req: Request) => {
       const { data: rows } = await supabase
         .from("cvp_test_submissions")
         .select(
-          "id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
+          "id, combination_id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
         )
         .in("status", ["sent", "viewed", "draft_saved"])
         .not("reminder_1_sent_at", "is", null)
@@ -173,6 +208,7 @@ serve(async (req: Request) => {
 
       for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
         if (new Date(row.token_expires_at) <= now) continue;
+        if (await expireIfSiblingDone(row.id, row.combination_id)) continue;
         try {
           const app = await fetchApp(row.application_id);
           if (!app) continue;
@@ -197,7 +233,7 @@ serve(async (req: Request) => {
       const { data: rows } = await supabase
         .from("cvp_test_submissions")
         .select(
-          "id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
+          "id, combination_id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at",
         )
         .in("status", ["sent", "viewed", "draft_saved"])
         .not("reminder_2_sent_at", "is", null)
@@ -207,6 +243,7 @@ serve(async (req: Request) => {
 
       for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
         if (new Date(row.token_expires_at) <= now) continue;
+        if (await expireIfSiblingDone(row.id, row.combination_id)) continue;
         try {
           const app = await fetchApp(row.application_id);
           if (!app) continue;
@@ -230,12 +267,15 @@ serve(async (req: Request) => {
     {
       const { data: rows } = await supabase
         .from("cvp_test_submissions")
-        .select("id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at")
+        .select("id, combination_id, application_id, token, token_expires_at, status, created_at, reminder_1_sent_at, reminder_2_sent_at, reminder_3_sent_at")
         .in("status", ["sent", "viewed", "draft_saved"])
         .lt("token_expires_at", now.toISOString())
         .limit(50);
 
       for (const row of (rows ?? []) as unknown as TestSubmissionRow[]) {
+        // Sibling-done check: don't send V5 "your test expired" to a vendor who
+        // already submitted via a different row on the same combination.
+        if (await expireIfSiblingDone(row.id, row.combination_id)) continue;
         try {
           const app = await fetchApp(row.application_id);
           if (!app) continue;

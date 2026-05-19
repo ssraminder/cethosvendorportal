@@ -14,6 +14,36 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — May 19, 2026 (incident: vendors reporting "I submitted, why am I still getting test emails?")
+
+Many translator-applicants reported receiving V4 "your CETHOS test expires in Xh" reminders after they'd already submitted their test in the TM-Cethos editor.
+
+### Diagnosis
+Cross-project query proved the failure mode: **of 29 TM-Cethos test jobs marked `status='submitted'`, only 5 were properly reconciled to the vendor-portal side (`cvp_test_submissions.status IN ('submitted','assessed')`).** The other 24 were stuck — 17 had already expired on the VP side (token TTL was 48h before May 1; submissions landed on TM but VP marked them `expired` before the callback could fire), and 7 were `sent`/`viewed` on VP despite TM confirming submission.
+
+Root cause: the TM-Cethos → vendor-portal callback (`cvp-record-tm-submission`, shipped 2026-05-01) never actually fires from TM-Cethos at submit-time. The endpoint exists; nothing calls it. The `scripts/backfill-tm-submissions.ts` one-shot from 2026-05-01 only covered 4 hardcoded TM jobs — every new submission since then piled up.
+
+Amplifier: a 2026-05-15 mass V3 re-send (~27 invitations between 20:07–21:12 UTC) issued duplicate test invitations to applicants whose VP-side rows had `expired` because of (1). Those applicants saw a *second* V3, then today a V4 reminder cycle on the duplicate row, while their actual translation sat unread on TM. Source of the May 15 mass send is unidentified (combo statuses were `test_sent`, not `pending`, so `cvp-backfill-auto-send-general` shouldn't have picked them up; nothing in `cvp_test_combinations.updated_at` between May 1 and 15 suggests a reset to `pending`).
+
+### What changed
+1. **Paused the cron, ran reconciliation, re-enabled.** Unscheduled `cvp-check-test-followups-hourly` (pg_cron jobid 39). Deployed a new edge function [supabase/functions/cvp-reconcile-tm-stuck/index.ts](supabase/functions/cvp-reconcile-tm-stuck/index.ts) that accepts `{items:[{submissionId, submittedContent, submittedAt}]}` and idempotently flips VP rows to `submitted`, updates the combination + application status, and fires `cvp-assess-test`. Pulled the TM segment text via Supabase MCP cross-project query, posted in 5 batches via `net.http_post` with the vault-stored service key. Re-scheduled the cron as jobid 502 (same `17 * * * *` cadence).
+
+2. **Reconciliation results.** 24 newly reconciled rows → all auto-graded by `cvp-assess-test` and now `status='assessed'`. Applicants affected: APP-26-0076, 0080, 0082, 0083, 0084, 0085, 0087, 0089, 0091, 0092, 0094, 0097, 0099, 0101, 0102, 0104, 0107, 0108, 0116, 0117, 0128, plus smoke-test 9900.
+
+3. **Expired 13 duplicate stale rows** created by the May 15 mass re-send. For each combination where one VP submission is now `submitted`/`assessed`, any sibling row in `sent`/`viewed`/`draft_saved` was flipped to `expired` with audit note in `submitted_notes`. This stops the just-re-enabled cron from V4-reminding vendors about tests they've already done.
+
+4. **Defensive patch in [supabase/functions/cvp-check-test-followups/index.ts](supabase/functions/cvp-check-test-followups/index.ts):** added `expireIfSiblingDone(submissionId, combinationId)` helper called before each V4 reminder branch and the V5 expiry branch. If any sibling row on the same combination is already in `submitted`/`assessed`/`approved`/`rejected`, the current row is flipped to `expired` (with audit note) and the reminder is skipped. Deployed via `supabase functions deploy ... --no-verify-jwt`. Smoke-tested with a wrong cron secret → 401 as expected.
+
+### What's still broken (out of scope for this session)
+- **TM-Cethos → vendor-portal callback** still doesn't fire reliably from TM-Cethos at submit-time. Every new translator who submits via the TM editor risks getting stuck unless this is fixed on the TM-Cethos side (different repo). The reconciler at `cvp-reconcile-tm-stuck` is left deployed as a manual stop-gap.
+- **`scripts/backfill-tm-submissions.ts`** has a hardcoded list of 4 jobs from 2026-05-01 and was never extended. Recommend either deleting it or generalizing it to query "all TM jobs with `status='submitted'` whose VP-side row is `expired`/`sent`/`viewed`/`draft_saved`" and running it as a scheduled job until the TM callback is fixed.
+- **May 15 mass re-send source**: still unidentified. `cvp-send-tests` only operates on `status='pending'` combos and those combos were `test_sent` from the May 1 send. Either an ad-hoc SQL ran between May 3 and May 15 to reset statuses, or a code path we haven't found re-issued tests. Worth a forensic dive if it recurs.
+
+### Why this matters
+This is the second TM-callback-failure incident this month (the May 1 one prompted writing `cvp-record-tm-submission` + the backfill script). The defensive sibling-state check + the reconciler buy time, but the TM-side fix is the real durable solution.
+
+---
+
 ## Session — May 14, 2026 (cvp-get-my-domains — root cause: gateway rejecting new publishable anon key)
 
 After PRs #155 and #156 landed (better error codes + Sentry rawBody capture), the 401 still fired. Sentry's `rawBody` came back as `[Filtered]` (Sentry PII filter caught a JWT-shaped substring), but the function logs showed v25/v26 returning 401. DB query showed the user **was** logged in (test vendor `ss.raminder+dutchtest@gmail.com`, session row valid and recently active). The function should have returned 200 with domain data. It didn't.
