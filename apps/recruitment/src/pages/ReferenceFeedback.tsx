@@ -8,8 +8,13 @@ import {
   validateCompetenceResponses,
   isReferenceYearAnswerValid,
   referenceYearAnswerToPayload,
+  emptyReferenceDomainAnswer,
+  isReferenceDomainAnswerValid,
+  referenceDomainAnswerToPayload,
   type CompetenceResponses,
   type ReferenceYearAnswer,
+  type ReferenceDomainAnswer,
+  type DomainCode,
 } from "../data/referenceMcqs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -23,6 +28,9 @@ interface Preview {
   previousStatus: string;
   applicantStatedStartYear: number | null;
   applicantYearUnknown: boolean;
+  applicantStatedDomains: DomainCode[] | null;
+  applicantOtherDomainText: string | null;
+  applicantDomainsUnknown: boolean;
 }
 
 export function ReferenceFeedback() {
@@ -38,6 +46,9 @@ export function ReferenceFeedback() {
     choice: null,
     correctedYear: null,
   });
+  const [domainAnswer, setDomainAnswer] = useState<ReferenceDomainAnswer>(
+    emptyReferenceDomainAnswer(),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<"submitted" | "declined" | null>(null);
   const [showDecline, setShowDecline] = useState(false);
@@ -99,7 +110,20 @@ export function ReferenceFeedback() {
       );
       return;
     }
+    const applicantDomains = preview?.applicantStatedDomains ?? null;
+    const applicantDomainsUnknown = preview?.applicantDomainsUnknown ?? false;
+    if (!isReferenceDomainAnswerValid(applicantDomains, applicantDomainsUnknown, domainAnswer)) {
+      setError(
+        "Please tick the domain(s) you worked on together, or pick \"I can't recall the domains\".",
+      );
+      return;
+    }
     const yearPayload = referenceYearAnswerToPayload(applicantYear, applicantYearUnknown, yearAnswer);
+    const domainPayload = referenceDomainAnswerToPayload(
+      applicantDomains,
+      applicantDomainsUnknown,
+      domainAnswer,
+    );
     setError("");
     setSubmitting(true);
     try {
@@ -118,6 +142,9 @@ export function ReferenceFeedback() {
           competenceResponses: mcqValidation.data,
           confirmedStartYear: yearPayload?.confirmedStartYear ?? null,
           yearCantRecall: yearPayload?.yearCantRecall ?? false,
+          confirmedDomains: domainPayload?.confirmedDomains ?? null,
+          confirmedOtherDomainText: domainPayload?.confirmedOtherDomainText ?? null,
+          domainsCantRecall: domainPayload?.domainsCantRecall ?? false,
         }),
       });
       const data = await resp.json();
@@ -258,6 +285,11 @@ export function ReferenceFeedback() {
             applicantYearUnknown={preview?.applicantYearUnknown ?? false}
             yearAnswer={yearAnswer}
             onYearAnswerChange={setYearAnswer}
+            applicantStatedDomains={preview?.applicantStatedDomains ?? null}
+            applicantOtherDomainText={preview?.applicantOtherDomainText ?? null}
+            applicantDomainsUnknown={preview?.applicantDomainsUnknown ?? false}
+            domainAnswer={domainAnswer}
+            onDomainAnswerChange={setDomainAnswer}
           />
 
           <div>

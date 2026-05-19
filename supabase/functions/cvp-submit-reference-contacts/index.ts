@@ -52,6 +52,63 @@ interface ContactInput {
    *  startYear is ignored and the reference's questionnaire skips the
    *  year-verification block. */
   startYearUnknown?: boolean;
+  /** Domains the applicant says they worked with this reference in.
+   *  Codes from DOMAIN_CODES below. Optional — applicant may pick
+   *  domainsUnknown instead. When 'other' is in the list, otherDomainText
+   *  may carry a free-text custom domain. */
+  domains?: string[];
+  /** Free-text custom domain. Only stored when 'other' is in `domains`. */
+  otherDomainText?: string | null;
+  /** True when applicant ticked "I don't remember the domains". When true,
+   *  domains/otherDomainText are ignored and the reference's questionnaire
+   *  skips the domain-verification block. */
+  domainsUnknown?: boolean;
+}
+
+/** The 8 domain codes shared with apps/recruitment/src/data/referenceMcqs.ts */
+const DOMAIN_CODES = new Set<string>([
+  "legal",
+  "medical_pharma",
+  "marketing_transcreation",
+  "technical_it",
+  "financial_banking",
+  "literary_publishing",
+  "government_ngo",
+  "other",
+]);
+
+function normaliseDomains(
+  raw: unknown,
+  otherText: unknown,
+  unknown: boolean,
+): { ok: true; domains: string[] | null; otherText: string | null; unknown: boolean }
+  | { ok: false; error: string } {
+  if (unknown) return { ok: true, domains: null, otherText: null, unknown: true };
+  if (raw == null) return { ok: true, domains: null, otherText: null, unknown: false };
+  if (!Array.isArray(raw)) {
+    return { ok: false, error: "domains must be an array of strings" };
+  }
+  const seen = new Set<string>();
+  for (const d of raw) {
+    if (typeof d !== "string") {
+      return { ok: false, error: "domains entries must be strings" };
+    }
+    const code = d.trim().toLowerCase();
+    if (!DOMAIN_CODES.has(code)) {
+      return { ok: false, error: `invalid domain code: ${code}` };
+    }
+    seen.add(code);
+  }
+  if (seen.size === 0) return { ok: true, domains: null, otherText: null, unknown: false };
+  const cleanedOther = seen.has("other") && typeof otherText === "string"
+    ? otherText.trim().slice(0, 200) || null
+    : null;
+  return {
+    ok: true,
+    domains: Array.from(seen).sort(),
+    otherText: cleanedOther,
+    unknown: false,
+  };
 }
 
 const YEAR_MIN = 1980;
@@ -145,7 +202,7 @@ serve(async (req: Request) => {
     return json({ success: false, error: "contacts_already_submitted" }, 409);
   }
 
-  // Validate inputs (incl. optional year-verification fields).
+  // Validate inputs (incl. optional year- and domain-verification fields).
   const cleanedRefs: Array<{
     name: string;
     email: string;
@@ -153,6 +210,9 @@ serve(async (req: Request) => {
     relationship: string | null;
     startYear: number | null;
     startYearUnknown: boolean;
+    domains: string[] | null;
+    otherDomainText: string | null;
+    domainsUnknown: boolean;
   }> = [];
   for (const r of body.references ?? []) {
     const name = (r.name ?? "").trim();
@@ -165,6 +225,17 @@ serve(async (req: Request) => {
         400,
       );
     }
+    const domainsResult = normaliseDomains(
+      r.domains,
+      r.otherDomainText,
+      r.domainsUnknown === true,
+    );
+    if (!domainsResult.ok) {
+      return json(
+        { success: false, error: "invalid_domains", detail: domainsResult.error },
+        400,
+      );
+    }
     cleanedRefs.push({
       name,
       email,
@@ -172,6 +243,9 @@ serve(async (req: Request) => {
       relationship: (r.relationship ?? "").trim() || null,
       startYear: yearResult.year,
       startYearUnknown: yearResult.yearUnknown,
+      domains: domainsResult.domains,
+      otherDomainText: domainsResult.otherText,
+      domainsUnknown: domainsResult.unknown,
     });
   }
   if (cleanedRefs.length < 1 || cleanedRefs.length > 3) {
@@ -200,6 +274,9 @@ serve(async (req: Request) => {
     status: "requested",
     applicant_stated_start_year: r.startYear,
     applicant_year_unknown: r.startYearUnknown,
+    applicant_stated_domains: r.domains,
+    applicant_other_domain_text: r.otherDomainText,
+    applicant_domains_unknown: r.domainsUnknown,
   }));
 
   const { data: inserted, error: insErr } = await supabase

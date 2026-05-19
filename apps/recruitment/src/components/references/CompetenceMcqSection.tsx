@@ -17,10 +17,13 @@ import {
   REFERENCE_YEAR_MIN,
   referenceYearMax,
   referenceYearOptions,
+  DOMAIN_LABEL,
   type CompetenceResponses,
   type McqAnswer,
   type ReferenceYearAnswer,
   type YearMatchChoice,
+  type DomainCode,
+  type ReferenceDomainAnswer,
 } from "../../data/referenceMcqs";
 
 interface Props {
@@ -34,6 +37,15 @@ interface Props {
   applicantYearUnknown: boolean;
   yearAnswer: ReferenceYearAnswer;
   onYearAnswerChange: (next: ReferenceYearAnswer) => void;
+  /** Domain-verification context. When applicantStatedDomains is non-empty
+   *  AND applicantDomainsUnknown=false, the questionnaire renders the
+   *  domain confirmation block above the MCQs AND hides the legacy
+   *  domain_specialty dropdown (since the applicant's claim is the anchor). */
+  applicantStatedDomains: DomainCode[] | null;
+  applicantOtherDomainText: string | null;
+  applicantDomainsUnknown: boolean;
+  domainAnswer: ReferenceDomainAnswer;
+  onDomainAnswerChange: (next: ReferenceDomainAnswer) => void;
 }
 
 export function CompetenceMcqSection({
@@ -44,6 +56,11 @@ export function CompetenceMcqSection({
   applicantYearUnknown,
   yearAnswer,
   onYearAnswerChange,
+  applicantStatedDomains,
+  applicantOtherDomainText,
+  applicantDomainsUnknown,
+  domainAnswer,
+  onDomainAnswerChange,
 }: Props) {
   const setAnswer = (slug: keyof CompetenceResponses, v: McqAnswer | string | null) => {
     onChange({ ...value, [slug]: v });
@@ -58,6 +75,28 @@ export function CompetenceMcqSection({
   };
 
   const showYearBlock = !applicantYearUnknown && applicantStatedYear != null;
+  const showDomainBlock =
+    !applicantDomainsUnknown && applicantStatedDomains != null && applicantStatedDomains.length > 0;
+
+  const toggleConfirmDomain = (code: DomainCode) => {
+    const has = domainAnswer.confirmedDomains.includes(code);
+    const nextCodes = has
+      ? domainAnswer.confirmedDomains.filter((c) => c !== code)
+      : [...domainAnswer.confirmedDomains, code];
+    onDomainAnswerChange({
+      ...domainAnswer,
+      confirmedDomains: nextCodes,
+      // Picking any domain clears "I can't recall".
+      cantRecall: nextCodes.length > 0 ? false : domainAnswer.cantRecall,
+      // Clear free text if 'other' was unticked.
+      otherDomainText: nextCodes.includes("other") ? domainAnswer.otherDomainText : "",
+    });
+  };
+
+  const labelForCode = (code: DomainCode): string => {
+    if (code === "other" && applicantOtherDomainText) return `Other (${applicantOtherDomainText})`;
+    return DOMAIN_LABEL[code] ?? code;
+  };
 
   return (
     <div className="space-y-6">
@@ -146,6 +185,63 @@ export function CompetenceMcqSection({
         </fieldset>
       )}
 
+      {showDomainBlock && (
+        <fieldset className="border border-gray-200 rounded-lg p-4 bg-amber-50/40">
+          <legend className="px-1 text-sm font-medium text-gray-900">
+            {vendorFirstName} said you worked together on the domain(s) below. Tick the ones that match what you actually did together.
+          </legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+            {applicantStatedDomains!.map((code) => {
+              const checked = domainAnswer.confirmedDomains.includes(code);
+              return (
+                <label
+                  key={code}
+                  className={`flex items-center gap-2 px-2 py-1 rounded text-sm cursor-pointer ${
+                    domainAnswer.cantRecall ? "opacity-50" : "hover:bg-gray-50"
+                  } ${checked ? "bg-teal-50 border border-teal-200" : "border border-transparent"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={domainAnswer.cantRecall}
+                    onChange={() => toggleConfirmDomain(code)}
+                  />
+                  <span className="text-gray-800">{labelForCode(code)}</span>
+                </label>
+              );
+            })}
+          </div>
+          {domainAnswer.confirmedDomains.includes("other") && !domainAnswer.cantRecall && (
+            <input
+              type="text"
+              value={domainAnswer.otherDomainText}
+              onChange={(e) =>
+                onDomainAnswerChange({
+                  ...domainAnswer,
+                  otherDomainText: e.target.value.slice(0, 200),
+                })
+              }
+              placeholder="Describe the 'Other' domain in your own words (optional)"
+              className="mt-2 w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+          )}
+          <label className="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={domainAnswer.cantRecall}
+              onChange={(e) =>
+                onDomainAnswerChange({
+                  confirmedDomains: e.target.checked ? [] : domainAnswer.confirmedDomains,
+                  otherDomainText: e.target.checked ? "" : domainAnswer.otherDomainText,
+                  cantRecall: e.target.checked,
+                })
+              }
+            />
+            I can't recall the domains we worked on
+          </label>
+        </fieldset>
+      )}
+
       {REFERENCE_MCQS.map((q) => {
         const prompt = q.prompt.replace(/\{\{name\}\}/g, vendorFirstName);
         const current = value[q.slug] as McqAnswer | undefined;
@@ -173,8 +269,12 @@ export function CompetenceMcqSection({
               ))}
             </div>
 
-            {/* Inline specialty picker once domain-competence is answered with anything other than (e). */}
-            {q.slug === "domain_competence" && current && current !== "e" && (
+            {/* Inline specialty picker shown only when applicant didn't
+                declare any domains (legacy fallback). When the applicant
+                provided a domain list, the verification block above is the
+                source of truth and asking for "primary domain" here would be
+                redundant. */}
+            {q.slug === "domain_competence" && current && current !== "e" && !showDomainBlock && (
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">
                   Which domain did you primarily work with {vendorFirstName} in?
