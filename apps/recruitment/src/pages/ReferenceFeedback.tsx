@@ -6,7 +6,10 @@ import { CompetenceMcqSection } from "../components/references/CompetenceMcqSect
 import {
   REFERENCE_MCQS,
   validateCompetenceResponses,
+  isReferenceYearAnswerValid,
+  referenceYearAnswerToPayload,
   type CompetenceResponses,
+  type ReferenceYearAnswer,
 } from "../data/referenceMcqs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -18,6 +21,8 @@ interface Preview {
   applicationNumber: string;
   alreadySubmitted: boolean;
   previousStatus: string;
+  applicantStatedStartYear: number | null;
+  applicantYearUnknown: boolean;
 }
 
 export function ReferenceFeedback() {
@@ -29,6 +34,10 @@ export function ReferenceFeedback() {
   const [feedbackText, setFeedbackText] = useState("");
   const [rating, setRating] = useState<number | null>(null);
   const [mcq, setMcq] = useState<Partial<CompetenceResponses>>({});
+  const [yearAnswer, setYearAnswer] = useState<ReferenceYearAnswer>({
+    choice: null,
+    correctedYear: null,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<"submitted" | "declined" | null>(null);
   const [showDecline, setShowDecline] = useState(false);
@@ -80,6 +89,17 @@ export function ReferenceFeedback() {
       );
       return;
     }
+    const applicantYear = preview?.applicantStatedStartYear ?? null;
+    const applicantYearUnknown = preview?.applicantYearUnknown ?? false;
+    if (!isReferenceYearAnswerValid(applicantYear, applicantYearUnknown, yearAnswer)) {
+      setError(
+        yearAnswer.choice === "actually_different"
+          ? "Please pick the year you remember starting work with this applicant."
+          : `Please answer: "${preview?.applicantName?.split(" ")[0] || "the applicant"} said you started working together around ${applicantYear} — does that match?"`,
+      );
+      return;
+    }
+    const yearPayload = referenceYearAnswerToPayload(applicantYear, applicantYearUnknown, yearAnswer);
     setError("");
     setSubmitting(true);
     try {
@@ -96,6 +116,8 @@ export function ReferenceFeedback() {
           feedbackText: feedbackText.trim() || null,
           feedbackRating: rating,
           competenceResponses: mcqValidation.data,
+          confirmedStartYear: yearPayload?.confirmedStartYear ?? null,
+          yearCantRecall: yearPayload?.yearCantRecall ?? false,
         }),
       });
       const data = await resp.json();
@@ -232,6 +254,10 @@ export function ReferenceFeedback() {
             vendorFirstName={preview?.applicantName?.split(" ")[0] || "this applicant"}
             value={mcq}
             onChange={setMcq}
+            applicantStatedYear={preview?.applicantStatedStartYear ?? null}
+            applicantYearUnknown={preview?.applicantYearUnknown ?? false}
+            yearAnswer={yearAnswer}
+            onYearAnswerChange={setYearAnswer}
           />
 
           <div>

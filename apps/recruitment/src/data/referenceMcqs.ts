@@ -117,6 +117,71 @@ export const WOULD_WORK_AGAIN_OPTIONS: { value: WouldWorkAgain; label: string }[
   { value: "no", label: "No" },
 ];
 
+// --- Year verification (2026-05-19) --------------------------------------
+// Applicant declares an approximate start year when submitting the reference
+// contact. Reference confirms or corrects on the questionnaire. Server-side
+// classification (matches/close/disagrees/cant_recall) is computed in
+// cvp-submit-reference-feedback — see that function for the tolerance rules.
+
+export const REFERENCE_YEAR_MIN = 1980;
+/** Acceptable upper bound = current year + 1 (end-of-year edge cases). */
+export const referenceYearMax = (): number => new Date().getUTCFullYear() + 1;
+
+/** Inclusive descending year list for the dropdown UI. */
+export function referenceYearOptions(): number[] {
+  const out: number[] = [];
+  for (let y = referenceYearMax(); y >= REFERENCE_YEAR_MIN; y -= 1) out.push(y);
+  return out;
+}
+
+export type YearMatchChoice = "yes_matches" | "actually_different" | "cant_recall";
+
+/** Reference-side state for the year-verification block. */
+export interface ReferenceYearAnswer {
+  choice: YearMatchChoice | null;
+  /** Required when choice = "actually_different"; ignored otherwise. */
+  correctedYear: number | null;
+}
+
+export function isReferenceYearAnswerValid(
+  applicantStatedYear: number | null,
+  applicantYearUnknown: boolean,
+  answer: ReferenceYearAnswer,
+): boolean {
+  // No question was shown when applicant didn't provide a year.
+  if (applicantYearUnknown || applicantStatedYear == null) return true;
+  if (answer.choice === "yes_matches" || answer.choice === "cant_recall") return true;
+  if (answer.choice === "actually_different") {
+    return (
+      answer.correctedYear != null &&
+      Number.isInteger(answer.correctedYear) &&
+      answer.correctedYear >= REFERENCE_YEAR_MIN &&
+      answer.correctedYear <= referenceYearMax()
+    );
+  }
+  return false;
+}
+
+/** Maps reference-side UI answer to the {confirmedStartYear, yearCantRecall}
+ *  shape that cvp-submit-reference-feedback expects. */
+export function referenceYearAnswerToPayload(
+  applicantStatedYear: number | null,
+  applicantYearUnknown: boolean,
+  answer: ReferenceYearAnswer,
+): { confirmedStartYear: number | null; yearCantRecall: boolean } | null {
+  if (applicantYearUnknown || applicantStatedYear == null) return null;
+  if (answer.choice === "yes_matches") {
+    return { confirmedStartYear: applicantStatedYear, yearCantRecall: false };
+  }
+  if (answer.choice === "actually_different") {
+    return { confirmedStartYear: answer.correctedYear, yearCantRecall: false };
+  }
+  if (answer.choice === "cant_recall") {
+    return { confirmedStartYear: null, yearCantRecall: true };
+  }
+  return null;
+}
+
 export interface CompetenceResponses {
   translation_competence: McqAnswer;
   linguistic_textual_competence: McqAnswer;

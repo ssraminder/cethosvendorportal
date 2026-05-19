@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Layout } from "../components/Layout";
 import { CheckCircle, Loader2, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import {
+  REFERENCE_YEAR_MIN,
+  referenceYearMax,
+  referenceYearOptions,
+} from "../data/referenceMcqs";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -11,6 +16,8 @@ interface RefRow {
   email: string;
   company: string;
   relationship: string;
+  startYear: string;       // "" = no selection
+  startYearUnknown: boolean;
 }
 
 interface PreviewData {
@@ -20,7 +27,14 @@ interface PreviewData {
   existingReferences: { reference_name: string; reference_email: string; status: string }[];
 }
 
-const blankRef = (): RefRow => ({ name: "", email: "", company: "", relationship: "" });
+const blankRef = (): RefRow => ({
+  name: "",
+  email: "",
+  company: "",
+  relationship: "",
+  startYear: "",
+  startYearUnknown: false,
+});
 
 // Magic preview token the admin Request References modal generates so staff
 // can see what the applicant page will look like before sending the email.
@@ -82,8 +96,17 @@ export function ReferencesEntry() {
     };
   }, [token, isPreview]);
 
-  const updateRef = (i: number, field: keyof RefRow, value: string) => {
-    setRefs((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  const updateRef = (i: number, field: keyof RefRow, value: string | boolean) => {
+    setRefs((prev) =>
+      prev.map((r, idx) => {
+        if (idx !== i) return r;
+        const next = { ...r, [field]: value } as RefRow;
+        // Toggling "I don't remember" clears the year, and vice versa.
+        if (field === "startYearUnknown" && value === true) next.startYear = "";
+        if (field === "startYear" && value !== "") next.startYearUnknown = false;
+        return next;
+      }),
+    );
   };
 
   const addRef = () => {
@@ -97,12 +120,22 @@ export function ReferencesEntry() {
   };
 
   const validRefs = refs
-    .map((r) => ({
-      name: r.name.trim(),
-      email: r.email.trim(),
-      company: r.company.trim(),
-      relationship: r.relationship.trim(),
-    }))
+    .map((r) => {
+      const yearNum = r.startYear ? Number.parseInt(r.startYear, 10) : null;
+      const yearValid =
+        yearNum != null &&
+        Number.isInteger(yearNum) &&
+        yearNum >= REFERENCE_YEAR_MIN &&
+        yearNum <= referenceYearMax();
+      return {
+        name: r.name.trim(),
+        email: r.email.trim(),
+        company: r.company.trim(),
+        relationship: r.relationship.trim(),
+        startYear: yearValid ? yearNum : null,
+        startYearUnknown: r.startYearUnknown,
+      };
+    })
     .filter((r) => r.name.length >= 2 && /\S+@\S+\.\S+/.test(r.email));
 
   const handleSubmit = async () => {
@@ -288,6 +321,36 @@ export function ReferencesEntry() {
                     placeholder="e.g. former PM, client of 4 years"
                     className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Approximate year you started working with this reference
+                  <span className="text-gray-400 font-normal"> (optional)</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={r.startYear}
+                    onChange={(e) => updateRef(i, "startYear", e.target.value)}
+                    disabled={r.startYearUnknown}
+                    className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    <option value="">Select year…</option>
+                    {referenceYearOptions().map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                  <label className="text-xs text-gray-700 inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={r.startYearUnknown}
+                      onChange={(e) => updateRef(i, "startYearUnknown", e.target.checked)}
+                    />
+                    I don't remember
+                  </label>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Approximate is fine. We'll ask your reference to confirm the year — small differences are expected.
                 </div>
               </div>
             </div>

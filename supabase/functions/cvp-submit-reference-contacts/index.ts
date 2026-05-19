@@ -44,6 +44,33 @@ interface ContactInput {
   email?: string;
   company?: string;
   relationship?: string;
+  /** Approximate year the applicant began working with this reference.
+   *  Optional — applicant may pick "I don't remember" instead. Stored
+   *  for verification against what the reference says on the questionnaire. */
+  startYear?: number | string | null;
+  /** True when the applicant ticked "I don't remember the year". When true,
+   *  startYear is ignored and the reference's questionnaire skips the
+   *  year-verification block. */
+  startYearUnknown?: boolean;
+}
+
+const YEAR_MIN = 1980;
+const YEAR_MAX_FUTURE_OFFSET = 1; // accept current year + 1 for end-of-year edge
+
+function normaliseStartYear(raw: unknown, unknown: boolean): {
+  ok: true;
+  year: number | null;
+  yearUnknown: boolean;
+} | { ok: false; error: string } {
+  if (unknown) return { ok: true, year: null, yearUnknown: true };
+  if (raw == null || raw === "") return { ok: true, year: null, yearUnknown: false };
+  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+  if (!Number.isInteger(n)) return { ok: false, error: "startYear must be an integer" };
+  const maxYear = new Date().getUTCFullYear() + YEAR_MAX_FUTURE_OFFSET;
+  if (n < YEAR_MIN || n > maxYear) {
+    return { ok: false, error: `startYear must be between ${YEAR_MIN} and ${maxYear}` };
+  }
+  return { ok: true, year: n, yearUnknown: false };
 }
 
 const REFERENCE_FEEDBACK_EXPIRY_DAYS = 21;
@@ -100,7 +127,7 @@ serve(async (req: Request) => {
   if (body.validateOnly || !body.references) {
     const { data: existing } = await supabase
       .from("cvp_application_references")
-      .select("id, reference_name, reference_email, status")
+      .select("id, reference_name, reference_email, status, applicant_stated_start_year, applicant_year_unknown")
       .eq("request_id", requestRow.id);
     return json({
       success: true,
@@ -118,15 +145,35 @@ serve(async (req: Request) => {
     return json({ success: false, error: "contacts_already_submitted" }, 409);
   }
 
-  // Validate inputs.
-  const cleanedRefs = (body.references ?? [])
-    .map((r) => ({
-      name: (r.name ?? "").trim(),
-      email: (r.email ?? "").trim().toLowerCase(),
+  // Validate inputs (incl. optional year-verification fields).
+  const cleanedRefs: Array<{
+    name: string;
+    email: string;
+    company: string | null;
+    relationship: string | null;
+    startYear: number | null;
+    startYearUnknown: boolean;
+  }> = [];
+  for (const r of body.references ?? []) {
+    const name = (r.name ?? "").trim();
+    const email = (r.email ?? "").trim().toLowerCase();
+    if (name.length < 2 || !/\S+@\S+\.\S+/.test(email)) continue;
+    const yearResult = normaliseStartYear(r.startYear, r.startYearUnknown === true);
+    if (!yearResult.ok) {
+      return json(
+        { success: false, error: "invalid_start_year", detail: yearResult.error },
+        400,
+      );
+    }
+    cleanedRefs.push({
+      name,
+      email,
       company: (r.company ?? "").trim() || null,
       relationship: (r.relationship ?? "").trim() || null,
-    }))
-    .filter((r) => r.name.length >= 2 && /\S+@\S+\.\S+/.test(r.email));
+      startYear: yearResult.year,
+      startYearUnknown: yearResult.yearUnknown,
+    });
+  }
   if (cleanedRefs.length < 1 || cleanedRefs.length > 3) {
     return json(
       {
@@ -151,6 +198,8 @@ serve(async (req: Request) => {
     reference_relationship: r.relationship,
     feedback_token_expires_at: feedbackExpiresAt,
     status: "requested",
+    applicant_stated_start_year: r.startYear,
+    applicant_year_unknown: r.startYearUnknown,
   }));
 
   const { data: inserted, error: insErr } = await supabase

@@ -52,7 +52,98 @@ Rules:
 - Be calibrated. A reference who says "they were fine" is NOT positive — that's neutral / mildly positive at best.
 - If the response is very short (<30 words), strength_score caps at 3 — minimal evidence.
 - Red flags include: refusal to recommend, mentions of conflicts / professional issues, vague hedging, contradiction with the applicant's claims.
+- The "Year verification" line in the input describes how the applicant's stated start year compares with the reference's recollection. If it says DISAGREES, you MUST include a red flag along the lines of "reference contradicts applicant's stated working timeline (X-year gap)". If it says MATCHES, you MAY mention "timeline corroborated" as a theme. cant_recall is not a red flag.
 - Don't infer beyond the text. If the reference doesn't mention something, don't include it as a theme.`;
+
+interface YearVerificationContext {
+  applicantStatedStartYear: number | null;
+  applicantYearUnknown: boolean;
+  referenceConfirmedStartYear: number | null;
+  yearCantRecall: boolean;
+  /** Computed bucket: matches / close / disagrees / cant_recall, or null when
+   *  no verification was asked (applicant_year_unknown). */
+  verification: "matches" | "close" | "disagrees" | "cant_recall" | null;
+  /** Absolute difference when both years are present; null otherwise. */
+  yearGap: number | null;
+}
+
+function computeYearVerification(
+  applicantStatedStartYear: number | null,
+  applicantYearUnknown: boolean,
+  rawConfirmedYear: unknown,
+  yearCantRecall: boolean,
+): { ok: true; ctx: YearVerificationContext } | { ok: false; error: string } {
+  // No verification asked when the applicant didn't provide a year.
+  if (applicantYearUnknown || applicantStatedStartYear == null) {
+    return {
+      ok: true,
+      ctx: {
+        applicantStatedStartYear,
+        applicantYearUnknown,
+        referenceConfirmedStartYear: null,
+        yearCantRecall: false,
+        verification: null,
+        yearGap: null,
+      },
+    };
+  }
+  if (yearCantRecall) {
+    return {
+      ok: true,
+      ctx: {
+        applicantStatedStartYear,
+        applicantYearUnknown,
+        referenceConfirmedStartYear: null,
+        yearCantRecall: true,
+        verification: "cant_recall",
+        yearGap: null,
+      },
+    };
+  }
+  let refYear: number | null = null;
+  if (rawConfirmedYear != null && rawConfirmedYear !== "") {
+    const n = typeof rawConfirmedYear === "number"
+      ? rawConfirmedYear
+      : Number.parseInt(String(rawConfirmedYear), 10);
+    if (!Number.isInteger(n)) {
+      return { ok: false, error: "confirmedStartYear must be an integer" };
+    }
+    const maxYear = new Date().getUTCFullYear() + 1;
+    if (n < 1980 || n > maxYear) {
+      return { ok: false, error: `confirmedStartYear must be between 1980 and ${maxYear}` };
+    }
+    refYear = n;
+  }
+  if (refYear == null) {
+    // Reference didn't pick can't-recall but also didn't provide a year.
+    // Treat as cant_recall (degenerate case from older clients).
+    return {
+      ok: true,
+      ctx: {
+        applicantStatedStartYear,
+        applicantYearUnknown,
+        referenceConfirmedStartYear: null,
+        yearCantRecall: true,
+        verification: "cant_recall",
+        yearGap: null,
+      },
+    };
+  }
+  const gap = Math.abs(refYear - applicantStatedStartYear);
+  const verification: "matches" | "close" | "disagrees" =
+    gap <= 1 ? "matches" : gap <= 3 ? "close" : "disagrees";
+  return {
+    ok: true,
+    ctx: {
+      applicantStatedStartYear,
+      applicantYearUnknown,
+      referenceConfirmedStartYear: refYear,
+      yearCantRecall: false,
+      verification,
+      yearGap: gap,
+    },
+  };
+}
 
 async function analyseWithOpus(args: {
   applicantName: string;
@@ -61,13 +152,36 @@ async function analyseWithOpus(args: {
   referenceRelationship: string | null;
   feedbackText: string;
   feedbackRating: number | null;
+  yearVerification: YearVerificationContext;
 }): Promise<{ ok: boolean; data: Record<string, unknown> | null; error: string | null }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return { ok: false, data: null, error: "ANTHROPIC_API_KEY not configured" };
 
+  // Build the year-verification block for the AI. When the reference disagrees
+  // with the applicant's stated start year by 4+ years, the AI MUST surface it
+  // as a red flag — see ANALYSIS_SYSTEM_PROMPT.
+  const yv = args.yearVerification;
+  let yearVerificationLine = "Year verification: (applicant did not provide a year, so no verification was asked)";
+  if (!yv.applicantYearUnknown && yv.applicantStatedStartYear != null) {
+    if (yv.verification === "cant_recall") {
+      yearVerificationLine =
+        `Year verification: applicant said they started working with this reference around ${yv.applicantStatedStartYear}; reference said they can't recall the exact year. Weak relationship signal but not a red flag on its own.`;
+    } else if (yv.verification === "matches") {
+      yearVerificationLine =
+        `Year verification: applicant said ~${yv.applicantStatedStartYear}; reference said ${yv.referenceConfirmedStartYear} (within ${yv.yearGap} year${yv.yearGap === 1 ? "" : "s"}). MATCHES — corroborates the working relationship.`;
+    } else if (yv.verification === "close") {
+      yearVerificationLine =
+        `Year verification: applicant said ~${yv.applicantStatedStartYear}; reference said ${yv.referenceConfirmedStartYear} (gap of ${yv.yearGap} years). Close enough to be plausible memory drift.`;
+    } else if (yv.verification === "disagrees") {
+      yearVerificationLine =
+        `Year verification: applicant said ~${yv.applicantStatedStartYear}; reference said ${yv.referenceConfirmedStartYear} (gap of ${yv.yearGap} years). DISAGREES — this is a red flag. Either applicant misremembered substantially, exaggerated tenure, or reference is recalling someone else.`;
+    }
+  }
+
   const userMessage = `Applicant: ${args.applicantName}
 Reference: ${args.referenceName} (${args.referenceCompany ?? "company unspecified"} — ${args.referenceRelationship ?? "relationship unspecified"})
 Reference's overall rating: ${args.feedbackRating ?? "not given"} / 5
+${yearVerificationLine}
 
 Reference's free-text response:
 ---
@@ -126,6 +240,13 @@ serve(async (req: Request) => {
     feedbackRating?: number;
     reason?: string;
     competenceResponses?: Record<string, unknown>;
+    /** Year the reference says they started working with the applicant.
+     *  Optional — reference may pick "can't recall" instead via
+     *  yearCantRecall. Ignored when applicant_year_unknown=true on the row
+     *  (no verification was asked). */
+    confirmedStartYear?: number | string | null;
+    /** True when reference picked "I can't recall the year". */
+    yearCantRecall?: boolean;
   };
   try {
     body = await req.json();
@@ -144,7 +265,7 @@ serve(async (req: Request) => {
   const { data: refRow } = await supabase
     .from("cvp_application_references")
     .select(
-      "id, application_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token_expires_at, status",
+      "id, application_id, reference_name, reference_email, reference_company, reference_relationship, feedback_token_expires_at, status, applicant_stated_start_year, applicant_year_unknown",
     )
     .eq("feedback_token", body.feedbackToken)
     .maybeSingle();
@@ -170,6 +291,11 @@ serve(async (req: Request) => {
         applicationNumber: app.application_number,
         alreadySubmitted: refRow.status === "received" || refRow.status === "declined",
         previousStatus: refRow.status,
+        // Surface what the applicant said about when they started working with
+        // this reference so the questionnaire can render the verification block
+        // (or skip it if the applicant ticked "I don't remember").
+        applicantStatedStartYear: refRow.applicant_stated_start_year as number | null,
+        applicantYearUnknown: refRow.applicant_year_unknown as boolean,
       },
     });
   }
@@ -213,6 +339,22 @@ serve(async (req: Request) => {
     );
   }
 
+  // Year verification (2026-05-19). Computes the matches/close/disagrees
+  // bucket from the applicant's stated year (set when contacts were
+  // submitted) and the reference's confirmed year here.
+  const yv = computeYearVerification(
+    refRow.applicant_stated_start_year as number | null,
+    (refRow.applicant_year_unknown as boolean) ?? false,
+    body.confirmedStartYear ?? null,
+    body.yearCantRecall === true,
+  );
+  if (!yv.ok) {
+    return json(
+      { success: false, error: "invalid_confirmed_start_year", detail: yv.error },
+      400,
+    );
+  }
+
   // Persist immediately; AI runs after so a slow / failing AI doesn't
   // make the reference think their submission failed.
   await supabase
@@ -222,6 +364,8 @@ serve(async (req: Request) => {
       feedback_text: feedbackText || null,
       feedback_rating: rating,
       competence_responses: competence.data,
+      reference_confirmed_start_year: yv.ctx.referenceConfirmedStartYear,
+      year_verification: yv.ctx.verification,
       feedback_received_at: new Date().toISOString(),
     })
     .eq("id", refRow.id);
@@ -251,6 +395,7 @@ serve(async (req: Request) => {
     referenceRelationship: refRow.reference_relationship,
     feedbackText,
     feedbackRating: rating,
+    yearVerification: yv.ctx,
   });
   if (analysis.ok && analysis.data) {
     await supabase
@@ -273,7 +418,12 @@ serve(async (req: Request) => {
 
   return json({
     success: true,
-    data: { received: true, aiAnalysed: analysis.ok },
+    data: {
+      received: true,
+      aiAnalysed: analysis.ok,
+      yearVerification: yv.ctx.verification,
+      yearGap: yv.ctx.yearGap,
+    },
   });
 });
 
