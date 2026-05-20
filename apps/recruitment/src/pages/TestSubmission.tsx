@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { isRtlCode } from '../lib/rtl'
 import {
   Clock,
   Upload,
@@ -24,6 +25,10 @@ interface TestData {
   difficulty: string
   sourceLanguage: string
   targetLanguage: string
+  sourceLanguageCode?: string | null
+  targetLanguageCode?: string | null
+  sourceLanguageRtl?: boolean
+  targetLanguageRtl?: boolean
   sourceText: string | null
   sourceFilePath: string | null
   instructions: string | null
@@ -277,6 +282,8 @@ export function TestSubmission() {
   const { data } = pageState
   const isExpiringSoon =
     new Date(data.expiresAt).getTime() - Date.now() < 2 * 60 * 60 * 1000 // < 2 hours
+  const targetRtl = data.targetLanguageRtl ?? isRtlCode(data.targetLanguageCode)
+  const targetCode = data.targetLanguageCode ?? undefined
 
   return (
     <Layout>
@@ -347,7 +354,11 @@ export function TestSubmission() {
               Review this translation for errors. Identify each error with its MQM category,
               severity (Minor/Major/Critical), location, and a brief explanation.
             </p>
-            <div className="prose prose-sm max-w-none text-gray-800 whitespace-pre-wrap border-t border-amber-100 pt-4">
+            <div
+              dir={targetRtl ? 'rtl' : 'ltr'}
+              lang={targetCode}
+              className={`prose prose-sm max-w-none text-gray-800 whitespace-pre-wrap border-t border-amber-100 pt-4 ${targetRtl ? 'text-right' : ''}`}
+            >
               {data.lqaSourceTranslation}
             </div>
           </div>
@@ -436,8 +447,17 @@ export function TestSubmission() {
                 : 'Enter your translation here...'
             }
             rows={16}
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal resize-y"
+            dir={data.serviceType !== 'lqa_review' && targetRtl ? 'rtl' : 'ltr'}
+            lang={data.serviceType !== 'lqa_review' ? targetCode : undefined}
+            className={`w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal resize-y ${
+              data.serviceType !== 'lqa_review' && targetRtl ? 'text-right' : ''
+            }`}
           />
+          {data.serviceType !== 'lqa_review' && targetRtl && (
+            <p className="text-xs text-gray-500 mt-1">
+              Typing direction is right-to-left for {data.targetLanguage}.
+            </p>
+          )}
           <p className="text-xs text-gray-400 mt-1">
             Your work is auto-saved every 60 seconds.
           </p>

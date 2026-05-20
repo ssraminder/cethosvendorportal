@@ -40,6 +40,17 @@ interface TestLibraryRow {
 
 interface LanguageRow {
   name: string;
+  code: string | null;
+}
+
+const RTL_CODES = new Set([
+  "ar", "ar-EG", "ar-SA", "ar-LB", "ar-MA",
+  "he", "fa", "prs", "ps", "ur", "ckb", "yi",
+]);
+
+function isRtlCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  return RTL_CODES.has(code) || code.startsWith("ar-");
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
@@ -151,17 +162,21 @@ serve(async (req: Request) => {
     // Fetch language names
     const { data: srcLang } = await supabase
       .from("languages")
-      .select("name")
+      .select("name, code")
       .eq("id", testData.source_language_id)
       .single();
     const { data: tgtLang } = await supabase
       .from("languages")
-      .select("name")
+      .select("name, code")
       .eq("id", testData.target_language_id)
       .single();
 
-    const sourceLangName = (srcLang as unknown as LanguageRow | null)?.name ?? "Unknown";
-    const targetLangName = (tgtLang as unknown as LanguageRow | null)?.name ?? "Unknown";
+    const sourceLangRow = srcLang as unknown as LanguageRow | null;
+    const targetLangRow = tgtLang as unknown as LanguageRow | null;
+    const sourceLangName = sourceLangRow?.name ?? "Unknown";
+    const targetLangName = targetLangRow?.name ?? "Unknown";
+    const sourceLangCode = sourceLangRow?.code ?? null;
+    const targetLangCode = targetLangRow?.code ?? null;
 
     // Fetch applicant name for the page
     const { data: appData } = await supabase
@@ -203,6 +218,10 @@ serve(async (req: Request) => {
       difficulty: testData.difficulty,
       sourceLanguage: sourceLangName,
       targetLanguage: targetLangName,
+      sourceLanguageCode: sourceLangCode,
+      targetLanguageCode: targetLangCode,
+      sourceLanguageRtl: isRtlCode(sourceLangCode),
+      targetLanguageRtl: isRtlCode(targetLangCode),
       sourceText: testData.source_text,
       sourceFilePath: testData.source_file_path,
       instructions: testData.instructions,
