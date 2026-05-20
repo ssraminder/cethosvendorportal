@@ -35,6 +35,14 @@ function json(body: Record<string, unknown>, status = 200): Response {
 interface ApprovePayload {
   applicationId: string;
   combinationIds?: string[];
+  /**
+   * Per-combination rationale captured from the admin's domain-pick step.
+   * Keyed by cvp_test_combinations.id. Required for any combination whose
+   * status is not 'approved' or 'skip_manual_review' (i.e. staff is
+   * overriding the normal validation gate). Persisted to the decision
+   * audit log; not shown to the applicant.
+   */
+  combinationRationales?: Record<string, string>;
   /** Optional staff notes — captured + AI-rephrased for inclusion in V11. */
   staffNotes?: string;
   /** Preview-only: runs AI + renders V11 with placeholder setup link. No
@@ -86,6 +94,15 @@ serve(async (req: Request) => {
   // Include `status` so we can distinguish combos that passed a test
   // (pending/assessed/approved) from certified skip-review combos. The
   // distinction is written to cvp_translator_domains.approval_source.
+  //
+  // Selection rules:
+  //   - When combinationIds is passed (the admin's domain-pick step), use
+  //     exactly that subset. The UI is responsible for enforcing rationale.
+  //   - When combinationIds is absent (legacy callers — e.g. the
+  //     "skip testing → approve based on experience" flow which auto-
+  //     promotes certified combos), default to combos already in a
+  //     validated state. Pulling EVERY combo by default silently approved
+  //     pending domains the applicant chose but never validated.
   const comboQuery = supabase
     .from("cvp_test_combinations")
     .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id")
@@ -93,10 +110,32 @@ serve(async (req: Request) => {
 
   const { data: combos, error: comboErr } = body.combinationIds && body.combinationIds.length > 0
     ? await comboQuery.in("id", body.combinationIds)
-    : await comboQuery;
+    : await comboQuery.in("status", ["approved", "skip_manual_review"]);
   if (comboErr) return json({ success: false, error: "combination_lookup_failed", detail: comboErr.message }, 500);
 
+  // Validate: every requested ID belongs to this application. Foreign IDs
+  // would silently drop from PostgREST's .in() filter, which would
+  // under-approve without surfacing a clear error — better to fail loudly.
+  if (body.combinationIds && body.combinationIds.length > 0) {
+    const returnedIds = new Set((combos ?? []).map((c) => c.id));
+    const missing = body.combinationIds.filter((id) => !returnedIds.has(id));
+    if (missing.length > 0) {
+      return json(
+        {
+          success: false,
+          error: "combination_ids_not_on_application",
+          detail: { missing },
+        },
+        400,
+      );
+    }
+  }
+
   const approveIds = (combos ?? []).map((c) => c.id);
+
+  // Per-combination rationale captured from the admin's domain-pick step.
+  // Formatter is defined below after langMap + domainLabel are built.
+  const rationaleMap = body.combinationRationales ?? {};
 
   // ---- Resolve language names once for the V11 email body (and future
   // logging). We fetch all distinct language IDs referenced by this app's
@@ -147,6 +186,17 @@ serve(async (req: Request) => {
     other: "Other",
   };
   const domainLabel = (d: string) => DOMAIN_LABELS[d] ?? d;
+
+  // Per-combination rationale block — used for the audit log only. The
+  // welcome email lists only the domains; reasons stay internal.
+  const formatRationaleBlock = (): string | null => {
+    if (!combos || combos.length === 0) return null;
+    const lines = combos.map((c) => {
+      const r = (rationaleMap[c.id] ?? "").trim();
+      return `- ${domainLabel(c.domain)} — ${langMap.get(c.source_language_id) ?? "?"} → ${langMap.get(c.target_language_id) ?? "?"}: ${r || "(no rationale recorded)"}`;
+    });
+    return `[Domain approvals]\n${lines.join("\n")}`;
+  };
 
   // ---- Preview mode: render V11 without any DB mutations or email send ----
   if (body.dryRun === true) {
@@ -438,11 +488,19 @@ serve(async (req: Request) => {
     },
   });
 
+  // Persist combined audit: welcome-message notes + per-domain rationale.
+  // The block stays out of the AI-rewrite input above so applicant-facing
+  // copy never leaks internal reasoning.
+  const rationaleBlock = formatRationaleBlock();
+  const auditNotes = [rationaleBlock, staffNotes || null]
+    .filter((s): s is string => Boolean(s))
+    .join("\n\n");
+
   await logDecision({
     supabase,
     applicationId: body.applicationId,
     action: "approved",
-    staffNotes: staffNotes || null,
+    staffNotes: auditNotes || null,
     aiInputPrompt,
     aiOutput,
     aiError,
