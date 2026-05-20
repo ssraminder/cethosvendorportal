@@ -359,6 +359,22 @@ serve(async (req: Request) => {
     translatorId = newTr.id;
   }
 
+  // Direct link from vendors back to the cvp_translators row (and through
+  // it, to cvp_applications). Without this, the admin vendor profile has
+  // no way to surface "the original application this vendor came from"
+  // except by joining on email — fragile if the email ever changes.
+  // Update is idempotent so re-approval just re-confirms the link.
+  if (translatorId && vendorId) {
+    const { error: vLinkErr } = await supabase
+      .from("vendors")
+      .update({ cvp_translator_id: translatorId })
+      .eq("id", vendorId);
+    if (vLinkErr) {
+      // Non-fatal: the email/lower-case fallback still works.
+      console.error("vendors.cvp_translator_id update failed:", vLinkErr.message);
+    }
+  }
+
   const setupToken = crypto.randomUUID();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 72 * 3600 * 1000);
