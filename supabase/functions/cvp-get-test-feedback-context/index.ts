@@ -110,11 +110,24 @@ serve(async (req: Request) => {
 
   const { data: langs } = await supabase
     .from("languages")
-    .select("id, name")
+    .select("id, name, code")
     .in("id", [combo.source_language_id, combo.target_language_id]);
-  const langMap = new Map<string, string>();
-  for (const l of (langs ?? []) as Array<{ id: string; name: string }>) langMap.set(l.id, l.name);
-  const pair = `${langMap.get(combo.source_language_id) ?? "?"} → ${langMap.get(combo.target_language_id) ?? "?"}`;
+  const langMap = new Map<string, { name: string; code: string | null }>();
+  for (const l of (langs ?? []) as Array<{ id: string; name: string; code: string | null }>) {
+    langMap.set(l.id, { name: l.name, code: l.code });
+  }
+  const srcInfo = langMap.get(combo.source_language_id);
+  const tgtInfo = langMap.get(combo.target_language_id);
+  const pair = `${srcInfo?.name ?? "?"} → ${tgtInfo?.name ?? "?"}`;
+
+  const RTL_CODES = new Set([
+    "ar", "ar-EG", "ar-SA", "ar-LB", "ar-MA",
+    "he", "fa", "prs", "ps", "ur", "ckb", "yi",
+  ]);
+  const isRtlCode = (code: string | null | undefined) =>
+    !!code && (RTL_CODES.has(code) || code.startsWith("ar-"));
+  const sourceLanguageCode = srcInfo?.code ?? null;
+  const targetLanguageCode = tgtInfo?.code ?? null;
 
   const aiResult = (combo.ai_assessment_result ?? {}) as Record<string, unknown>;
   const rawErrors = Array.isArray(aiResult.errors) ? (aiResult.errors as Array<Record<string, unknown>>) : [];
@@ -157,6 +170,10 @@ serve(async (req: Request) => {
       applicantFirstName: app.full_name.split(" ")[0] ?? "",
       applicationNumber: app.application_number,
       pair,
+      sourceLanguageCode,
+      targetLanguageCode,
+      sourceLanguageRtl: isRtlCode(sourceLanguageCode),
+      targetLanguageRtl: isRtlCode(targetLanguageCode),
       domain: combo.domain,
       overallScore: combo.ai_score,
       feedbackDraft: typeof aiResult.feedback_draft === "string" ? aiResult.feedback_draft : null,

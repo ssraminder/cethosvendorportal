@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { Loader2, CheckCircle, AlertTriangle, XCircle, Send } from 'lucide-react'
+import { isRtlCode } from '../lib/rtl'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -21,6 +22,10 @@ interface ContextData {
   applicantFirstName: string
   applicationNumber: string
   pair: string
+  sourceLanguageCode?: string | null
+  targetLanguageCode?: string | null
+  sourceLanguageRtl?: boolean
+  targetLanguageRtl?: boolean
   domain: string | null
   overallScore: number | null
   feedbackDraft: string | null
@@ -263,6 +268,10 @@ export function TestFeedback() {
 
   const { data } = pageState
   const total = data.errors.length
+  const sourceRtl = data.sourceLanguageRtl ?? isRtlCode(data.sourceLanguageCode)
+  const targetRtl = data.targetLanguageRtl ?? isRtlCode(data.targetLanguageCode)
+  const sourceCode = data.sourceLanguageCode ?? undefined
+  const targetCode = data.targetLanguageCode ?? undefined
   const responded = Object.values(drafts).filter((d) => d.response !== null && d.response !== undefined).length
 
   return (
@@ -354,19 +363,35 @@ export function TestFeedback() {
                     {e.source_segment !== null && (
                       <div className="bg-white border border-gray-200 rounded p-2">
                         <div className="text-[10px] uppercase font-semibold text-gray-500 mb-1">Source</div>
-                        <div className="text-gray-800 leading-relaxed">{e.source_segment}</div>
+                        <div
+                          dir={sourceRtl ? 'rtl' : 'ltr'}
+                          lang={sourceCode}
+                          className={`text-gray-800 leading-relaxed ${sourceRtl ? 'text-right' : ''}`}
+                        >
+                          {e.source_segment}
+                        </div>
                       </div>
                     )}
                     {e.applicant_translation !== null && (
                       <div className="bg-white border border-gray-200 rounded p-2">
                         <div className="text-[10px] uppercase font-semibold text-gray-500 mb-1">Your translation</div>
-                        <div className="text-gray-800 leading-relaxed">{e.applicant_translation}</div>
+                        <div
+                          dir={targetRtl ? 'rtl' : 'ltr'}
+                          lang={targetCode}
+                          className={`text-gray-800 leading-relaxed ${targetRtl ? 'text-right' : ''}`}
+                        >
+                          {e.applicant_translation}
+                        </div>
                       </div>
                     )}
                     {e.revised_translation !== null && (
                       <div className="bg-white border border-emerald-200 rounded p-2">
                         <div className="text-[10px] uppercase font-semibold text-emerald-700 mb-1">Suggested revision</div>
-                        <div className="text-gray-800 leading-relaxed">
+                        <div
+                          dir={targetRtl ? 'rtl' : 'ltr'}
+                          lang={targetCode}
+                          className={`text-gray-800 leading-relaxed ${targetRtl ? 'text-right' : ''}`}
+                        >
                           <RevisedSpan text={e.revised_translation} />
                         </div>
                       </div>
