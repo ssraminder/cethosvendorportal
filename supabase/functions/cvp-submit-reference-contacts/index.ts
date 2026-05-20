@@ -316,6 +316,39 @@ serve(async (req: Request) => {
     })
     .eq("id", requestRow.id);
 
+  // Advance application status to reflect that references are now in flight.
+  // Only flip from "references_requested" (and any earlier in-pipeline state
+  // that may have been skipped) — never overwrite references_received or
+  // terminal statuses.
+  const ADVANCEABLE_FROM = new Set([
+    "submitted",
+    "prescreening",
+    "prescreened",
+    "staff_review",
+    "info_requested",
+    "test_pending",
+    "test_sent",
+    "test_in_progress",
+    "test_submitted",
+    "test_assessed",
+    "negotiation",
+    "references_requested",
+  ]);
+  const { data: currentApp } = await supabase
+    .from("cvp_applications")
+    .select("status")
+    .eq("id", requestRow.application_id)
+    .single();
+  if (currentApp && ADVANCEABLE_FROM.has(currentApp.status)) {
+    const { error: statusErr } = await supabase
+      .from("cvp_applications")
+      .update({ status: "references_in_progress", updated_at: new Date().toISOString() })
+      .eq("id", requestRow.application_id);
+    if (statusErr) {
+      console.error("cvp-submit-reference-contacts: status update failed", statusErr.message);
+    }
+  }
+
   // Fire V19 to each reference.
   const appUrl = Deno.env.get("APP_URL") ?? "https://join.cethos.com";
   const sendResults: { reference_email: string; sent: boolean }[] = [];

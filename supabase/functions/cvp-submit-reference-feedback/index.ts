@@ -487,6 +487,51 @@ serve(async (req: Request) => {
     return json({ success: false, error: "already_submitted" }, 409);
   }
 
+  // Helper — when every reference on the application has either replied
+  // (status='received') or declined, advance the application status to
+  // references_received so it surfaces in the "ready to approve" queue.
+  // Only flips from non-terminal, non-references_received states.
+  const ADVANCEABLE_FROM = new Set([
+    "submitted",
+    "prescreening",
+    "prescreened",
+    "staff_review",
+    "info_requested",
+    "test_pending",
+    "test_sent",
+    "test_in_progress",
+    "test_submitted",
+    "test_assessed",
+    "negotiation",
+    "references_requested",
+    "references_in_progress",
+  ]);
+  const maybeAdvanceToReferencesReceived = async () => {
+    const { data: allRefs } = await supabase
+      .from("cvp_application_references")
+      .select("status")
+      .eq("application_id", refRow.application_id);
+    if (!allRefs || allRefs.length === 0) return;
+    const allDone = allRefs.every(
+      (r) => r.status === "received" || r.status === "declined",
+    );
+    if (!allDone) return;
+    const { data: currentApp } = await supabase
+      .from("cvp_applications")
+      .select("status")
+      .eq("id", refRow.application_id)
+      .single();
+    if (currentApp && ADVANCEABLE_FROM.has(currentApp.status)) {
+      const { error: statusErr } = await supabase
+        .from("cvp_applications")
+        .update({ status: "references_received", updated_at: new Date().toISOString() })
+        .eq("id", refRow.application_id);
+      if (statusErr) {
+        console.error("cvp-submit-reference-feedback: status update failed", statusErr.message);
+      }
+    }
+  };
+
   // ---- Decline ----
   if (body.action === "decline") {
     await supabase
@@ -497,6 +542,7 @@ serve(async (req: Request) => {
         decline_reason: (body.reason ?? "").trim() || null,
       })
       .eq("id", refRow.id);
+    await maybeAdvanceToReferencesReceived();
     return json({ success: true, data: { declined: true } });
   }
 
@@ -574,6 +620,8 @@ serve(async (req: Request) => {
       feedback_received_at: new Date().toISOString(),
     })
     .eq("id", refRow.id);
+
+  await maybeAdvanceToReferencesReceived();
 
   // V20 ack to the reference.
   const ackTpl = buildV20ReferenceAck({

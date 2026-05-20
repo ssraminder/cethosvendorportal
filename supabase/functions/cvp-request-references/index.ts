@@ -225,6 +225,39 @@ serve(async (req: Request) => {
     },
   });
 
+  // Advance application status so the recruitment list reflects where each
+  // applicant is in the pipeline. Only flip if currently in a pre-reference
+  // state — never downgrade from references_in_progress/received, and never
+  // touch terminal statuses (approved/rejected/waitlisted/archived).
+  const ADVANCEABLE_FROM = new Set([
+    "submitted",
+    "prescreening",
+    "prescreened",
+    "staff_review",
+    "info_requested",
+    "test_pending",
+    "test_sent",
+    "test_in_progress",
+    "test_submitted",
+    "test_assessed",
+    "negotiation",
+  ]);
+  const { data: currentApp } = await supabase
+    .from("cvp_applications")
+    .select("status")
+    .eq("id", body.applicationId)
+    .single();
+  if (currentApp && ADVANCEABLE_FROM.has(currentApp.status)) {
+    const { error: statusErr } = await supabase
+      .from("cvp_applications")
+      .update({ status: "references_requested", updated_at: new Date().toISOString() })
+      .eq("id", body.applicationId);
+    if (statusErr) {
+      // Non-fatal: the email already went out and the request row exists.
+      console.error("cvp-request-references: status update failed", statusErr.message);
+    }
+  }
+
   return json({
     success: true,
     data: {
