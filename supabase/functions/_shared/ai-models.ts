@@ -27,3 +27,12 @@ export const MODEL_QUALITY: string =
  */
 export const MODEL_CLASSIFY: string =
   Deno.env.get("CVP_MODEL_CLASSIFY") ?? "claude-haiku-4-5";
+
+/**
+ * Application reassessment after references are in. Sonnet 4.6 is the
+ * pragmatic pick — strong reasoning at modest cost. Separate from
+ * MODEL_QUALITY so we can tune the reassessment model without disturbing
+ * the higher-stakes decision-AI rewrites.
+ */
+export const MODEL_REASSESS: string =
+  Deno.env.get("CVP_MODEL_REASSESS") ?? "claude-sonnet-4-6";
