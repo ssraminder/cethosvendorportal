@@ -282,6 +282,11 @@ serve(async (req: Request) => {
     const vendorRow = {
       full_name: app.full_name,
       email: app.email,
+      // additional_emails is NOT NULL on vendors. The column has a default
+      // (ARRAY[]::text[]) but PostgREST sends an explicit NULL for columns
+      // omitted from the insert payload, which bypasses the default and
+      // trips the constraint. Always pass an empty array.
+      additional_emails: [] as string[],
       phone: app.phone ?? null,
       country: app.country ?? null,
       city: app.city ?? null,
