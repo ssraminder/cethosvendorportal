@@ -145,7 +145,10 @@ export function ReferencesEntry() {
   };
 
   const removeRef = (i: number) => {
-    if (refs.length <= 1) return;
+    // Two references is the minimum — we need at least two independent
+    // attestations to corroborate the working relationship and domain
+    // claims. A third is optional but encouraged.
+    if (refs.length <= 2) return;
     setRefs((prev) => prev.filter((_, idx) => idx !== i));
   };
 
@@ -304,8 +307,8 @@ export function ReferencesEntry() {
           <p className="text-sm text-gray-600 mb-4">
             Hi {preview.applicantName.split(" ")[0]} — for application{" "}
             <span className="font-mono text-gray-900">{preview.applicationNumber}</span>, please
-            list 1–3 professional references below. We'll email each one a short questionnaire
-            directly.
+            list <strong>2 to 3 professional references</strong> below (two are required, a third
+            is optional but appreciated). We'll email each one a short questionnaire directly.
           </p>
         )}
         <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-900">
@@ -324,7 +327,7 @@ export function ReferencesEntry() {
             <div key={i} className="border border-gray-200 rounded-lg p-4 bg-white relative">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-medium text-gray-900">Reference {i + 1}</div>
-                {refs.length > 1 && (
+                {refs.length > 2 && (
                   <button
                     type="button"
                     onClick={() => removeRef(i)}
@@ -473,16 +476,21 @@ export function ReferencesEntry() {
           </button>
         )}
 
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex flex-col items-end gap-1">
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitting || validRefs.length < 1}
+            disabled={submitting || validRefs.length < 2}
             className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded disabled:opacity-50 inline-flex items-center gap-2"
           >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Submit {validRefs.length} reference{validRefs.length === 1 ? "" : "s"}
           </button>
+          {!submitting && validRefs.length < 2 && (
+            <span className="text-xs text-amber-700">
+              At least 2 references with name + business email are required.
+            </span>
+          )}
         </div>
       </div>
     </Layout>

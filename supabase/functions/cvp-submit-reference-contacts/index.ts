@@ -1,7 +1,7 @@
 /**
  * cvp-submit-reference-contacts
  *
- * Applicant-facing endpoint: validates a request_token, accepts 1–3
+ * Applicant-facing endpoint: validates a request_token, accepts 2–3
  * reference contacts, creates per-reference rows + tokens, fires V19 to
  * each reference. No auth needed — token IS the auth.
  *
@@ -12,7 +12,7 @@
  *     email: string,
  *     company?: string,
  *     relationship?: string
- *   }]  // 1-3 entries
+ *   }]  // 2-3 entries (was 1-3 pre-2026-05; raised to 2 minimum)
  * }
  *
  * Also supports GET-style preview via { requestToken } only — returns
@@ -266,12 +266,12 @@ serve(async (req: Request) => {
       400,
     );
   }
-  if (cleanedRefs.length < 1 || cleanedRefs.length > 3) {
+  if (cleanedRefs.length < 2 || cleanedRefs.length > 3) {
     return json(
       {
         success: false,
         error: "reference_count_invalid",
-        detail: "Submit between 1 and 3 references with name + email.",
+        detail: "Submit 2 or 3 references with name + email. Two references are required for verification; a third is welcome but optional.",
       },
       400,
     );
