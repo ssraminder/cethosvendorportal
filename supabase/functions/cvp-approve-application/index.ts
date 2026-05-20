@@ -471,6 +471,186 @@ serve(async (req: Request) => {
     }
   }
 
+  // ---- Seed vendor_language_pairs + vendor_rates from the approved combos
+  //      and the applicant's rate_card.
+  //
+  // The vendor profile UI (Languages, Rates tabs) reads from these vendor-*
+  // tables, not from cvp_translator_domains, so without this step a freshly
+  // approved vendor shows up with 0 languages / 0 rates and the portal
+  // looks broken. Both inserts are non-fatal — they log on failure but
+  // never block the welcome email.
+  //
+  // Conventions observed on existing rows:
+  //   - source_language / target_language are uppercased language codes
+  //     (e.g. "EN-US", "PT-BR"). We use UPPER(language.code).
+  //   - vendor_rates.service_id is a FK to services(id); the rate_card
+  //     stores serviceCode strings, so we resolve via a code → id map.
+  //   - vendor_rates.calculation_unit mirrors the rate_card's `unit` field
+  //     ("per_word", "per_minute", "per_hour"), and currency comes from
+  //     the application-level rate_currency (rate_card entries don't carry
+  //     a currency).
+
+  // Resolve language codes for every src/tgt id used by the approved combos.
+  const allLangIds = Array.from(
+    new Set(
+      (combos ?? []).flatMap((c) => [c.source_language_id, c.target_language_id]),
+    ),
+  );
+  const langCodeMap = new Map<string, string>();
+  if (allLangIds.length > 0) {
+    const { data: langRows } = await supabase
+      .from("languages")
+      .select("id, code")
+      .in("id", allLangIds);
+    for (const l of (langRows ?? []) as { id: string; code: string }[]) {
+      langCodeMap.set(l.id, (l.code ?? "").toUpperCase());
+    }
+  }
+
+  // Distinct (src, tgt) pairs from approved combos.
+  const pairKeySet = new Set<string>();
+  const pairs: { src: string; tgt: string; srcId: string; tgtId: string }[] = [];
+  for (const c of combos ?? []) {
+    const src = langCodeMap.get(c.source_language_id as string) ?? "";
+    const tgt = langCodeMap.get(c.target_language_id as string) ?? "";
+    if (!src || !tgt) continue;
+    const key = `${src}->${tgt}`;
+    if (pairKeySet.has(key)) continue;
+    pairKeySet.add(key);
+    pairs.push({
+      src,
+      tgt,
+      srcId: c.source_language_id as string,
+      tgtId: c.target_language_id as string,
+    });
+  }
+
+  // Insert vendor_language_pairs. Use upsert-ish behaviour by selecting
+  // existing rows first so re-approval doesn't fail on the implicit unique
+  // (vendor_id, source_language, target_language) — there's no formal
+  // ON CONFLICT target on this table, but supabase-js .upsert needs one,
+  // so we do a select-then-insert dance for the missing rows only.
+  let langPairIdByKey = new Map<string, string>();
+  if (pairs.length > 0) {
+    const { data: existingPairs } = await supabase
+      .from("vendor_language_pairs")
+      .select("id, source_language, target_language")
+      .eq("vendor_id", vendorId);
+    for (const p of (existingPairs ?? []) as { id: string; source_language: string; target_language: string }[]) {
+      langPairIdByKey.set(`${p.source_language}->${p.target_language}`, p.id);
+    }
+    const newPairRows = pairs
+      .filter((p) => !langPairIdByKey.has(`${p.src}->${p.tgt}`))
+      .map((p) => ({
+        vendor_id: vendorId,
+        source_language: p.src,
+        target_language: p.tgt,
+        is_active: true,
+      }));
+    if (newPairRows.length > 0) {
+      const { data: inserted, error: lpErr } = await supabase
+        .from("vendor_language_pairs")
+        .insert(newPairRows)
+        .select("id, source_language, target_language");
+      if (lpErr) {
+        console.error("vendor_language_pairs insert failed:", lpErr.message);
+      }
+      for (const p of (inserted ?? []) as { id: string; source_language: string; target_language: string }[]) {
+        langPairIdByKey.set(`${p.source_language}->${p.target_language}`, p.id);
+      }
+    }
+  }
+
+  // Seed vendor_rates from rate_card entries that match the approved pairs.
+  // rate_card shape: [{ sourceLanguageId, targetLanguageId, services: [{ serviceCode, rate, unit, minimumCharge }] }]
+  const rateCard = (app.rate_card as Array<{
+    sourceLanguageId?: string;
+    targetLanguageId?: string;
+    services?: Array<{ serviceCode?: string; rate?: string | number; unit?: string; minimumCharge?: string | number | null }>;
+  }> | null) ?? [];
+  const rateCurrency = (app.rate_currency as string | null) ?? "CAD";
+
+  if (rateCard.length > 0 && pairs.length > 0) {
+    // Resolve all serviceCode → service_id once.
+    const allCodes = Array.from(
+      new Set(
+        rateCard.flatMap((rc) =>
+          (rc.services ?? []).map((s) => s.serviceCode).filter((c): c is string => Boolean(c)),
+        ),
+      ),
+    );
+    const serviceIdByCode = new Map<string, string>();
+    if (allCodes.length > 0) {
+      const { data: svcRows } = await supabase
+        .from("services")
+        .select("id, code")
+        .in("code", allCodes);
+      for (const s of (svcRows ?? []) as { id: string; code: string }[]) {
+        serviceIdByCode.set(s.code, s.id);
+      }
+    }
+
+    // Avoid duplicate inserts on re-approval: pull existing (pair, service)
+    // tuples for this vendor and skip them.
+    const existingKey = new Set<string>();
+    {
+      const { data: existingRates } = await supabase
+        .from("vendor_rates")
+        .select("language_pair_id, service_id")
+        .eq("vendor_id", vendorId);
+      for (const r of (existingRates ?? []) as { language_pair_id: string | null; service_id: string }[]) {
+        if (r.language_pair_id) existingKey.add(`${r.language_pair_id}::${r.service_id}`);
+      }
+    }
+
+    const rateRows: Record<string, unknown>[] = [];
+    for (const pair of pairs) {
+      const card = rateCard.find(
+        (rc) => rc.sourceLanguageId === pair.srcId && rc.targetLanguageId === pair.tgtId,
+      );
+      if (!card) continue;
+      const pairId = langPairIdByKey.get(`${pair.src}->${pair.tgt}`);
+      if (!pairId) continue;
+      for (const s of card.services ?? []) {
+        const code = s.serviceCode;
+        if (!code) continue;
+        const serviceId = serviceIdByCode.get(code);
+        if (!serviceId) continue;
+        const rateNum = typeof s.rate === "number" ? s.rate : Number(s.rate);
+        if (!Number.isFinite(rateNum)) continue;
+        if (existingKey.has(`${pairId}::${serviceId}`)) continue;
+        const minNum = s.minimumCharge == null || s.minimumCharge === ""
+          ? null
+          : typeof s.minimumCharge === "number"
+          ? s.minimumCharge
+          : Number(s.minimumCharge);
+        rateRows.push({
+          vendor_id: vendorId,
+          language_pair_id: pairId,
+          service_id: serviceId,
+          calculation_unit: s.unit ?? "per_word",
+          rate: rateNum,
+          currency: rateCurrency,
+          minimum_charge: Number.isFinite(minNum as number) ? minNum : null,
+          source: "self_reported",
+          is_active: true,
+          // vendor_rates.added_by has a CHECK constraint allowing only
+          // 'vendor' | 'admin' | 'system'. The approve flow is an
+          // automated copy from the application's rate_card, so 'system'
+          // is the honest label.
+          added_by: "system",
+        });
+      }
+    }
+
+    if (rateRows.length > 0) {
+      const { error: vrErr } = await supabase.from("vendor_rates").insert(rateRows);
+      if (vrErr) {
+        console.error("vendor_rates insert failed:", vrErr.message);
+      }
+    }
+  }
+
   const tpl = buildV11ApprovedWelcome({
     fullName: app.full_name,
     applicationNumber: app.application_number,
