@@ -58,6 +58,8 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
+  try {
+
   const authed = await requireStaff(req);
   if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
   const staffId = authed.staff.staffId;
@@ -519,4 +521,16 @@ serve(async (req: Request) => {
       aiProcessed: Boolean(aiOutput),
     },
   });
+
+  } catch (err) {
+    // Temporary instrumentation: surface unhandled errors with their message
+    // + stack so we can see in the browser what actually went wrong instead
+    // of a bare 500. Existing explicit json({...},5xx) returns above are
+    // unaffected — only true throws hit this branch.
+    const detail = err instanceof Error
+      ? { name: err.name, message: err.message, stack: err.stack }
+      : { value: String(err) };
+    console.error("cvp-approve-application: unhandled error", detail);
+    return json({ success: false, error: "unhandled_error", detail }, 500);
+  }
 });
