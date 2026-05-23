@@ -205,6 +205,17 @@ export async function acceptStep(
   return { status: data.success ? 200 : 400, data };
 }
 
+export async function acceptDirectAssign(
+  token: string,
+  stepId: string
+): Promise<{ status: number; data: StepActionResponse }> {
+  const data = await postSb<StepActionResponse>("accept-direct-assign", {
+    session_token: token,
+    step_id: stepId,
+  });
+  return { status: data.success ? 200 : 400, data };
+}
+
 export async function declineStep(
   token: string,
   stepId: string,
