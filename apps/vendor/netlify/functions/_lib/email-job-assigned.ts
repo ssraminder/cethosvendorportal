@@ -68,12 +68,15 @@ function formatDeadline(raw: string | null): string {
   if (!raw) return "No deadline set";
   const d = new Date(raw);
   if (isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString("en-CA", {
+  return d.toLocaleString("en-CA", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
     timeZone: "America/Toronto",
+    timeZoneName: "short",
   });
 }
 
