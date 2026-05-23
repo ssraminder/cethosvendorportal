@@ -71,6 +71,7 @@ export interface VendorStep {
   is_rush: boolean;
   negotiation_allowed: boolean;
   counter_status: string; // 'none' | 'proposed' | 'accepted' | 'rejected'
+  use_cethos_tm?: boolean;
 }
 
 /** @deprecated Use VendorStep instead */
@@ -136,6 +137,7 @@ export interface JobDetailJob {
   customer_name: string | null;
   negotiation_allowed: boolean;
   counter_status: string; // 'none' | 'proposed' | 'accepted' | 'rejected'
+  use_cethos_tm?: boolean;
 }
 
 export interface VolumeDocument {

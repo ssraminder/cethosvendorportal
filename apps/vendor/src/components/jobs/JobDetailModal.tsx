@@ -253,7 +253,7 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
   // a 5-minute JWT; the browser navigates to tm.cethos.com/sso?token=…
   // which exchanges it for a TM session cookie. See
   // docs/migration/00-overview-federated-sso.md (admin repo).
-  const canTranslate = canDeliver;
+  const canTranslate = canDeliver && (job?.use_cethos_tm ?? step.use_cethos_tm ?? false);
   const handleTranslateNow = async () => {
     if (!sessionToken) {
       setSsoError("Your session has expired — please sign in again.");
