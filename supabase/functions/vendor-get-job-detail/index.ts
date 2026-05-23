@@ -51,6 +51,7 @@ interface FileRow {
   download_url: string | null;
   word_count?: number;
   page_count?: number;
+  file_label?: string | null;
 }
 
 async function signQuoteFile(
@@ -278,7 +279,7 @@ serve(async (req: Request) => {
       const { data: qfiles } = await sb
         .from("quote_files")
         .select(
-          "id, original_filename, storage_path, file_size, mime_type, deleted_at, upload_status",
+          "id, original_filename, storage_path, file_size, mime_type, deleted_at, upload_status, file_category_id, custom_label, file_categories(name)",
         )
         .eq("quote_id", order.quote_id)
         .is("deleted_at", null)
@@ -306,6 +307,7 @@ serve(async (req: Request) => {
           const signed = await signSourceFile(sb, f.storage_path);
           const wc = aiByFile[f.id]?.wc ?? 0;
           const pc = aiByFile[f.id]?.pc ?? 0;
+          const categoryName = (f as any).file_categories?.name ?? null;
           sourceFiles.push({
             storage_path: f.storage_path,
             filename: f.original_filename,
@@ -315,6 +317,7 @@ serve(async (req: Request) => {
             download_url: signed,
             word_count: wc,
             page_count: pc,
+            file_label: f.custom_label || categoryName || null,
           });
           totalWords += wc;
           totalPages += pc;

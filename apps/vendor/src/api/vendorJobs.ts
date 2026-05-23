@@ -158,6 +158,7 @@ export interface JobDetailFile {
   mime_type?: string;
   download_url: string;
   source?: string;
+  file_label?: string | null;
 }
 
 export interface JobDetailProject {
