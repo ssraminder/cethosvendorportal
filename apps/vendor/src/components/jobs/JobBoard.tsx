@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, useOutletContext } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useOutletContext } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getSteps, type VendorStep, type TabKey } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
@@ -74,13 +74,19 @@ const EMPTY_MESSAGES: Record<TabKey, { title: string; desc: string }> = {
   completed: { title: "No completed jobs yet", desc: "" },
 };
 
+const VALID_TABS: TabKey[] = ["offered", "active", "completed"];
+
 export function JobBoard() {
   const { id: paramId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { sessionToken } = useVendorAuth();
   const shellCtx = useOutletContext<ShellContext | null>();
 
-  const [tab, setTab] = useState<TabKey>("offered");
+  const initialTab = VALID_TABS.includes(searchParams.get("tab") as TabKey)
+    ? (searchParams.get("tab") as TabKey)
+    : "offered";
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [steps, setSteps] = useState<VendorStep[]>([]);
   const [counts, setCounts] = useState({ offered: 0, active: 0, completed: 0 });
   const [loading, setLoading] = useState(true);

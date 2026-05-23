@@ -182,7 +182,7 @@ export function VendorDashboard() {
             {languagePairCount !== null ? languagePairCount : "—"}
           </p>
         </Link>
-        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+        <Link to="/jobs?tab=active" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Jobs</span>
             <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
@@ -191,7 +191,7 @@ export function VendorDashboard() {
           </div>
           <p className="text-2xl font-bold text-gray-900">{activeJobCount}</p>
         </Link>
-        <Link to="/jobs" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+        <Link to="/jobs?tab=completed" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Completed</span>
             <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">

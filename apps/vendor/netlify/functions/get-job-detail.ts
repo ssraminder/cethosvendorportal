@@ -121,7 +121,8 @@ export const handler = async (event: {
         estimated_delivery_date: string | null; estimated_delivery_at: string | null;
       }>(
         `SELECT id, order_number, internal_project_id, quote_id, is_rush,
-                estimated_delivery_date, estimated_delivery_at
+                estimated_delivery_date::text AS estimated_delivery_date,
+                estimated_delivery_at
          FROM orders WHERE id = $1 LIMIT 1`,
         [step.order_id],
       ),
