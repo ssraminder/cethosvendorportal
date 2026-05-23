@@ -200,6 +200,12 @@
 
 # Job-assigned email (test endpoint + future production trigger).
 [[redirects]]
+  from = "/sb/accept-direct-assign"
+  to = "/.netlify/functions/accept-direct-assign"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/sb/test-job-assigned-email"
   to = "/.netlify/functions/test-job-assigned-email"
   status = 200

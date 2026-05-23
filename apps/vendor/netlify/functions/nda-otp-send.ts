@@ -112,7 +112,7 @@ export const handler = async (event: {
         // Brevo not configured or hard-failed; fall back to Mailgun. Either
         // provider gives us the same user-visible behaviour.
         result = await sendMailgun({
-          to: vendor.email,
+          to: { email: vendor.email, name: vendor.full_name },
           subject,
           html,
           tags: ["nda-otp"],
