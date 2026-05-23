@@ -268,7 +268,8 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
       const url = await issueSso(sessionToken, "tm", {
         jobExternalRef: step.id,
       });
-      window.location.href = url;
+      window.open(url, "_blank", "noopener");
+      setSsoLoading(false);
     } catch (e) {
       const msg =
         e instanceof SsoIssueError
