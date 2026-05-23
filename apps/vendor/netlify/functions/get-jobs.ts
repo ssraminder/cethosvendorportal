@@ -227,14 +227,14 @@ export const handler = async (event: {
     } else {
       const statusFilter = tab === "completed"
         ? ["approved", "cancelled"]
-        : ["accepted", "in_progress", "delivered", "revision_requested"];
-      const sortColumn = tab === "completed" ? "approved_at" : "accepted_at";
+        : ["assigned", "accepted", "in_progress", "delivered", "revision_requested"];
+      const sortColumn = tab === "completed" ? "approved_at" : "assigned_at";
 
       const steps = await query<StepRow>(
         `SELECT id, step_number, name, actor_type, status, service_id, order_id, order_document_id, workflow_id,
                 vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode,
                 source_language, target_language,
-                offered_at, accepted_at, started_at, deadline, delivered_at, approved_at,
+                offered_at, assigned_at, accepted_at, started_at, deadline, delivered_at, approved_at,
                 instructions, rejection_reason, revision_count, source_file_paths, delivered_file_paths,
                 requires_file_upload, notes_from_vendor, offer_count, created_at, updated_at
          FROM order_workflow_steps
@@ -298,7 +298,7 @@ export const handler = async (event: {
     );
     const activeCount = await query<{ n: string }>(
       `SELECT COUNT(*)::text AS n FROM order_workflow_steps WHERE vendor_id = $1 AND status = ANY($2::text[])`,
-      [vendor_id, ["accepted", "in_progress", "delivered", "revision_requested"]],
+      [vendor_id, ["assigned", "accepted", "in_progress", "delivered", "revision_requested"]],
     );
     const completedCount = await query<{ n: string }>(
       `SELECT COUNT(*)::text AS n FROM order_workflow_steps WHERE vendor_id = $1 AND status = ANY($2::text[])`,

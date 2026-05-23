@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   acceptStep,
+  acceptDirectAssign,
   declineStep,
   deliverStep,
   type VendorStep,
@@ -435,6 +436,105 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
                 {isRevision ? "Submit Revision" : "Submit Delivery"}
               </>
             )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AcceptDirectAssignModal — for directly-assigned steps (status = "assigned")
+// ---------------------------------------------------------------------------
+
+interface AcceptDirectProps {
+  step: VendorStep;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export function AcceptDirectAssignModal({ step, onClose, onSuccess }: AcceptDirectProps) {
+  const { sessionToken } = useVendorAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleAccept = async () => {
+    if (!sessionToken) return;
+    setLoading(true);
+    setError("");
+    try {
+      const { data } = await acceptDirectAssign(sessionToken, step.id);
+      if (data.success) {
+        onSuccess();
+      } else {
+        setError(data.error || "Failed to accept assignment");
+      }
+    } catch {
+      setError("Failed to accept assignment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deadlineStr = step.deadline
+    ? new Date(step.deadline).toLocaleDateString("en-CA", {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "No deadline set";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Accept Assignment?</h3>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <p className="text-sm text-gray-600">
+            You have been directly assigned to{" "}
+            <span className="font-medium text-gray-900">{step.name}</span> for
+            Order <span className="font-medium text-gray-900">#{step.order_number}</span>.
+          </p>
+          <div className="text-sm text-gray-500 space-y-1">
+            <p>Deadline: <span className="font-medium text-gray-700">{deadlineStr}</span></p>
+            {step.vendor_total != null && (
+              <p>
+                Total:{" "}
+                <span className="font-medium text-gray-700">
+                  {new Intl.NumberFormat("en-CA", {
+                    style: "currency",
+                    currency: step.vendor_currency || "CAD",
+                  }).format(step.vendor_total)}
+                </span>
+              </p>
+            )}
+          </div>
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleAccept}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            Accept Assignment
           </button>
         </div>
       </div>

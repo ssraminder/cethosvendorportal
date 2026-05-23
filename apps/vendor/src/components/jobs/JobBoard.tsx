@@ -4,7 +4,7 @@ import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getSteps, type VendorStep, type TabKey } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
 import { JobDetailModal } from "./JobDetailModal";
-import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
+import { AcceptConfirmModal, DeclineModal, DeliverModal, AcceptDirectAssignModal } from "./JobActionModals";
 import { NegotiateModal } from "./NegotiateModal";
 import { TermsModal, checkTermsForOffer, type TermsData } from "./TermsModal";
 import {
@@ -26,6 +26,7 @@ function getLanguageName(code: string | null): string {
 
 const STATUS_BADGES: Record<string, { bg: string; text: string; label: string }> = {
   offered: { bg: "bg-amber-100", text: "text-amber-700", label: "Offered" },
+  assigned: { bg: "bg-indigo-100", text: "text-indigo-700", label: "Assigned" },
   accepted: { bg: "bg-blue-100", text: "text-blue-700", label: "Accepted" },
   in_progress: { bg: "bg-blue-100", text: "text-blue-700", label: "In Progress" },
   delivered: { bg: "bg-purple-100", text: "text-purple-700", label: "Delivered" },
@@ -95,7 +96,7 @@ export function JobBoard() {
 
   // Modal state
   const [selectedStep, setSelectedStep] = useState<VendorStep | null>(null);
-  const [actionModal, setActionModal] = useState<{ type: "accept" | "decline" | "deliver"; step: VendorStep } | null>(null);
+  const [actionModal, setActionModal] = useState<{ type: "accept" | "decline" | "deliver" | "accept_direct"; step: VendorStep } | null>(null);
   const [negotiatingJob, setNegotiatingJob] = useState<VendorStep | null>(null);
   const [termsModal, setTermsModal] = useState<{
     isOpen: boolean;
@@ -104,15 +105,16 @@ export function JobBoard() {
     stepId: string;
     orderId: string;
     serviceId?: string | null;
-    actionType: "accept_offer" | "submit_counter";
+    actionType: "accept_offer" | "submit_counter" | "accept_direct";
     pendingAction: () => void;
   } | null>(null);
 
   const checkTermsAndProceed = async (
     step: VendorStep,
-    actionType: "accept_offer" | "submit_counter",
+    actionType: "accept_offer" | "submit_counter" | "accept_direct",
     onProceed: () => void
   ) => {
+    // Direct assignments may not have an offer_id — skip terms check
     if (!sessionToken || !step.offer_id) {
       onProceed();
       return;
@@ -504,6 +506,19 @@ export function JobBoard() {
                         No longer available
                       </span>
                     )}
+                    {step.status === "assigned" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          checkTermsAndProceed(step, "accept_direct", () =>
+                            setActionModal({ type: "accept_direct", step })
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700"
+                      >
+                        Accept Assignment
+                      </button>
+                    )}
                     {canDeliver(step.status) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setActionModal({ type: "deliver", step }); }}
@@ -562,6 +577,13 @@ export function JobBoard() {
               ? `Revised delivery v${revisionVersion} submitted`
               : "Files delivered! The project manager will review."
           )}
+        />
+      )}
+      {actionModal?.type === "accept_direct" && (
+        <AcceptDirectAssignModal
+          step={actionModal.step}
+          onClose={() => setActionModal(null)}
+          onSuccess={() => handleActionSuccess("Assignment accepted!")}
         />
       )}
       {negotiatingJob && (
