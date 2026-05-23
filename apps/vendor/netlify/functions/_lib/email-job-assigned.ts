@@ -53,11 +53,13 @@ function formatRate(
   const cur = currency ?? "CAD";
   const parts: string[] = [];
   if (rate != null && unit) {
+    const r = typeof rate === "string" ? parseFloat(rate) : rate;
     const unitLabel = unit === "per_word" ? "/ word" : unit === "per_page" ? "/ page" : `/ ${unit.replace("per_", "")}`;
-    parts.push(`${cur} $${rate.toFixed(4)} ${unitLabel}`);
+    parts.push(`${cur} $${r.toFixed(4)} ${unitLabel}`);
   }
   if (total != null) {
-    parts.push(`Total: ${cur} $${total.toFixed(2)}`);
+    const t = typeof total === "string" ? parseFloat(total) : total;
+    parts.push(`Total: ${cur} $${t.toFixed(2)}`);
   }
   return parts.length > 0 ? parts.join(" &middot; ") : "See portal for details";
 }
