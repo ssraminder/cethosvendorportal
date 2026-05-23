@@ -138,7 +138,7 @@ serve(async (req: Request) => {
          vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode,
          deadline, offered_at, accepted_at, started_at, delivered_at,
          approved_at, instructions, rejection_reason, revision_count,
-         requires_file_upload, notes_from_vendor`,
+         requires_file_upload, notes_from_vendor, use_cethos_tm`,
       )
       .eq("id", stepId)
       .maybeSingle();
@@ -418,6 +418,7 @@ serve(async (req: Request) => {
         offer_id: stepOffer?.id ?? null,
         offer_status: stepOffer?.status ?? null,
         negotiation_allowed: stepOffer?.negotiation_allowed ?? false,
+        use_cethos_tm: !!step.use_cethos_tm,
       },
       project: projectInfo,
       volume: {

@@ -66,7 +66,7 @@ serve(async (req: Request) => {
         const stepIds = [...new Set(offers.map((o: any) => o.step_id))];
         const { data: steps } = await sb
           .from("order_workflow_steps")
-          .select("id, step_number, name, actor_type, service_id, order_id, source_language, target_language, source_file_paths, requires_file_upload, revision_count, offer_count")
+          .select("id, step_number, name, actor_type, service_id, order_id, source_language, target_language, source_file_paths, requires_file_upload, revision_count, offer_count, use_cethos_tm")
           .in("id", stepIds);
 
         const stepMap: Record<string, any> = {};
@@ -140,6 +140,7 @@ serve(async (req: Request) => {
             order_id: step.order_id,
             order_number: orderMap[step.order_id]?.order_number || null,
             customer_name: null, // orders table has no customer_name column
+            use_cethos_tm: !!step.use_cethos_tm,
           };
         });
       }
@@ -156,7 +157,7 @@ serve(async (req: Request) => {
           vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode, source_language, target_language,
           offered_at, accepted_at, started_at, deadline, delivered_at, approved_at,
           instructions, rejection_reason, revision_count, source_file_paths, delivered_file_paths,
-          requires_file_upload, notes_from_vendor, offer_count, created_at, updated_at
+          requires_file_upload, notes_from_vendor, offer_count, use_cethos_tm, created_at, updated_at
         `)
         .eq("vendor_id", vendorId)
         .in("status", statusFilter)
