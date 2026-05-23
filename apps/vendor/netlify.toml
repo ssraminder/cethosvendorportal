@@ -198,6 +198,13 @@
   status = 200
   force = true
 
+# Job-assigned email (test endpoint + future production trigger).
+[[redirects]]
+  from = "/sb/test-job-assigned-email"
+  to = "/.netlify/functions/test-job-assigned-email"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"
