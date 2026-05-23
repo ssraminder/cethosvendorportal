@@ -961,6 +961,11 @@ function FileRowWithPreview({
           {file.file_size != null && file.file_size > 0 && (
             <span className="text-gray-400 shrink-0">({formatFileSize(file.file_size)})</span>
           )}
+          {file.file_label && (
+            <span className="inline-block text-[11px] font-medium text-gray-600 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded shrink-0">
+              {file.file_label}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {isPreviewable(file) ? (

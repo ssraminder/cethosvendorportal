@@ -23,6 +23,7 @@ interface FileRow {
   download_url: string | null;
   word_count?: number;
   page_count?: number;
+  file_label?: string | null;
 }
 
 export const handler = async (event: {
@@ -204,11 +205,14 @@ export const handler = async (event: {
       const qfiles = await query<{
         id: string; original_filename: string; storage_path: string;
         file_size: number | null; mime_type: string | null;
+        category_name: string | null; custom_label: string | null;
       }>(
-        `SELECT id, original_filename, storage_path, file_size, mime_type
-         FROM quote_files
-         WHERE quote_id = $1 AND deleted_at IS NULL AND COALESCE(upload_status, '') <> 'failed'
-         ORDER BY sort_order ASC NULLS LAST, created_at ASC`,
+        `SELECT qf.id, qf.original_filename, qf.storage_path, qf.file_size, qf.mime_type,
+                fc.name AS category_name, qf.custom_label
+         FROM quote_files qf
+         LEFT JOIN file_categories fc ON fc.id = qf.file_category_id
+         WHERE qf.quote_id = $1 AND qf.deleted_at IS NULL AND COALESCE(qf.upload_status, '') <> 'failed'
+         ORDER BY qf.sort_order ASC NULLS LAST, qf.created_at ASC`,
         [order.quote_id],
       );
 
@@ -266,6 +270,7 @@ export const handler = async (event: {
             download_url: signSourceFile(f.storage_path),
             word_count: wc,
             page_count: pc,
+            file_label: f.custom_label || f.category_name || null,
           });
           totalWords += wc;
           totalPages += pc;
