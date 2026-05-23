@@ -106,7 +106,7 @@ export function NDAPage() {
   const allVerified = emailOtp.verified || phoneOtp.verified;
 
   const load = async () => {
-    if (!sessionToken) return;
+    if (!sessionToken) { setLoading(false); return; }
     setLoading(true);
     setError("");
     try {
@@ -361,7 +361,13 @@ export function NDAPage() {
     );
   }
 
-  if (!status) return null;
+  if (!status) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   const sig = status.current_signature;
   const showSignForm = status.needs_signature && !justSigned;
