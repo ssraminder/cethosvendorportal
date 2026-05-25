@@ -239,11 +239,9 @@ serve(async (req: Request) => {
     }
 
     // ── Project info ──
-    let projectInfo: { project_number: string; vendor_notes: string | null; prior_task_count: number } = {
-      project_number: "—",
-      vendor_notes: null,
-      prior_task_count: 0,
-    };
+    let projectInfo:
+      | { project_number: string; vendor_notes: string | null; prior_task_count: number }
+      | null = null;
     let glossaryPath: string | null = null;
     let styleGuidePath: string | null = null;
     if (order?.internal_project_id) {
@@ -254,19 +252,22 @@ serve(async (req: Request) => {
         )
         .eq("id", order.internal_project_id)
         .maybeSingle();
-      if (proj) {
-        projectInfo.project_number = proj.project_number ?? "—";
-        projectInfo.vendor_notes = proj.vendor_notes ?? null;
+      if (proj?.project_number) {
+        projectInfo = {
+          project_number: proj.project_number,
+          vendor_notes: proj.vendor_notes ?? null,
+          prior_task_count: 0,
+        };
         glossaryPath = proj.glossary_storage_path ?? null;
         styleGuidePath = proj.style_guide_storage_path ?? null;
+        // Prior task count: distinct prior orders on the same project
+        const { count: priorOrderCount } = await sb
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("internal_project_id", order.internal_project_id)
+          .neq("id", order.id);
+        projectInfo.prior_task_count = priorOrderCount ?? 0;
       }
-      // Prior task count: distinct prior orders on the same project
-      const { count: priorOrderCount } = await sb
-        .from("orders")
-        .select("id", { count: "exact", head: true })
-        .eq("internal_project_id", order.internal_project_id)
-        .neq("id", order.id);
-      projectInfo.prior_task_count = priorOrderCount ?? 0;
     }
 
     // ── Source files: pull from quote_files, sign each ──
