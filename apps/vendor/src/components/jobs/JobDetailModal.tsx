@@ -8,7 +8,7 @@ import {
   type VolumeDocument,
 } from "../../api/vendorJobs";
 import { LANGUAGES } from "../../data/languages";
-import { AcceptConfirmModal, DeclineModal, DeliverModal } from "./JobActionModals";
+import { AcceptConfirmModal, DeclineModal, DeliverModal, AcceptDirectAssignModal } from "./JobActionModals";
 import { NegotiateModal } from "./NegotiateModal";
 import { TermsModal, checkTermsForOffer, type TermsData } from "./TermsModal";
 import { issueSso, SsoIssueError } from "../../api/vendorSso";
@@ -35,6 +35,7 @@ function getLanguageName(code: string | null): string {
 
 const STATUS_BADGES: Record<string, { bg: string; text: string; label: string }> = {
   offered: { bg: "bg-amber-100", text: "text-amber-700", label: "Offered" },
+  assigned: { bg: "bg-indigo-100", text: "text-indigo-700", label: "Assigned" },
   accepted: { bg: "bg-blue-100", text: "text-blue-700", label: "Accepted" },
   in_progress: { bg: "bg-blue-100", text: "text-blue-700", label: "In Progress" },
   delivered: { bg: "bg-purple-100", text: "text-purple-700", label: "Delivered" },
@@ -147,7 +148,7 @@ interface JobDetailModalProps {
 
 export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps) {
   const { sessionToken } = useVendorAuth();
-  const [actionModal, setActionModal] = useState<"accept" | "decline" | "deliver" | null>(null);
+  const [actionModal, setActionModal] = useState<"accept" | "accept_direct" | "decline" | "deliver" | null>(null);
   const [showNegotiate, setShowNegotiate] = useState(false);
   const [detail, setDetail] = useState<JobDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -852,6 +853,14 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                 Offer no longer available
               </span>
             )}
+            {status === "assigned" && (
+              <button
+                onClick={() => setActionModal("accept_direct")}
+                className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+              >
+                Accept Assignment
+              </button>
+            )}
             {canTranslate && (
               <button
                 onClick={handleTranslateNow}
@@ -891,6 +900,9 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
       {/* Sub-modals */}
       {actionModal === "accept" && canAccept && (
         <AcceptConfirmModal step={step} onClose={() => setActionModal(null)} onSuccess={handleActionSuccess} />
+      )}
+      {actionModal === "accept_direct" && (
+        <AcceptDirectAssignModal step={step} onClose={() => setActionModal(null)} onSuccess={() => handleActionSuccess()} />
       )}
       {actionModal === "decline" && (
         <DeclineModal step={step} onClose={() => setActionModal(null)} onSuccess={handleActionSuccess} />

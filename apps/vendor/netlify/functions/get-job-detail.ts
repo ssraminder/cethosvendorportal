@@ -171,7 +171,7 @@ export const handler = async (event: {
       totalSteps = Number(c[0]?.n ?? "0");
     }
 
-    const projectInfo = { project_number: "—", vendor_notes: null as string | null, prior_task_count: 0 };
+    let projectInfo: { project_number: string; vendor_notes: string | null; prior_task_count: number } | null = null;
     let glossaryPath: string | null = null;
     let styleGuidePath: string | null = null;
     if (order?.internal_project_id) {
@@ -184,17 +184,20 @@ export const handler = async (event: {
         [order.internal_project_id],
       );
       const proj = projs[0];
-      if (proj) {
-        projectInfo.project_number = proj.project_number ?? "—";
-        projectInfo.vendor_notes = proj.vendor_notes ?? null;
+      if (proj?.project_number) {
+        projectInfo = {
+          project_number: proj.project_number,
+          vendor_notes: proj.vendor_notes ?? null,
+          prior_task_count: 0,
+        };
         glossaryPath = proj.glossary_storage_path;
         styleGuidePath = proj.style_guide_storage_path;
+        const prior = await query<{ n: string }>(
+          `SELECT COUNT(*)::text AS n FROM orders WHERE internal_project_id = $1 AND id <> $2`,
+          [order.internal_project_id, order.id],
+        );
+        projectInfo.prior_task_count = Number(prior[0]?.n ?? "0");
       }
-      const prior = await query<{ n: string }>(
-        `SELECT COUNT(*)::text AS n FROM orders WHERE internal_project_id = $1 AND id <> $2`,
-        [order.internal_project_id, order.id],
-      );
-      projectInfo.prior_task_count = Number(prior[0]?.n ?? "0");
     }
 
     const sourceFiles: FileRow[] = [];
