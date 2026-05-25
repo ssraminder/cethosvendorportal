@@ -79,18 +79,15 @@ export const handler = async (event: {
       );
     }
 
-    // Log acceptance in notification_log for audit trail
-    await query(
-      `INSERT INTO notification_log (event_type, step_id, metadata, created_at)
-       VALUES ('vendor_direct_accept', $1, $2, now())`,
-      [
-        stepId,
-        JSON.stringify({ vendor_id, accepted_at: new Date().toISOString() }),
-      ],
-    );
-
-    // Send notification to admin (pm@cethoscorp.com)
+    // Send admin notification + write the audit row. Both are wrapped so
+    // an audit/email failure can't roll back or surface to the vendor —
+    // the step is already 'accepted' at this point. Earlier code wrote
+    // an audit row before the email send with only a subset of columns,
+    // which 500'd as soon as notification_log gained NOT NULL columns
+    // for recipient_type / recipient_email / subject / status and
+    // propagated the error all the way to the AcceptDirectAssignModal.
     try {
+      const adminEmail = "pm@cethoscorp.com";
       const vendorRows = await query<{ full_name: string; email: string }>(
         `SELECT full_name, email FROM vendors WHERE id = $1 LIMIT 1`,
         [vendor_id],
@@ -107,27 +104,31 @@ export const handler = async (event: {
       );
       const stepInfo = stepInfoRows[0];
 
-      if (vendor && stepInfo) {
-        const orderRows = await query<{ order_number: string }>(
-          `SELECT order_number FROM orders WHERE id = $1 LIMIT 1`,
-          [stepInfo.order_id],
-        );
-        const order = orderRows[0];
+      const order = stepInfo
+        ? (
+            await query<{ order_number: string }>(
+              `SELECT order_number FROM orders WHERE id = $1 LIMIT 1`,
+              [stepInfo.order_id],
+            )
+          )[0]
+        : undefined;
 
-        // Send admin notification via Brevo
-        const BREVO_KEY = process.env.BREVO_API_KEY;
-        if (BREVO_KEY) {
-          const adminEmail = "pm@cethoscorp.com";
-          const subject = `Vendor accepted: ${order?.order_number ?? "Order"} — Step ${stepInfo.step_number}: ${stepInfo.name}`;
-          const htmlBody = `
-            <p>Vendor <strong>${vendor.full_name}</strong> (${vendor.email}) has accepted the assignment:</p>
-            <ul>
-              <li><strong>Order:</strong> ${order?.order_number ?? stepInfo.order_id}</li>
-              <li><strong>Step:</strong> ${stepInfo.step_number}. ${stepInfo.name}</li>
-            </ul>
-            <p>No action required — the step is now in "Accepted" status.</p>
-          `;
-          await fetch("https://api.brevo.com/v3/smtp/email", {
+      const subject = `Vendor accepted: ${order?.order_number ?? "Order"} — Step ${stepInfo?.step_number ?? "?"}: ${stepInfo?.name ?? "step"}`;
+      let logStatus: "sent" | "failed" | "skipped" = "skipped";
+      let errorMessage: string | null = null;
+
+      const BREVO_KEY = process.env.BREVO_API_KEY;
+      if (BREVO_KEY && vendor && stepInfo) {
+        const htmlBody = `
+          <p>Vendor <strong>${vendor.full_name}</strong> (${vendor.email}) has accepted the assignment:</p>
+          <ul>
+            <li><strong>Order:</strong> ${order?.order_number ?? stepInfo.order_id}</li>
+            <li><strong>Step:</strong> ${stepInfo.step_number}. ${stepInfo.name}</li>
+          </ul>
+          <p>No action required — the step is now in "Accepted" status.</p>
+        `;
+        try {
+          const res = await fetch("https://api.brevo.com/v3/smtp/email", {
             method: "POST",
             headers: {
               "api-key": BREVO_KEY,
@@ -141,10 +142,48 @@ export const handler = async (event: {
               tags: ["vendor-direct-accept"],
             }),
           });
+          if (res.ok) {
+            logStatus = "sent";
+          } else {
+            logStatus = "failed";
+            errorMessage = `Brevo ${res.status}`;
+          }
+        } catch (brevoErr: any) {
+          logStatus = "failed";
+          errorMessage = brevoErr?.message || String(brevoErr);
         }
       }
-    } catch (emailErr) {
-      console.error("Admin notification failed (non-blocking):", emailErr);
+
+      // Audit row with all NOT NULL columns populated. recipient_type
+      // is 'admin' because the email goes to pm@cethoscorp.com, not to
+      // the vendor.
+      try {
+        await query(
+          `INSERT INTO notification_log
+             (event_type, recipient_type, recipient_email, recipient_id,
+              step_id, subject, status, error_message, metadata, created_at)
+           VALUES ('vendor_direct_accept', 'admin', $1, NULL,
+              $2, $3, $4, $5, $6, now())`,
+          [
+            adminEmail,
+            stepId,
+            subject,
+            logStatus,
+            errorMessage,
+            JSON.stringify({
+              vendor_id,
+              vendor_name: vendor?.full_name ?? null,
+              vendor_email: vendor?.email ?? null,
+              order_number: order?.order_number ?? null,
+              accepted_at: new Date().toISOString(),
+            }),
+          ],
+        );
+      } catch (logErr: any) {
+        console.error("notification_log insert failed (non-blocking):", logErr?.message || logErr);
+      }
+    } catch (notifyErr: any) {
+      console.error("admin notification block failed (non-blocking):", notifyErr?.message || notifyErr);
     }
 
     return json({ success: true });
