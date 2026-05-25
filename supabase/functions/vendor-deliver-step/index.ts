@@ -25,6 +25,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { notifyAdminVendorDelivered } from "../_shared/notify-step-lifecycle.ts";
+import { triggerDropboxSync } from "../_shared/dropbox-trigger.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -76,7 +77,7 @@ serve(async (req: Request) => {
     // Verify step belongs to this vendor and is deliverable.
     const { data: step } = await sb
       .from("order_workflow_steps")
-      .select("id, vendor_id, status")
+      .select("id, vendor_id, status, order_id")
       .eq("id", stepId)
       .maybeSingle();
     if (!step) return json({ success: false, error: "Step not found" }, 404);
@@ -150,6 +151,21 @@ serve(async (req: Request) => {
         notes_from_vendor: notesStr,
       })
       .eq("id", stepId);
+
+    // Fire-and-forget Dropbox sync for each uploaded file.
+    if (step.order_id) {
+      for (const path of uploadedPaths) {
+        triggerDropboxSync({
+          order_id: step.order_id,
+          source_bucket: "vendor-deliveries",
+          source_path: path,
+          sync_trigger: "vendor_delivery",
+          filename: path.split("/").pop() ?? undefined,
+          step_id: stepId,
+          step_delivery_id: delivery.id,
+        });
+      }
+    }
 
     // Fire-and-forget admin notification.
     try {
