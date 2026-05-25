@@ -31,7 +31,7 @@ interface TermsModalProps {
   stepId: string;
   orderId: string;
   serviceId?: string | null;
-  actionType: "accept_offer" | "submit_counter";
+  actionType: "accept_offer" | "submit_counter" | "accept_direct";
 }
 
 export function TermsModal({
@@ -50,7 +50,9 @@ export function TermsModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const isImmediate = actionType === "accept_offer";
+  // accept_direct behaves like accept_offer — vendor is committing now,
+  // not making a conditional proposal. Only submit_counter is conditional.
+  const isImmediate = actionType === "accept_offer" || actionType === "accept_direct";
   const acceptanceType = isImmediate ? "immediate" : "conditional";
 
   const checkboxText = isImmediate
