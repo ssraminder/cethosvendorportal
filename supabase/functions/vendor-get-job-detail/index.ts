@@ -399,12 +399,15 @@ serve(async (req: Request) => {
         service_name: service?.name ?? null,
         source_language: resolveLang(step.source_language),
         target_language: resolveLang(step.target_language),
-        vendor_rate: step.vendor_rate,
-        vendor_rate_unit: step.vendor_rate_unit,
-        vendor_total: step.vendor_total,
-        vendor_currency: step.vendor_currency,
+        // Prefer the active offer's rate fields when present — see the
+        // Netlify get-job-detail.ts for the full rationale. The step row's
+        // rate columns are only authoritative once a vendor accepts.
+        vendor_rate: stepOffer?.vendor_rate ?? step.vendor_rate,
+        vendor_rate_unit: stepOffer?.vendor_rate_unit ?? step.vendor_rate_unit,
+        vendor_total: stepOffer?.vendor_total ?? step.vendor_total,
+        vendor_currency: stepOffer?.vendor_currency ?? step.vendor_currency,
         pricing_mode: (stepOffer?.pricing_mode ?? step.pricing_mode ?? "per_unit"),
-        deadline: step.deadline,
+        deadline: stepOffer?.deadline ?? step.deadline,
         expires_at: stepOffer?.expires_at ?? null,
         offered_at: step.offered_at,
         accepted_at: step.accepted_at,
