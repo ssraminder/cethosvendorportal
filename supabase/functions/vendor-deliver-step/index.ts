@@ -163,6 +163,7 @@ serve(async (req: Request) => {
           filename: path.split("/").pop() ?? undefined,
           step_id: stepId,
           step_delivery_id: delivery.id,
+          delivery_version: nextVersion,
         });
       }
     }

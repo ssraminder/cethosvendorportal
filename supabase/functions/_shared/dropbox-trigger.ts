@@ -16,6 +16,7 @@ interface SyncOrderFileParams {
   quote_file_id?: string;
   step_delivery_id?: string;
   step_id?: string;
+  delivery_version?: number;
 }
 
 export async function triggerDropboxSync(params: SyncOrderFileParams): Promise<void> {
