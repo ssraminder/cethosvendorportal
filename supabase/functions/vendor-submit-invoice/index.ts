@@ -91,6 +91,21 @@ serve(async (req: Request) => {
       }, 409);
     }
 
+    // Check for duplicate vendor invoice reference number across this vendor's invoices
+    const { data: duplicate } = await sb
+      .from("cvp_payments")
+      .select("id, invoice_number")
+      .eq("vendor_id", vendorId)
+      .eq("vendor_invoice_number", vendorInvoiceNumber.trim())
+      .neq("id", invoiceId)
+      .maybeSingle();
+    if (duplicate) {
+      return json({
+        success: false,
+        error: `Invoice reference "${vendorInvoiceNumber.trim()}" is already used on ${duplicate.invoice_number}`,
+      }, 409);
+    }
+
     // Upload vendor invoice file if provided
     let vendorInvoiceFilePath: string | null = null;
     if (file) {
