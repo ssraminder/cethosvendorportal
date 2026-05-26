@@ -211,6 +211,10 @@ export function InvoiceDetail() {
                 {fmt(invoice.total_amount)}
               </p>
             </div>
+            <div>
+              <span className="text-gray-500">Currency</span>
+              <p className="font-medium">{(invoice.currency || "CAD").toUpperCase()}</p>
+            </div>
             {invoice.due_date && (
               <div>
                 <span className="text-gray-500">Due Date</span>

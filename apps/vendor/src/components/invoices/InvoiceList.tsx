@@ -138,6 +138,9 @@ export function InvoiceList() {
                   Amount
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                  Currency
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
                   Status
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
@@ -171,6 +174,9 @@ export function InvoiceList() {
                         style: "currency",
                         currency: invoice.currency || "CAD",
                       }).format(invoice.total_amount)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {(invoice.currency || "CAD").toUpperCase()}
                     </td>
                     <td className="px-4 py-3">
                       <span
