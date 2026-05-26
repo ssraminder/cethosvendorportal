@@ -214,7 +214,9 @@ export function DeclineModal({ step, onClose, onSuccess }: DeclineProps) {
 
 const ACCEPTED_EXTENSIONS = [
   ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt", ".html",
-  ".rtf", ".jpg", ".png", ".tiff", ".zip", ".xliff",
+  ".rtf", ".jpg", ".png", ".tiff", ".zip",
+  ".xliff", ".sdlxliff", ".mqxliff", ".mqxlz",
+  ".tmx", ".tbx", ".ttx", ".sdlppx", ".sdlrpx",
 ];
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB

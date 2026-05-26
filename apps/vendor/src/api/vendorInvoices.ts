@@ -9,6 +9,7 @@ export interface VendorInvoice {
   invoice_number: string;
   job_id: string | null;
   job_reference: string | null;
+  step_id: string | null;
   amount: number;
   currency: string;
   tax_amount: number;
@@ -19,6 +20,11 @@ export interface VendorInvoice {
   paid_at: string | null;
   payment_method: string | null;
   payment_reference: string | null;
+  order_reference: string | null;
+  description: string | null;
+  vendor_invoice_number: string | null;
+  vendor_invoice_file_path: string | null;
+  submitted_at: string | null;
   notes: string | null;
   created_at: string;
 }
@@ -41,7 +47,15 @@ interface InvoicePdfResponse {
   error?: string;
 }
 
-export type { InvoicesResponse, InvoicePdfResponse };
+interface SubmitInvoiceResponse {
+  success?: boolean;
+  invoice_id?: string;
+  status?: string;
+  submitted_at?: string;
+  error?: string;
+}
+
+export type { InvoicesResponse, InvoicePdfResponse, SubmitInvoiceResponse };
 
 // --- API Functions ---
 
@@ -72,6 +86,25 @@ export async function getInvoicePdf(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ invoice_id: invoiceId }),
+  });
+  return res.json();
+}
+
+export async function submitInvoice(
+  token: string,
+  invoiceId: string,
+  vendorInvoiceNumber: string,
+  file?: File
+): Promise<SubmitInvoiceResponse> {
+  const form = new FormData();
+  form.append("invoice_id", invoiceId);
+  form.append("vendor_invoice_number", vendorInvoiceNumber);
+  if (file) form.append("file", file);
+
+  const res = await fetch(`${BASE}/vendor-submit-invoice`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
   });
   return res.json();
 }

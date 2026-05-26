@@ -7,6 +7,7 @@ import { FileText, Loader2, DollarSign, ChevronRight } from "lucide-react";
 type FilterKey = "all" | "pending" | "paid";
 
 const STATUS_BADGES: Record<string, { bg: string; text: string; label: string }> = {
+  draft: { bg: "bg-gray-100", text: "text-gray-600", label: "Draft" },
   pending: { bg: "bg-amber-100", text: "text-amber-700", label: "Pending" },
   submitted: { bg: "bg-blue-100", text: "text-blue-700", label: "Submitted" },
   approved: { bg: "bg-indigo-100", text: "text-indigo-700", label: "Approved" },
@@ -43,7 +44,7 @@ export function InvoiceList() {
     filter === "all"
       ? invoices
       : filter === "pending"
-      ? invoices.filter((i) => ["pending", "submitted", "approved"].includes(i.status))
+      ? invoices.filter((i) => ["draft", "pending", "submitted", "approved"].includes(i.status))
       : invoices.filter((i) => i.status === "paid");
 
   // Summary stats
@@ -51,7 +52,7 @@ export function InvoiceList() {
     .filter((i) => i.status === "paid")
     .reduce((sum, i) => sum + i.total_amount, 0);
   const pendingAmount = invoices
-    .filter((i) => ["pending", "submitted", "approved"].includes(i.status))
+    .filter((i) => ["draft", "pending", "submitted", "approved"].includes(i.status))
     .reduce((sum, i) => sum + i.total_amount, 0);
 
   if (loading) {
@@ -156,9 +157,9 @@ export function InvoiceList() {
                           {invoice.invoice_number}
                         </span>
                       </div>
-                      {invoice.job_reference && (
+                      {(invoice.order_reference || invoice.job_reference) && (
                         <span className="text-xs text-gray-400 ml-6">
-                          Job: {invoice.job_reference}
+                          {invoice.order_reference || `Job: ${invoice.job_reference}`}
                         </span>
                       )}
                     </td>

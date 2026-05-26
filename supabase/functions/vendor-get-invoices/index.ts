@@ -94,7 +94,7 @@ serve(async (req: Request) => {
       .filter((i: Record<string, unknown>) => i.status === "paid")
       .reduce((sum: number, i: Record<string, unknown>) => sum + (i.total_amount as number), 0);
     const pendingAmount = allInvoices
-      .filter((i: Record<string, unknown>) => ["pending", "submitted", "approved"].includes(i.status as string))
+      .filter((i: Record<string, unknown>) => ["draft", "pending", "submitted", "approved"].includes(i.status as string))
       .reduce((sum: number, i: Record<string, unknown>) => sum + (i.total_amount as number), 0);
     const lastPaid = allInvoices
       .filter((i: Record<string, unknown>) => i.paid_at)
