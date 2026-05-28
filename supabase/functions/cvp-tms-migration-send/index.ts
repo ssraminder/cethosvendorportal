@@ -34,7 +34,7 @@ const BRAND_MUTED = "#6B7280";
 const BRAND_BORDER = "#E5E7EB";
 const BRAND_BG = "#F9FAFB";
 const LOGO_URL =
-  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/final_logo_light_bg_cethosAsset%201.svg";
+  "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png";
 
 const STALE_CLAIM_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
