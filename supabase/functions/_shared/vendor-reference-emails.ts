@@ -9,7 +9,7 @@ const BRAND = {
   border: "#E5E7EB",
   bg: "#F9FAFB",
   logoUrl:
-    "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/final_logo_light_bg_cethosAsset%201.svg",
+    "https://lmzoyezvsjgsxveoakdr.supabase.co/storage/v1/object/public/web-assets/png_logo_cethos_light_bg.png",
 };
 
 const supportEmail = () => Deno.env.get("CVP_SUPPORT_EMAIL") ?? "vm@cethos.com";
