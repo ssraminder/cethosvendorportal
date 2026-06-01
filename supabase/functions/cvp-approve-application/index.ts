@@ -292,6 +292,11 @@ serve(async (req: Request) => {
       city: app.city ?? null,
       vendor_type: app.role_type,
       rate_currency: app.rate_currency ?? "CAD",
+      // Seed preferred_rate_currency from the applicant's pick so the admin
+      // assignment modals (which now default to vendors.preferred_rate_currency)
+      // see the right currency on the very first job they hand out. Vendor
+      // can change it later in their profile.
+      preferred_rate_currency: app.rate_currency ?? "CAD",
       certifications: app.certifications ?? [],
       years_experience: app.years_experience ?? null,
       status: "active",
