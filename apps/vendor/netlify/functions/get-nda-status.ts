@@ -87,11 +87,26 @@ export const handler = async (event: {
       }
     }
 
+    // Time-boxed waiver. When staff set vendors.nda_waived_until to a
+    // future timestamp (e.g. while a new NDA template is being drafted),
+    // the onboarding gate treats the vendor as up to date until that
+    // timestamp passes. Auditable on the vendor row; no manual cleanup.
+    const waiverRows = await query<{ nda_waived_until: string | null }>(
+      `SELECT nda_waived_until FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendor_id],
+    );
+    const waivedUntilIso = waiverRows[0]?.nda_waived_until ?? null;
+    if (waivedUntilIso && new Date(waivedUntilIso).getTime() > Date.now()) {
+      needs = false;
+      reason = `Signature waived through ${new Date(waivedUntilIso).toISOString().slice(0, 10)}.`;
+    }
+
     return json({
       template,
       current_signature: current,
       needs_signature: needs,
       reason,
+      waived_until: waivedUntilIso,
     });
   } catch (e) {
     console.error("get-nda-status error:", e);

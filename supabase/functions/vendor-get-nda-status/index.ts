@@ -69,12 +69,27 @@ serve(async (req) => {
       reason = "The NDA has been updated since you last signed. Please review the new version and re-sign.";
     }
 
+    // Time-boxed staff-set waiver. When vendors.nda_waived_until is in
+    // the future the gate treats the vendor as up to date; the waiver
+    // self-expires (no manual cleanup).
+    const { data: vendorRow } = await sb
+      .from("vendors")
+      .select("nda_waived_until")
+      .eq("id", vendorId)
+      .maybeSingle();
+    const waivedUntilIso: string | null = (vendorRow as any)?.nda_waived_until ?? null;
+    if (waivedUntilIso && new Date(waivedUntilIso).getTime() > Date.now()) {
+      needsSignature = false;
+      reason = `Signature waived through ${waivedUntilIso.slice(0, 10)}.`;
+    }
+
     return json({
       success: true,
       template,
       current_signature: currentSig,
       needs_signature: needsSignature,
       reason,
+      waived_until: waivedUntilIso,
     });
   } catch (err: any) {
     console.error("vendor-get-nda-status error:", err);
