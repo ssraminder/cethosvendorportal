@@ -537,6 +537,22 @@ export function VendorRates() {
     loadRates();
   }, [loadRates]);
 
+  // Refetch when the tab regains focus / visibility — covers the case where
+  // the vendor changes preferred_rate_currency on /profile and comes back
+  // here, otherwise the Rate modal renders with the stale currency the page
+  // captured on its initial mount.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadRates();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadRates]);
+
   // Clear success message after 4 seconds
   useEffect(() => {
     if (!success) return;
