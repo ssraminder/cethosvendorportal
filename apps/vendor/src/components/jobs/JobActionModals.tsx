@@ -415,7 +415,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
           {/* Vendor identifier — required for agencies / business contractors */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Your reference{" "}
+              Linguist / vendor used{" "}
               {identifierRequired ? (
                 <span className="text-red-500" aria-label="required">*</span>
               ) : (
@@ -428,7 +428,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
               onChange={(e) => setVendorIdentifier(e.target.value)}
               placeholder={
                 isAgencyLike
-                  ? "Translator name, internal job code, or PO ref"
+                  ? "Name or ID of the linguist from your database who did this work"
                   : "Optional — your reference for this delivery"
               }
               required={identifierRequired}
@@ -436,7 +436,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
             />
             {isAgencyLike && (
               <p className="mt-1 text-xs text-gray-500">
-                Helps Cethos trace this delivery back to the linguist on your team.
+                Which translator / reviewer from your vendor pool performed this step. Required for ISO 17100 §6.1.2 competence records.
               </p>
             )}
           </div>
