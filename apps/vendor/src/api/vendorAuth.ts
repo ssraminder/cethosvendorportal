@@ -71,10 +71,12 @@ export async function testConnectivity(): Promise<ConnectivityProbe> {
 interface VendorProfile {
   id: string;
   full_name: string;
+  business_name: string | null;
   email: string;
   phone: string | null;
   status: string;
   vendor_type: string | null;
+  contractor_type: string | null;
   country: string | null;
   province_state: string | null;
   availability_status: string | null;

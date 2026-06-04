@@ -70,6 +70,13 @@ serve(async (req: Request) => {
     const stepId = String(form.get("step_id") || "");
     const notes = form.get("notes");
     const notesStr = typeof notes === "string" ? notes : null;
+    // Vendor-supplied identifier — translator name / internal job ref / etc.
+    // Required at the UI layer for agencies; treated as optional metadata here.
+    const vendorIdentifierRaw = form.get("vendor_identifier");
+    const vendorIdentifier =
+      typeof vendorIdentifierRaw === "string" && vendorIdentifierRaw.trim().length > 0
+        ? vendorIdentifierRaw.trim()
+        : null;
     const files = form.getAll("files").filter((f): f is File => f instanceof File);
     if (!stepId) return json({ success: false, error: "Missing step_id" }, 400);
     if (files.length === 0) return json({ success: false, error: "No files provided" }, 400);
@@ -134,6 +141,7 @@ serve(async (req: Request) => {
         delivered_at: nowIso,
         file_paths: filePayload,
         notes: notesStr,
+        vendor_identifier: vendorIdentifier,
         review_status: "pending_review",
       })
       .select("id, version")
