@@ -125,7 +125,7 @@ serve(async (req: Request) => {
     const { data: vendor, error: vendorErr } = await supabase
       .from("vendors")
       .select(
-        "id, full_name, email, phone, status, vendor_type, country, availability_status"
+        "id, full_name, business_name, email, phone, status, vendor_type, contractor_type, country, availability_status"
       )
       .eq("id", otp.vendor_id)
       .single();

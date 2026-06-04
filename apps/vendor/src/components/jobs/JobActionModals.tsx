@@ -239,13 +239,22 @@ interface DeliverProps {
 }
 
 export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
-  const { sessionToken } = useVendorAuth();
+  const { sessionToken, vendor } = useVendorAuth();
   const [files, setFiles] = useState<File[]>([]);
   const [notes, setNotes] = useState("");
+  const [vendorIdentifier, setVendorIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Agencies & business contractors must tag each delivery with their
+  // own reference (translator name, internal job code, etc.) so Cethos
+  // can trace which linguist did the work for QMS / ISO 17100 audits.
+  // Solo individuals see the same field but it's optional.
+  const isAgencyLike =
+    vendor?.vendor_type === "agency" || vendor?.contractor_type === "business";
+  const identifierRequired = isAgencyLike;
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const newFiles: File[] = [];
@@ -289,10 +298,21 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
 
   const handleSubmit = async () => {
     if (!sessionToken || files.length === 0) return;
+    const trimmedIdentifier = vendorIdentifier.trim();
+    if (identifierRequired && !trimmedIdentifier) {
+      setError("Please add your reference (translator name or internal job code) before delivering.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      const result = await deliverStep(sessionToken, step.id, files, notes || undefined);
+      const result = await deliverStep(
+        sessionToken,
+        step.id,
+        files,
+        notes || undefined,
+        trimmedIdentifier || undefined,
+      );
       if (result.success) {
         onSuccess(isRevision ? (step.revision_count ?? 0) + 1 : undefined);
       } else {
@@ -391,6 +411,35 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
               ))}
             </div>
           )}
+
+          {/* Vendor identifier — required for agencies / business contractors */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Your reference{" "}
+              {identifierRequired ? (
+                <span className="text-red-500" aria-label="required">*</span>
+              ) : (
+                <span className="text-gray-400 font-normal">(optional)</span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={vendorIdentifier}
+              onChange={(e) => setVendorIdentifier(e.target.value)}
+              placeholder={
+                isAgencyLike
+                  ? "Translator name, internal job code, or PO ref"
+                  : "Optional — your reference for this delivery"
+              }
+              required={identifierRequired}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+            {isAgencyLike && (
+              <p className="mt-1 text-xs text-gray-500">
+                Helps Cethos trace this delivery back to the linguist on your team.
+              </p>
+            )}
+          </div>
 
           {/* Notes */}
           <div>
