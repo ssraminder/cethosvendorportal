@@ -21,6 +21,7 @@ interface NdaCurrentSignature {
 interface NdaStatus {
   current_signature: NdaCurrentSignature | null;
   needs_signature: boolean;
+  waived_until?: string | null;
 }
 interface CvListResponse {
   success: boolean;
@@ -34,6 +35,9 @@ export interface OnboardingGateState {
   hasNda: boolean;
   cvCount: number;
   ndaSignedAt: string | null;
+  /** When non-null, NDA gate is satisfied via a staff-set waiver
+   *  (vendors.nda_waived_until) — vendor never actually signed. */
+  ndaWaivedUntil: string | null;
   /** False for agencies — CV upload is waived. */
   cvRequired: boolean;
   refresh: () => Promise<void>;
@@ -50,6 +54,7 @@ export function useOnboardingGate(): OnboardingGateState {
   const [hasNda, setHasNda] = useState(false);
   const [cvCount, setCvCount] = useState(0);
   const [ndaSignedAt, setNdaSignedAt] = useState<string | null>(null);
+  const [ndaWaivedUntil, setNdaWaivedUntil] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!sessionToken) {
@@ -85,10 +90,20 @@ export function useOnboardingGate(): OnboardingGateState {
       setCvCount(cvs.length);
       setHasCv(cvs.length > 0);
 
+      // The Netlify get-nda-status function flips needs_signature=false
+      // for two reasons: (a) the vendor has a current signature against
+      // the active template, OR (b) staff set vendors.nda_waived_until to
+      // a future timestamp. Honor BOTH paths — gating on
+      // current_signature presence alone strands waived agencies who
+      // never signed at all (e.g. XTRF-imported vendors during the
+      // waiver window). See feedback_supabase_bundle_loss_pattern for
+      // why the related vendor-get-nda-status edge variant isn't safe to
+      // touch separately.
       const nda = (ndaRes as NdaStatus | null) ?? null;
       const signature = nda?.current_signature ?? null;
-      setHasNda(!!signature && !nda?.needs_signature);
+      setHasNda(!!nda && !nda.needs_signature);
       setNdaSignedAt(signature?.signed_at ?? null);
+      setNdaWaivedUntil(nda?.waived_until ?? null);
     } finally {
       setLoading(false);
     }
@@ -105,6 +120,7 @@ export function useOnboardingGate(): OnboardingGateState {
     hasNda,
     cvCount,
     ndaSignedAt,
+    ndaWaivedUntil,
     cvRequired,
     refresh,
   };
