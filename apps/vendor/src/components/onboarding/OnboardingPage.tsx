@@ -23,7 +23,7 @@ import { uploadCv } from "../../api/vendorCvs";
 
 export function OnboardingPage() {
   const { vendor, sessionToken } = useVendorAuth();
-  const { loading, passes, hasCv, hasNda, cvCount, ndaSignedAt, cvRequired, refresh } = useOnboardingGate();
+  const { loading, passes, hasCv, hasNda, cvCount, ndaSignedAt, ndaWaivedUntil, cvRequired, refresh } = useOnboardingGate();
   const navigate = useNavigate();
   const [uploadingCv, setUploadingCv] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
@@ -143,7 +143,13 @@ export function OnboardingPage() {
           title="Sign the NDA"
           description="Cethos's confidentiality agreement. Two-factor verification via email or phone OTP."
           done={hasNda}
-          doneCopy={ndaSignedAt ? `Signed ${new Date(ndaSignedAt).toLocaleDateString()}.` : "Signed."}
+          doneCopy={
+            ndaSignedAt
+              ? `Signed ${new Date(ndaSignedAt).toLocaleDateString()}.`
+              : ndaWaivedUntil
+                ? `Waived by Cethos staff through ${new Date(ndaWaivedUntil).toLocaleDateString()}.`
+                : "Signed."
+          }
           action={hasNda ? null : {
             to: "/nda",
             label: "Sign now",
