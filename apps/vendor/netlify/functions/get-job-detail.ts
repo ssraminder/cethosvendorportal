@@ -206,6 +206,11 @@ export const handler = async (event: {
     const documents: Array<{ filename: string; word_count: number; page_count: number }> = [];
 
     if (order?.quote_id) {
+      // Step-split scoping: if step_files rows exist for this step, the
+      // vendor only sees their assigned subset; otherwise (legacy / unsplit
+      // steps) they see the whole quote. The OR-NOT-EXISTS subquery keeps
+      // the behaviour additive — no change for any step that hasn't been
+      // through the split flow.
       const qfiles = await query<{
         id: string; original_filename: string; storage_path: string;
         file_size: number | null; mime_type: string | null;
@@ -216,8 +221,12 @@ export const handler = async (event: {
          FROM quote_files qf
          LEFT JOIN file_categories fc ON fc.id = qf.file_category_id
          WHERE qf.quote_id = $1 AND qf.deleted_at IS NULL AND COALESCE(qf.upload_status, '') <> 'failed'
+           AND (
+             NOT EXISTS (SELECT 1 FROM step_files WHERE step_id = $2)
+             OR EXISTS (SELECT 1 FROM step_files sf WHERE sf.step_id = $2 AND sf.quote_file_id = qf.id)
+           )
          ORDER BY qf.sort_order ASC NULLS LAST, qf.created_at ASC`,
-        [order.quote_id],
+        [order.quote_id, stepId],
       );
 
       if (qfiles.length > 0) {
