@@ -277,14 +277,29 @@ serve(async (req: Request) => {
     const documents: Array<{ filename: string; word_count: number; page_count: number }> = [];
 
     if (order?.quote_id) {
-      const { data: qfiles } = await sb
+      // Step-split scoping: if step_files rows exist for this step, only
+      // the assigned subset of quote_files is visible to the vendor.
+      // Otherwise (legacy / unsplit steps) the whole quote shows through.
+      const { data: stepFileRows } = await sb
+        .from("step_files")
+        .select("quote_file_id")
+        .eq("step_id", stepId);
+      const allowedFileIds = stepFileRows && stepFileRows.length > 0
+        ? stepFileRows.map((r: any) => r.quote_file_id as string)
+        : null;
+
+      let qfilesQuery = sb
         .from("quote_files")
         .select(
           "id, original_filename, storage_path, file_size, mime_type, deleted_at, upload_status, file_category_id, custom_label, file_categories(name)",
         )
         .eq("quote_id", order.quote_id)
         .is("deleted_at", null)
-        .neq("upload_status", "failed")
+        .neq("upload_status", "failed");
+      if (allowedFileIds) {
+        qfilesQuery = qfilesQuery.in("id", allowedFileIds);
+      }
+      const { data: qfiles } = await qfilesQuery
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true });
 
