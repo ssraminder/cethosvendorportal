@@ -11,6 +11,7 @@ import { requireSession } from "./_lib/session";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
 import { sendMailgun } from "./_lib/mailgun";
 import { renderJobAssignedEmail } from "./_lib/email-job-assigned";
+import { notifyStaffOfStepAccept } from "./_lib/notify-step-accept";
 
 export const handler = async (event: {
   body: string | null;
@@ -219,6 +220,15 @@ export const handler = async (event: {
     } catch (emailErr) {
       console.error("accept-step: email send failed (non-blocking):", emailErr);
     }
+
+    // Notify Cethos staff (assigned PM + shared pm@cethoscorp.com inbox).
+    // Best-effort — never block the accept response.
+    await notifyStaffOfStepAccept({
+      stepId,
+      vendorId: vendor_id,
+      kind: "offer",
+      offerId: offer.id,
+    });
 
     return json({
       success: true,
