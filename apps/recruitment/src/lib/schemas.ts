@@ -112,9 +112,20 @@ export const cognitiveDebriefingSchema = z.object({
     error: 'This field is required',
   }),
   cogPriorDebriefReports: z.boolean(),
+  cogInterviewsConducted: z.enum(['0', '1-10', '11-50', '51-200', '200+'], {
+    error: 'Approximate number of interviews is required',
+  }),
+  cogConductsDirectPatientInterviews: z.boolean(),
+  cogInterviewModes: z.array(z.enum(['in_person', 'telephone', 'video']))
+    .min(1, 'Select at least one interview mode'),
+  cogEcoaPlatforms: z.array(z.enum([
+    'signant', 'clario_ert', 'medidata', 'calyx', 'yprime', 'iqvia', 'cognigen', 'none', 'other',
+  ])).default([]),
   cogAvailability: z.enum(['full_time', 'part_time', 'project_based'], {
     error: 'Availability is required',
   }),
+  cogRateExpectation: z.string().min(1, 'Rate is required'),
+  cogRateCurrency: z.string().min(3, 'Select a currency'),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
   ...consentSchema.shape,

@@ -38,6 +38,9 @@ import {
   COG_THERAPY_OPTIONS,
   FAMILIARITY_OPTIONS,
   AVAILABILITY_OPTIONS,
+  COG_INTERVIEWS_CONDUCTED_OPTIONS,
+  COG_INTERVIEW_MODE_OPTIONS,
+  COG_ECOA_PLATFORM_OPTIONS,
 } from '../lib/constants'
 import { DOMAIN_OPTIONS } from '../lib/domains'
 import type { DomainValue } from '../lib/domains'
@@ -164,7 +167,11 @@ export function Apply() {
       cogInstrumentTypes: [],
       cogTherapyAreas: [],
       cogAdditionalLanguages: [],
+      cogInterviewModes: [],
+      cogEcoaPlatforms: [],
       cogPriorDebriefReports: false,
+      cogConductsDirectPatientInterviews: false,
+      cogRateCurrency: 'CAD',
       privacyPolicy: false as unknown as true,
       consentTest: false as unknown as true,
       consentUnpaid: false as unknown as true,
@@ -299,10 +306,25 @@ export function Apply() {
     try {
       const cvPath = await uploadCvIfPresent()
       if (!cvPath) { setSubmitting(false); return }
+
+      // Sample debrief report is optional — only upload if the applicant
+      // both checked the box AND attached a file.
+      let cogSamplePath: string | null = null
+      if (data.cogPriorDebriefReports && cogSampleFile) {
+        const clientUuid = crypto.randomUUID()
+        const sanitized = cogSampleFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+        const path = `${clientUuid}/sample_${sanitized}`
+        const { error: sampleErr } = await supabase.storage
+          .from('cvp-applicant-cvs')
+          .upload(path, cogSampleFile, { cacheControl: '3600', upsert: false })
+        if (!sampleErr) cogSamplePath = path
+        else console.error('Sample report upload failed:', sampleErr.message)
+      }
+
       const payload = {
         ...data,
-        cogSampleFile: cogSampleFile ?? undefined,
         cvStoragePath: cvPath,
+        cogSampleReportPath: cogSamplePath,
       }
 
       const response = await fetch(
@@ -950,9 +972,73 @@ export function Apply() {
               </div>
             </FormSection>
 
-            {/* Section 5: Availability & Rate */}
-            <FormSection title="Availability & Rate">
+            {/* Section 5: Patient Interview Experience */}
+            <FormSection title="Patient Interview Experience">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField
+                  label="Approximate number of CD interviews conducted"
+                  required
+                  error={cogForm.formState.errors.cogInterviewsConducted?.message}
+                  hint="Count interviews you personally led, across all studies."
+                >
+                  <select {...cogForm.register('cogInterviewsConducted')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {COG_INTERVIEWS_CONDUCTED_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField
+                  label="Interview modes offered"
+                  required
+                  error={cogForm.formState.errors.cogInterviewModes?.message as string | undefined}
+                >
+                  <MultiSelect
+                    options={COG_INTERVIEW_MODE_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+                    value={(cogForm.watch('cogInterviewModes') ?? []) as string[]}
+                    onChange={(next) => cogForm.setValue(
+                      'cogInterviewModes',
+                      next as CognitiveDebriefingFormData['cogInterviewModes'],
+                      { shouldValidate: true, shouldDirty: true },
+                    )}
+                    placeholder="Select interview modes…"
+                  />
+                </FormField>
+              </div>
+
+              <FormField
+                label="Remote eCOA platforms used"
+                hint="Platforms you have hands-on experience with. Optional."
+                error={cogForm.formState.errors.cogEcoaPlatforms?.message as string | undefined}
+              >
+                <MultiSelect
+                  options={COG_ECOA_PLATFORM_OPTIONS.map((p) => ({ value: p.value, label: p.label }))}
+                  value={(cogForm.watch('cogEcoaPlatforms') ?? []) as string[]}
+                  onChange={(next) => cogForm.setValue(
+                    'cogEcoaPlatforms',
+                    next as CognitiveDebriefingFormData['cogEcoaPlatforms'],
+                    { shouldValidate: true, shouldDirty: true },
+                  )}
+                  placeholder="Select eCOA platforms…"
+                />
+              </FormField>
+
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  {...cogForm.register('cogConductsDirectPatientInterviews')}
+                  className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
+                />
+                <span className="text-sm text-cethos-navy">
+                  I have personally interviewed patients (not desk-only linguistic validation).
+                </span>
+              </label>
+            </FormSection>
+
+            {/* Section 6: Availability & Rate */}
+            <FormSection title="Availability & Rate">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField label="Availability" required error={cogForm.formState.errors.cogAvailability?.message}>
                   <select {...cogForm.register('cogAvailability')} className={selectClasses}>
                     <option value="">Select...</option>
@@ -962,8 +1048,39 @@ export function Apply() {
                   </select>
                 </FormField>
 
+                <FormField
+                  label="Hourly rate"
+                  required
+                  hint="Or per-interview rate — note which in Additional notes."
+                  error={cogForm.formState.errors.cogRateExpectation?.message}
+                >
+                  <input
+                    {...cogForm.register('cogRateExpectation')}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className={inputClasses}
+                    placeholder="e.g. 125.00"
+                  />
+                </FormField>
+
+                <FormField label="Currency" required error={cogForm.formState.errors.cogRateCurrency?.message}>
+                  <select {...cogForm.register('cogRateCurrency')} className={selectClasses}>
+                    {RATE_CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </select>
+                </FormField>
               </div>
             </FormSection>
+
+            {/* Section 6a: Resume / CV (required) */}
+            <CvSection
+              cvFile={cvFile}
+              setCvFile={setCvFile}
+              handleCvUpload={handleCvUpload}
+              showMissingError={submitError === CV_MISSING_ERROR}
+            />
 
             {/* Additional Information */}
             <FormSection title="Additional Information">

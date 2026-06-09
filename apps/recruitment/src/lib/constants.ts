@@ -102,3 +102,29 @@ export const AVAILABILITY_OPTIONS = [
   { value: 'part_time', label: 'Part-time' },
   { value: 'project_based', label: 'Project-based' },
 ] as const
+
+export const COG_INTERVIEWS_CONDUCTED_OPTIONS = [
+  { value: '0', label: 'None yet' },
+  { value: '1-10', label: '1–10 interviews' },
+  { value: '11-50', label: '11–50 interviews' },
+  { value: '51-200', label: '51–200 interviews' },
+  { value: '200+', label: '200+ interviews' },
+] as const
+
+export const COG_INTERVIEW_MODE_OPTIONS = [
+  { value: 'in_person', label: 'In-person' },
+  { value: 'telephone', label: 'Telephone' },
+  { value: 'video', label: 'Video' },
+] as const
+
+export const COG_ECOA_PLATFORM_OPTIONS = [
+  { value: 'signant', label: 'Signant Health' },
+  { value: 'clario_ert', label: 'Clario / ERT' },
+  { value: 'medidata', label: 'Medidata' },
+  { value: 'calyx', label: 'Calyx' },
+  { value: 'yprime', label: 'YPrime' },
+  { value: 'iqvia', label: 'IQVIA' },
+  { value: 'cognigen', label: 'Cognigen' },
+  { value: 'none', label: 'None / paper-only' },
+  { value: 'other', label: 'Other' },
+] as const
