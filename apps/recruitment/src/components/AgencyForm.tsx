@@ -18,6 +18,8 @@ import {
   AGENCY_LINGUIST_COUNT_OPTIONS,
   AGENCY_YEARS_OPERATING_OPTIONS,
   AGENCY_SERVICE_OPTIONS,
+  COG_INSTRUMENT_OPTIONS,
+  COG_THERAPY_OPTIONS,
 } from '../lib/constants'
 import { DOMAIN_OPTIONS } from '../lib/domains'
 import type { DomainValue } from '../lib/domains'
@@ -53,6 +55,8 @@ export function AgencyForm() {
       interpreterSettings: [],
       transcriberLanguages: [],
       transcriberSpecializations: [],
+      cogInstrumentTypes: [],
+      cogTherapyAreas: [],
       privacyPolicy: false as unknown as true,
       consentTest: false as unknown as true,
       consentUnpaid: false as unknown as true,
@@ -64,16 +68,18 @@ export function AgencyForm() {
     name: 'languagePairs',
   })
 
+  type ServiceValue = 'translation' | 'interpretation' | 'transcription' | 'cognitive_debriefing'
   const services = (form.watch('servicesOffered') ?? []) as string[]
   const hasTranslation = services.includes('translation')
   const hasInterpretation = services.includes('interpretation')
   const hasTranscription = services.includes('transcription')
-  const wantsLangPairs = hasTranslation || hasInterpretation
+  const hasCognitiveDebriefing = services.includes('cognitive_debriefing')
+  const wantsLangPairs = hasTranslation || hasInterpretation || hasCognitiveDebriefing
 
-  const toggleService = (value: 'translation' | 'interpretation' | 'transcription') => {
+  const toggleService = (value: ServiceValue) => {
     const current = (form.getValues('servicesOffered') ?? []) as string[]
     const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value]
-    form.setValue('servicesOffered', next as ('translation' | 'interpretation' | 'transcription')[], { shouldValidate: true })
+    form.setValue('servicesOffered', next as ServiceValue[], { shouldValidate: true })
   }
 
   const handleProfileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -351,6 +357,39 @@ export function AgencyForm() {
               value={(form.watch('interpreterSettings') ?? []) as string[]}
               onChange={(next) => form.setValue('interpreterSettings', next as AgencyApplicationFormData['interpreterSettings'], { shouldValidate: true })}
               placeholder="Select settings…"
+            />
+          </FormField>
+        </FormSection>
+      )}
+
+      {/* Cognitive Debriefing extras */}
+      {hasCognitiveDebriefing && (
+        <FormSection
+          title="Cognitive Debriefing Profile"
+          description="Agency-level capability declaration. Clinician credentials are captured per linguist on your roster after approval."
+        >
+          <FormField
+            label="COA/PRO instrument types"
+            required
+            error={(errors.cogInstrumentTypes as { message?: string } | undefined)?.message}
+          >
+            <MultiSelect
+              options={COG_INSTRUMENT_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+              value={(form.watch('cogInstrumentTypes') ?? []) as string[]}
+              onChange={(next) => form.setValue('cogInstrumentTypes', next as AgencyApplicationFormData['cogInstrumentTypes'], { shouldValidate: true })}
+              placeholder="Select instrument types…"
+            />
+          </FormField>
+          <FormField
+            label="Therapy areas"
+            required
+            error={(errors.cogTherapyAreas as { message?: string } | undefined)?.message}
+          >
+            <MultiSelect
+              options={COG_THERAPY_OPTIONS.map((t) => ({ value: t.value, label: t.label }))}
+              value={(form.watch('cogTherapyAreas') ?? []) as string[]}
+              onChange={(next) => form.setValue('cogTherapyAreas', next as AgencyApplicationFormData['cogTherapyAreas'], { shouldValidate: true })}
+              placeholder="Select therapy areas…"
             />
           </FormField>
         </FormSection>
