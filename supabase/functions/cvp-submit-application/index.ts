@@ -89,8 +89,9 @@ interface AgencyLanguagePair {
 }
 
 interface AgencyPayload {
-  roleType: "translator" | "interpreter" | "transcriber";
+  roleType: "agency";
   applicantType: "agency";
+  servicesOffered: ("translation" | "interpretation" | "transcription")[];
   email: string;
   phone?: string;
   country: string;
@@ -163,12 +164,13 @@ serve(async (req: Request) => {
     const payload: ApplicationPayload = await req.json();
     const isAgency = isAgencyPayload(payload);
 
-    // Agency path supports translator / interpreter / transcriber.
-    // Individual path supports translator + cognitive_debriefing today;
+    // Agency path: role_type is always 'agency'; the services the agency
+    // covers are declared in agency_services_offered.
+    // Individual path: translator + cognitive_debriefing today;
     // interpreter / transcriber / clinician_reviewer individual flows are
     // a separate (out-of-scope) workstream.
     const validRoles = isAgency
-      ? ["translator", "interpreter", "transcriber"]
+      ? ["agency"]
       : ["translator", "cognitive_debriefing"];
     if (!payload.roleType || !validRoles.includes(payload.roleType)) {
       return jsonResponse({ success: false, error: "Invalid role type for this applicant type" }, 400);
@@ -179,6 +181,19 @@ serve(async (req: Request) => {
       if (!ap.email || !ap.country || !ap.agencyBusinessName || !ap.agencyPrimaryContactName) {
         return jsonResponse(
           { success: false, error: "Missing required agency fields." },
+          400,
+        );
+      }
+      if (!Array.isArray(ap.servicesOffered) || ap.servicesOffered.length === 0) {
+        return jsonResponse(
+          { success: false, error: "Select at least one service your agency offers." },
+          400,
+        );
+      }
+      const validServices = ["translation", "interpretation", "transcription"];
+      if (!ap.servicesOffered.every((s) => validServices.includes(s))) {
+        return jsonResponse(
+          { success: false, error: "Invalid service in servicesOffered." },
           400,
         );
       }
@@ -263,6 +278,7 @@ serve(async (req: Request) => {
       // Agency rows: full_name carries the business name so list views stay
       // consistent; primary contact lives in dedicated columns.
       applicationRow.full_name = ap.agencyBusinessName;
+      applicationRow.agency_services_offered = ap.servicesOffered;
       applicationRow.agency_business_name = ap.agencyBusinessName;
       applicationRow.agency_registration_country = ap.agencyRegistrationCountry;
       applicationRow.agency_tax_id = ap.agencyTaxId;
@@ -272,13 +288,15 @@ serve(async (req: Request) => {
       applicationRow.agency_linguist_count = parseInt(ap.agencyLinguistCount, 10);
       applicationRow.agency_years_operating = parseInt(ap.agencyYearsOperating, 10);
       applicationRow.agency_language_pairs = ap.languagePairs ?? null;
-      // Role-specific extras stored in existing columns where they line up
-      if (ap.roleType === "translator") {
+      // Per-service extras stored in the existing columns where they line up.
+      if (ap.servicesOffered.includes("translation")) {
         applicationRow.domains_offered = ap.domainsOffered ?? [];
-      } else if (ap.roleType === "interpreter") {
+      }
+      if (ap.servicesOffered.includes("interpretation")) {
         applicationRow.interpreter_modes = ap.interpreterModes ?? [];
         applicationRow.interpreter_settings = ap.interpreterSettings ?? [];
-      } else if (ap.roleType === "transcriber") {
+      }
+      if (ap.servicesOffered.includes("transcription")) {
         applicationRow.transcriber_languages = ap.transcriberLanguages ?? [];
         applicationRow.transcriber_specializations = ap.transcriberSpecializations ?? [];
       }

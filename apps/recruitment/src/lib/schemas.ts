@@ -71,7 +71,7 @@ const languagePairSchema = z.object({
   { message: 'Source and target language must be different', path: ['targetLanguageId'] }
 )
 
-// -- Agency-specific shared shape (translator / interpreter / transcriber only) --
+// -- Agency multi-service application --
 
 const agencyContactSchema = z.object({
   agencyPrimaryContactName: z.string().min(2, 'Primary contact name is required'),
@@ -90,8 +90,6 @@ const agencyBusinessSchema = z.object({
   agencyYearsOperating: z.string().min(1, 'Years operating is required'),
 })
 
-// Agency-side language-pair capture is approximate (the roster is the
-// source of truth post-approval) so no per-pair service/rate detail.
 const agencySimplePairSchema = z.object({
   sourceLanguageId: z.string().min(1, 'Source language is required'),
   targetLanguageId: z.string().min(1, 'Target language is required'),
@@ -100,41 +98,66 @@ const agencySimplePairSchema = z.object({
   { message: 'Source and target language must be different', path: ['targetLanguageId'] },
 )
 
-export const translatorAgencySchema = z.object({
-  roleType: z.literal('translator'),
-  applicantType: z.literal('agency'),
-  ...agencyContactSchema.shape,
-  ...agencyBusinessSchema.shape,
-  languagePairs: z.array(agencySimplePairSchema).min(1, 'At least one language pair is required'),
-  domainsOffered: z.array(z.enum(DOMAIN_VALUES)).min(1, 'Select at least one domain'),
-  referralSource: z.string().optional(),
-  notes: z.string().optional(),
-  ...consentSchema.shape,
-})
+const SERVICE_VALUES = ['translation', 'interpretation', 'transcription'] as const
 
-export const interpreterAgencySchema = z.object({
-  roleType: z.literal('interpreter'),
+// Single multi-service agency schema. The applicant picks 1+ services and
+// the form conditionally renders per-service sub-sections. Per-service
+// fields stay optional in zod; the form enforces requireds via UI gating
+// based on the selected services.
+export const agencyApplicationSchema = z.object({
+  roleType: z.literal('agency'),
   applicantType: z.literal('agency'),
+  servicesOffered: z.array(z.enum(SERVICE_VALUES))
+    .min(1, 'Select at least one service your agency offers'),
   ...agencyContactSchema.shape,
   ...agencyBusinessSchema.shape,
-  languagePairs: z.array(agencySimplePairSchema).min(1, 'At least one language pair is required'),
-  interpreterModes: z.array(z.enum(modeValues)).min(1, 'Select at least one interpretation mode'),
-  interpreterSettings: z.array(z.enum(settingValues)).min(1, 'Select at least one setting'),
+  // Language pairs apply to translation + interpretation. Required if
+  // either of those services is picked; optional otherwise.
+  languagePairs: z.array(agencySimplePairSchema).default([]),
+  // Translation extras
+  domainsOffered: z.array(z.enum(DOMAIN_VALUES)).default([]),
+  // Interpretation extras
+  interpreterModes: z.array(z.enum(modeValues)).default([]),
+  interpreterSettings: z.array(z.enum(settingValues)).default([]),
+  // Transcription extras
+  transcriberLanguages: z.array(z.string()).default([]),
+  transcriberSpecializations: z.array(z.enum(transcriberSpecValues)).default([]),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
   ...consentSchema.shape,
-})
-
-export const transcriberAgencySchema = z.object({
-  roleType: z.literal('transcriber'),
-  applicantType: z.literal('agency'),
-  ...agencyContactSchema.shape,
-  ...agencyBusinessSchema.shape,
-  transcriberLanguages: z.array(z.string().min(1)).min(1, 'Select at least one working language'),
-  transcriberSpecializations: z.array(z.enum(transcriberSpecValues)).min(1, 'Select at least one specialization'),
-  referralSource: z.string().optional(),
-  notes: z.string().optional(),
-  ...consentSchema.shape,
+}).superRefine((data, ctx) => {
+  const wantsLangPairs = data.servicesOffered.includes('translation')
+    || data.servicesOffered.includes('interpretation')
+  if (wantsLangPairs && data.languagePairs.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['languagePairs'],
+      message: 'At least one language pair is required when Translation or Interpretation is selected',
+    })
+  }
+  if (data.servicesOffered.includes('translation') && data.domainsOffered.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['domainsOffered'],
+      message: 'Select at least one domain for Translation',
+    })
+  }
+  if (data.servicesOffered.includes('interpretation')) {
+    if (data.interpreterModes.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['interpreterModes'], message: 'Select at least one interpretation mode' })
+    }
+    if (data.interpreterSettings.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['interpreterSettings'], message: 'Select at least one setting' })
+    }
+  }
+  if (data.servicesOffered.includes('transcription')) {
+    if (data.transcriberLanguages.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['transcriberLanguages'], message: 'Select at least one working language' })
+    }
+    if (data.transcriberSpecializations.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['transcriberSpecializations'], message: 'Select at least one specialization' })
+    }
+  }
 })
 
 export const translatorSchema = z.object({
@@ -285,16 +308,12 @@ export type CognitiveDebriefingFormData = z.infer<typeof cognitiveDebriefingSche
 export type InterpreterFormData = z.infer<typeof interpreterSchema>
 export type TranscriberFormData = z.infer<typeof transcriberSchema>
 export type ClinicianReviewerFormData = z.infer<typeof clinicianReviewerSchema>
-export type TranslatorAgencyFormData = z.infer<typeof translatorAgencySchema>
-export type InterpreterAgencyFormData = z.infer<typeof interpreterAgencySchema>
-export type TranscriberAgencyFormData = z.infer<typeof transcriberAgencySchema>
+export type AgencyApplicationFormData = z.infer<typeof agencyApplicationSchema>
 export type ApplicationFormData =
   | TranslatorFormData
   | CognitiveDebriefingFormData
   | InterpreterFormData
   | TranscriberFormData
   | ClinicianReviewerFormData
-  | TranslatorAgencyFormData
-  | InterpreterAgencyFormData
-  | TranscriberAgencyFormData
+  | AgencyApplicationFormData
 export type PairServiceRate = z.infer<typeof pairServiceRateSchema>

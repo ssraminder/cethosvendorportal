@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Apply } from './pages/Apply'
+import { ApplyAgency } from './pages/ApplyAgency'
 import { Confirmation } from './pages/Confirmation'
 import { TestSubmission } from './pages/TestSubmission'
 import { ChooseAssessment } from './pages/ChooseAssessment'
@@ -14,6 +15,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/apply" element={<Apply />} />
+        <Route path="/apply/agency" element={<ApplyAgency />} />
         <Route path="/apply/confirmation" element={<Confirmation />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/choose/:token" element={<ChooseAssessment />} />

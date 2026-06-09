@@ -8,22 +8,16 @@ import { FormSection } from './FormSection'
 import { FormField } from './FormField'
 import { MultiSelect } from './MultiSelect'
 import { ConsentSection } from './FormHelpers'
+import { useLanguages } from '../hooks/useLanguages'
 import { supabase } from '../lib/supabase'
-import {
-  translatorAgencySchema,
-  interpreterAgencySchema,
-  transcriberAgencySchema,
-} from '../lib/schemas'
-import type {
-  TranslatorAgencyFormData,
-  InterpreterAgencyFormData,
-  TranscriberAgencyFormData,
-} from '../lib/schemas'
+import { agencyApplicationSchema } from '../lib/schemas'
+import type { AgencyApplicationFormData } from '../lib/schemas'
 import {
   COUNTRIES,
   REFERRAL_OPTIONS,
   AGENCY_LINGUIST_COUNT_OPTIONS,
   AGENCY_YEARS_OPERATING_OPTIONS,
+  AGENCY_SERVICE_OPTIONS,
 } from '../lib/constants'
 import { DOMAIN_OPTIONS } from '../lib/domains'
 import type { DomainValue } from '../lib/domains'
@@ -32,14 +26,6 @@ import {
   INTERPRETER_SETTINGS,
   TRANSCRIBER_SPECIALIZATIONS,
 } from '../lib/roles'
-import type { Language } from '../types/application'
-
-type AgencyRoleType = 'translator' | 'interpreter' | 'transcriber'
-
-interface AgencyFormProps {
-  role: AgencyRoleType
-  languages: Language[]
-}
 
 const inputClasses = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cethos-teal focus:border-cethos-teal'
 const selectClasses = inputClasses
@@ -48,79 +34,71 @@ const PROFILE_MISSING_ERROR = 'Please upload your company profile PDF before sub
 const PROFILE_NOT_PDF_ERROR = 'Only PDF format is accepted for the company profile.'
 const PROFILE_TOO_LARGE_ERROR = 'Company profile is too large — maximum 10MB.'
 
-export function AgencyForm({ role, languages }: AgencyFormProps) {
+export function AgencyForm() {
   const navigate = useNavigate()
+  const { languages, loading: languagesLoading, error: languagesError } = useLanguages()
   const [profileFile, setProfileFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  type AgencyFormData =
-    | TranslatorAgencyFormData
-    | InterpreterAgencyFormData
-    | TranscriberAgencyFormData
-
-  const schema =
-    role === 'translator' ? translatorAgencySchema :
-    role === 'interpreter' ? interpreterAgencySchema :
-    transcriberAgencySchema
-
-  const form = useForm<AgencyFormData>({
-    resolver: zodResolver(schema) as Resolver<AgencyFormData>,
+  const form = useForm<AgencyApplicationFormData>({
+    resolver: zodResolver(agencyApplicationSchema) as Resolver<AgencyApplicationFormData>,
     defaultValues: {
-      roleType: role,
+      roleType: 'agency',
       applicantType: 'agency',
-      ...(role === 'translator' ? { languagePairs: [{ sourceLanguageId: '', targetLanguageId: '' }], domainsOffered: [] } : {}),
-      ...(role === 'interpreter' ? { languagePairs: [{ sourceLanguageId: '', targetLanguageId: '' }], interpreterModes: [], interpreterSettings: [] } : {}),
-      ...(role === 'transcriber' ? { transcriberLanguages: [], transcriberSpecializations: [] } : {}),
+      servicesOffered: [],
+      languagePairs: [{ sourceLanguageId: '', targetLanguageId: '' }],
+      domainsOffered: [],
+      interpreterModes: [],
+      interpreterSettings: [],
+      transcriberLanguages: [],
+      transcriberSpecializations: [],
       privacyPolicy: false as unknown as true,
       consentTest: false as unknown as true,
       consentUnpaid: false as unknown as true,
-    } as unknown as AgencyFormData,
+    },
   })
 
-  // useFieldArray only used by translator + interpreter agency variants
   const { fields: pairFields, append: addPair, remove: removePair } = useFieldArray({
-    control: form.control as never,
-    name: 'languagePairs' as never,
+    control: form.control,
+    name: 'languagePairs',
   })
+
+  const services = (form.watch('servicesOffered') ?? []) as string[]
+  const hasTranslation = services.includes('translation')
+  const hasInterpretation = services.includes('interpretation')
+  const hasTranscription = services.includes('transcription')
+  const wantsLangPairs = hasTranslation || hasInterpretation
+
+  const toggleService = (value: 'translation' | 'interpretation' | 'transcription') => {
+    const current = (form.getValues('servicesOffered') ?? []) as string[]
+    const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value]
+    form.setValue('servicesOffered', next as ('translation' | 'interpretation' | 'transcription')[], { shouldValidate: true })
+  }
 
   const handleProfileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-    if (!isPdf) {
-      setSubmitError(PROFILE_NOT_PDF_ERROR)
-      e.target.value = ''
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setSubmitError(PROFILE_TOO_LARGE_ERROR)
-      e.target.value = ''
-      return
-    }
+    if (!isPdf) { setSubmitError(PROFILE_NOT_PDF_ERROR); e.target.value = ''; return }
+    if (file.size > 10 * 1024 * 1024) { setSubmitError(PROFILE_TOO_LARGE_ERROR); e.target.value = ''; return }
     setSubmitError(null)
     setProfileFile(file)
   }
 
   const uploadProfileIfPresent = async (): Promise<string | null> => {
-    if (!profileFile) {
-      setSubmitError(PROFILE_MISSING_ERROR)
-      return null
-    }
+    if (!profileFile) { setSubmitError(PROFILE_MISSING_ERROR); return null }
     const clientUuid = crypto.randomUUID()
     const sanitized = profileFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
     const path = `agency-profiles/${clientUuid}/${sanitized}`
     const { error } = await supabase.storage
       .from('cvp-applicant-cvs')
       .upload(path, profileFile, { cacheControl: '3600', upsert: false })
-    if (error) {
-      console.error('Profile upload failed:', error.message)
-      return null
-    }
+    if (error) { console.error('Profile upload failed:', error.message); return null }
     return path
   }
 
-  const onSubmit = async (data: AgencyFormData) => {
+  const onSubmit = async (data: AgencyApplicationFormData) => {
     setSubmitting(true)
     setSubmitError(null)
     try {
@@ -147,8 +125,55 @@ export function AgencyForm({ role, languages }: AgencyFormProps) {
 
   const errors = form.formState.errors as Record<string, { message?: string } | undefined>
 
+  if (languagesLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-500">Loading...</span>
+      </div>
+    )
+  }
+  if (languagesError) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <p className="text-red-700">{languagesError}</p>
+      </div>
+    )
+  }
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {/* Services Offered */}
+      <FormSection title="Services Offered" description="Select every service your agency provides. You can pick more than one.">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {AGENCY_SERVICE_OPTIONS.map((opt) => {
+            const selected = services.includes(opt.value)
+            return (
+              <label
+                key={opt.value}
+                className={`flex items-start gap-2 cursor-pointer rounded-lg border p-3 transition-colors ${
+                  selected ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal' : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => toggleService(opt.value)}
+                  className="mt-0.5 text-cethos-teal focus:ring-cethos-teal shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{opt.hint}</div>
+                </div>
+              </label>
+            )
+          })}
+        </div>
+        {errors.servicesOffered?.message && (
+          <p className="text-sm text-red-600 mt-2">{errors.servicesOffered.message}</p>
+        )}
+      </FormSection>
+
       {/* Primary Contact */}
       <FormSection title="Primary Contact" description="Who at your agency should we reach about this application?">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -206,10 +231,10 @@ export function AgencyForm({ role, languages }: AgencyFormProps) {
         </div>
       </FormSection>
 
-      {/* Company Profile PDF (required, replaces CV) */}
+      {/* Company Profile PDF */}
       <FormSection
         title="Company Profile *"
-        description="Upload your company profile / capabilities deck as a PDF (max 10MB). Required for agency applications."
+        description="Upload your company profile / capabilities deck as a PDF (max 10MB). Required."
       >
         <div className="space-y-2">
           {!profileFile ? (
@@ -240,8 +265,8 @@ export function AgencyForm({ role, languages }: AgencyFormProps) {
         </div>
       </FormSection>
 
-      {/* Language Pairs (translator + interpreter only) */}
-      {(role === 'translator' || role === 'interpreter') && (
+      {/* Language Pairs — required if translation or interpretation selected */}
+      {wantsLangPairs && (
         <FormSection
           title="Language Pairs"
           description="Approximate pairs your agency covers. You will build the detailed roster after approval."
@@ -263,7 +288,7 @@ export function AgencyForm({ role, languages }: AgencyFormProps) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Source *</label>
-                      <select {...form.register(`languagePairs.${index}.sourceLanguageId` as never)} className={selectClasses}>
+                      <select {...form.register(`languagePairs.${index}.sourceLanguageId`)} className={selectClasses}>
                         <option value="">Select...</option>
                         {languages.map((l) => (<option key={l.id} value={l.id}>{l.name}</option>))}
                       </select>
@@ -271,7 +296,7 @@ export function AgencyForm({ role, languages }: AgencyFormProps) {
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Target *</label>
-                      <select {...form.register(`languagePairs.${index}.targetLanguageId` as never)} className={selectClasses}>
+                      <select {...form.register(`languagePairs.${index}.targetLanguageId`)} className={selectClasses}>
                         <option value="">Select...</option>
                         {languages.map((l) => (<option key={l.id} value={l.id}>{l.name}</option>))}
                       </select>
@@ -283,65 +308,70 @@ export function AgencyForm({ role, languages }: AgencyFormProps) {
             })}
             <button
               type="button"
-              onClick={() => addPair({ sourceLanguageId: '', targetLanguageId: '' } as never)}
+              onClick={() => addPair({ sourceLanguageId: '', targetLanguageId: '' })}
               className="flex items-center gap-1.5 text-sm text-cethos-teal hover:text-cethos-teal-light font-medium"
             >
               <Plus className="w-4 h-4" /> Add another language pair
             </button>
+            {(errors.languagePairs as { message?: string } | undefined)?.message && (
+              <p className="text-sm text-red-600">{(errors.languagePairs as { message?: string }).message}</p>
+            )}
           </div>
         </FormSection>
       )}
 
-      {/* Role-specific extras */}
-      {role === 'translator' && (
-        <FormSection title="Domains">
-          <FormField label="Domains offered" required error={(errors.domainsOffered as { message?: string } | undefined)?.message}>
+      {/* Translation extras */}
+      {hasTranslation && (
+        <FormSection title="Translation Profile">
+          <FormField label="Domains" required error={(errors.domainsOffered as { message?: string } | undefined)?.message}>
             <MultiSelect
               options={DOMAIN_OPTIONS.map((d) => ({ value: d.value, label: d.label }))}
-              value={(form.watch('domainsOffered' as never) ?? []) as string[]}
-              onChange={(next) => form.setValue('domainsOffered' as never, (next as DomainValue[]) as never, { shouldValidate: true })}
+              value={(form.watch('domainsOffered') ?? []) as string[]}
+              onChange={(next) => form.setValue('domainsOffered', next as DomainValue[], { shouldValidate: true })}
               placeholder="Select domains…"
             />
           </FormField>
         </FormSection>
       )}
 
-      {role === 'interpreter' && (
+      {/* Interpretation extras */}
+      {hasInterpretation && (
         <FormSection title="Interpretation Profile">
           <FormField label="Modes offered" required error={(errors.interpreterModes as { message?: string } | undefined)?.message}>
             <MultiSelect
               options={INTERPRETER_MODES.map((m) => ({ value: m.value, label: m.label }))}
-              value={(form.watch('interpreterModes' as never) ?? []) as string[]}
-              onChange={(next) => form.setValue('interpreterModes' as never, next as never, { shouldValidate: true })}
+              value={(form.watch('interpreterModes') ?? []) as string[]}
+              onChange={(next) => form.setValue('interpreterModes', next as AgencyApplicationFormData['interpreterModes'], { shouldValidate: true })}
               placeholder="Select modes…"
             />
           </FormField>
           <FormField label="Settings" required error={(errors.interpreterSettings as { message?: string } | undefined)?.message}>
             <MultiSelect
               options={INTERPRETER_SETTINGS.map((s) => ({ value: s.value, label: s.label }))}
-              value={(form.watch('interpreterSettings' as never) ?? []) as string[]}
-              onChange={(next) => form.setValue('interpreterSettings' as never, next as never, { shouldValidate: true })}
+              value={(form.watch('interpreterSettings') ?? []) as string[]}
+              onChange={(next) => form.setValue('interpreterSettings', next as AgencyApplicationFormData['interpreterSettings'], { shouldValidate: true })}
               placeholder="Select settings…"
             />
           </FormField>
         </FormSection>
       )}
 
-      {role === 'transcriber' && (
+      {/* Transcription extras */}
+      {hasTranscription && (
         <FormSection title="Transcription Profile">
           <FormField label="Working languages" required error={(errors.transcriberLanguages as { message?: string } | undefined)?.message}>
             <MultiSelect
               options={languages.map((l) => ({ value: l.id, label: l.name }))}
-              value={(form.watch('transcriberLanguages' as never) ?? []) as string[]}
-              onChange={(next) => form.setValue('transcriberLanguages' as never, next as never, { shouldValidate: true })}
+              value={(form.watch('transcriberLanguages') ?? []) as string[]}
+              onChange={(next) => form.setValue('transcriberLanguages', next, { shouldValidate: true })}
               placeholder="Select languages…"
             />
           </FormField>
           <FormField label="Specializations" required error={(errors.transcriberSpecializations as { message?: string } | undefined)?.message}>
             <MultiSelect
               options={TRANSCRIBER_SPECIALIZATIONS.map((s) => ({ value: s.value, label: s.label }))}
-              value={(form.watch('transcriberSpecializations' as never) ?? []) as string[]}
-              onChange={(next) => form.setValue('transcriberSpecializations' as never, next as never, { shouldValidate: true })}
+              value={(form.watch('transcriberSpecializations') ?? []) as string[]}
+              onChange={(next) => form.setValue('transcriberSpecializations', next as AgencyApplicationFormData['transcriberSpecializations'], { shouldValidate: true })}
               placeholder="Select specializations…"
             />
           </FormField>

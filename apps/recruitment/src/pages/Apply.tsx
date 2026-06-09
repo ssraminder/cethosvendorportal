@@ -11,7 +11,6 @@ import { LanguagePairRow } from '../components/LanguagePairRow'
 import { MultiSelect } from '../components/MultiSelect'
 import { RankedMultiSelect } from '../components/RankedMultiSelect'
 import { CvSection, ConsentSection } from '../components/FormHelpers'
-import { AgencyForm } from '../components/AgencyForm'
 import { useLanguages } from '../hooks/useLanguages'
 import { supabase } from '../lib/supabase'
 import {
@@ -44,7 +43,6 @@ import {
   COG_ECOA_PLATFORM_OPTIONS,
   COG_SPECIAL_POPULATIONS_OPTIONS,
   TIMEZONE_OPTIONS,
-  APPLICANT_TYPE_OPTIONS,
 } from '../lib/constants'
 import { DOMAIN_OPTIONS } from '../lib/domains'
 import type { DomainValue } from '../lib/domains'
@@ -78,15 +76,10 @@ export function Apply() {
     return (r && VALID_ROLES.includes(r as RoleType)) ? (r as RoleType) : 'translator'
   })()
   const [roleType, setRoleType] = useState<RoleType>(initialRole)
-  const [applicantType, setApplicantType] = useState<'individual' | 'agency'>('individual')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [cvFile, setCvFile] = useState<File | null>(null)
   const [cogSampleFile, setCogSampleFile] = useState<File | null>(null)
-
-  const AGENCY_ELIGIBLE_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber']
-  const canApplyAsAgency = AGENCY_ELIGIBLE_ROLES.includes(roleType)
-  const showAgencyForm = canApplyAsAgency && applicantType === 'agency'
   const { languages, loading: languagesLoading, error: languagesError } = useLanguages()
   const navigate = useNavigate()
 
@@ -193,11 +186,6 @@ export function Apply() {
   const handleRoleChange = (newRole: RoleType) => {
     setRoleType(newRole)
     setSubmitError(null)
-    // Reset applicant type so switching to a non-agency-eligible role doesn't
-    // leave a stale 'agency' selection lurking when the user toggles back.
-    if (!AGENCY_ELIGIBLE_ROLES.includes(newRole)) {
-      setApplicantType('individual')
-    }
   }
 
   const handleToggleCheckbox = useCallback((
@@ -429,44 +417,21 @@ export function Apply() {
           </div>
         </FormSection>
 
-        {/* Applicant type toggle — only for agency-eligible roles */}
-        {canApplyAsAgency && (
-          <FormSection title="I am applying as:">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {APPLICANT_TYPE_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex items-start gap-2 cursor-pointer rounded-lg border p-3 transition-colors ${
-                    applicantType === opt.value
-                      ? 'border-cethos-teal bg-cethos-bg-blue text-cethos-teal'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="applicantType"
-                    value={opt.value}
-                    checked={applicantType === opt.value}
-                    onChange={() => { setApplicantType(opt.value); setSubmitError(null) }}
-                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">{opt.label}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{opt.hint}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </FormSection>
-        )}
-
-        {/* Agency form (translator / interpreter / transcriber only) */}
-        {showAgencyForm && (
-          <AgencyForm role={roleType as 'translator' | 'interpreter' | 'transcriber'} languages={languages} />
-        )}
+        {/* Banner: agency applicants belong on the dedicated form. */}
+        <div className="bg-cethos-bg-blue border border-cethos-teal/30 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-cethos-navy">
+            Applying as a translation company or agency? You'll capture multiple services in one application.
+          </p>
+          <a
+            href="/apply/agency"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-cethos-teal text-white text-sm font-medium hover:bg-cethos-teal-light transition-colors whitespace-nowrap"
+          >
+            Apply as an Agency →
+          </a>
+        </div>
 
         {/* ===== TRANSLATOR FORM (individual) ===== */}
-        {roleType === 'translator' && !showAgencyForm && (
+        {roleType === 'translator' && (
           <form onSubmit={translatorForm.handleSubmit(onTranslatorSubmit)} className="space-y-6">
             {/* Section 1: Personal Information */}
             <FormSection title="Personal Information">
@@ -1352,7 +1317,7 @@ export function Apply() {
         )}
 
         {/* ===== INTERPRETER FORM (individual) ===== */}
-        {roleType === 'interpreter' && !showAgencyForm && (
+        {roleType === 'interpreter' && (
           <form onSubmit={interpreterForm.handleSubmit(onInterpreterSubmit)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1506,7 +1471,7 @@ export function Apply() {
         )}
 
         {/* ===== TRANSCRIBER FORM (individual) ===== */}
-        {roleType === 'transcriber' && !showAgencyForm && (
+        {roleType === 'transcriber' && (
           <form onSubmit={transcriberForm.handleSubmit(onTranscriberSubmit)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
