@@ -96,7 +96,10 @@ export function AgencyForm() {
     if (!profileFile) { setSubmitError(PROFILE_MISSING_ERROR); return null }
     const clientUuid = crypto.randomUUID()
     const sanitized = profileFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
-    const path = `agency-profiles/${clientUuid}/${sanitized}`
+    // Bucket RLS for anon insert requires the first path segment to be a
+    // valid UUID; the agency vs CV distinction lives on the application
+    // row's applicant_type, not the storage path.
+    const path = `${clientUuid}/profile_${sanitized}`
     const { error } = await supabase.storage
       .from('cvp-applicant-cvs')
       .upload(path, profileFile, { cacheControl: '3600', upsert: false })
