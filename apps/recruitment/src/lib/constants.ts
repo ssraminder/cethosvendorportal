@@ -117,6 +117,38 @@ export const COG_INTERVIEW_MODE_OPTIONS = [
   { value: 'video', label: 'Video' },
 ] as const
 
+export const COG_SPECIAL_POPULATIONS_OPTIONS = [
+  { value: 'pediatric', label: 'Pediatric' },
+  { value: 'elderly', label: 'Elderly' },
+  { value: 'cognitively_impaired', label: 'Cognitively impaired' },
+  { value: 'rare_disease', label: 'Rare disease' },
+  { value: 'immigrant_refugee', label: 'Immigrant / refugee' },
+  { value: 'lgbtq', label: 'LGBTQ+' },
+  { value: 'none', label: 'None / general adult only' },
+] as const
+
+// Curated IANA time zones — common across CRO/pharma debrief work.
+export const TIMEZONE_OPTIONS = [
+  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (PT)' },
+  { value: 'America/Denver', label: 'America/Denver (MT)' },
+  { value: 'America/Chicago', label: 'America/Chicago (CT)' },
+  { value: 'America/Toronto', label: 'America/Toronto (ET)' },
+  { value: 'America/New_York', label: 'America/New_York (ET)' },
+  { value: 'America/Sao_Paulo', label: 'America/Sao_Paulo (BRT)' },
+  { value: 'Europe/London', label: 'Europe/London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Europe/Paris (CET/CEST)' },
+  { value: 'Europe/Berlin', label: 'Europe/Berlin (CET/CEST)' },
+  { value: 'Europe/Madrid', label: 'Europe/Madrid (CET/CEST)' },
+  { value: 'Africa/Johannesburg', label: 'Africa/Johannesburg (SAST)' },
+  { value: 'Asia/Dubai', label: 'Asia/Dubai (GST)' },
+  { value: 'Asia/Kolkata', label: 'Asia/Kolkata (IST)' },
+  { value: 'Asia/Singapore', label: 'Asia/Singapore (SGT)' },
+  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (JST)' },
+  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (CST)' },
+  { value: 'Australia/Sydney', label: 'Australia/Sydney (AEST/AEDT)' },
+  { value: 'Pacific/Auckland', label: 'Pacific/Auckland (NZST/NZDT)' },
+] as const
+
 export const COG_ECOA_PLATFORM_OPTIONS = [
   { value: 'signant', label: 'Signant Health' },
   { value: 'clario_ert', label: 'Clario / ERT' },

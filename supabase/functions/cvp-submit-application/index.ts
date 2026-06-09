@@ -68,6 +68,16 @@ interface CognitiveDebriefingPayload {
   cogRateExpectation: string;
   cogRateCurrency: string;
   cogSampleReportPath?: string | null;
+  cogEmaFamiliarity: string;
+  cogConceptElicitationYears: string;
+  cogSpecialPopulations?: string[];
+  cogGcpTrained: boolean;
+  cogGcpYear?: string;
+  cogLicenseType?: string;
+  cogLicenseJurisdiction?: string;
+  cogLicenseNumber?: string;
+  cogLicenseActive?: boolean;
+  cogTimezone: string;
   referralSource?: string;
   notes?: string;
   cvStoragePath?: string;
@@ -232,6 +242,18 @@ serve(async (req: Request) => {
       applicationRow.cog_availability = cp.cogAvailability;
       applicationRow.cog_rate_expectation = parseFloat(cp.cogRateExpectation);
       applicationRow.cog_rate_currency = cp.cogRateCurrency;
+      applicationRow.cog_ema_familiarity = cp.cogEmaFamiliarity;
+      applicationRow.cog_concept_elicitation_years = cp.cogConceptElicitationYears;
+      applicationRow.cog_special_populations = cp.cogSpecialPopulations ?? [];
+      applicationRow.cog_gcp_trained = cp.cogGcpTrained;
+      applicationRow.cog_gcp_year = cp.cogGcpYear
+        ? parseInt(cp.cogGcpYear, 10)
+        : null;
+      applicationRow.cog_license_type = cp.cogLicenseType ?? null;
+      applicationRow.cog_license_jurisdiction = cp.cogLicenseJurisdiction ?? null;
+      applicationRow.cog_license_number = cp.cogLicenseNumber ?? null;
+      applicationRow.cog_license_active = cp.cogLicenseActive ?? null;
+      applicationRow.cog_timezone = cp.cogTimezone;
     }
 
     const { data: application, error: insertError } = await supabase

@@ -41,6 +41,8 @@ import {
   COG_INTERVIEWS_CONDUCTED_OPTIONS,
   COG_INTERVIEW_MODE_OPTIONS,
   COG_ECOA_PLATFORM_OPTIONS,
+  COG_SPECIAL_POPULATIONS_OPTIONS,
+  TIMEZONE_OPTIONS,
 } from '../lib/constants'
 import { DOMAIN_OPTIONS } from '../lib/domains'
 import type { DomainValue } from '../lib/domains'
@@ -169,8 +171,11 @@ export function Apply() {
       cogAdditionalLanguages: [],
       cogInterviewModes: [],
       cogEcoaPlatforms: [],
+      cogSpecialPopulations: [],
       cogPriorDebriefReports: false,
       cogConductsDirectPatientInterviews: false,
+      cogGcpTrained: false,
+      cogLicenseActive: false,
       cogRateCurrency: 'CAD',
       privacyPolicy: false as unknown as true,
       consentTest: false as unknown as true,
@@ -1036,9 +1041,114 @@ export function Apply() {
               </label>
             </FormSection>
 
+            {/* Section 5b: Regulatory & Specialized Experience */}
+            <FormSection title="Regulatory & Specialized Experience">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Familiar with EMA COA guidance?" required error={cogForm.formState.errors.cogEmaFamiliarity?.message}>
+                  <div className="flex gap-4">
+                    {FAMILIARITY_OPTIONS.map((opt) => (
+                      <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          {...cogForm.register('cogEmaFamiliarity')}
+                          value={opt.value}
+                          className="text-cethos-teal focus:ring-cethos-teal"
+                        />
+                        <span className="text-sm text-cethos-navy">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </FormField>
+
+                <FormField
+                  label="Concept-elicitation experience"
+                  required
+                  hint="Distinct from cognitive debriefing — interviewing patients to surface concepts before a measure exists."
+                  error={cogForm.formState.errors.cogConceptElicitationYears?.message}
+                >
+                  <select {...cogForm.register('cogConceptElicitationYears')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EXPERIENCE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+
+              <FormField
+                label="Special populations worked with"
+                hint="Optional. Select all that apply."
+                error={cogForm.formState.errors.cogSpecialPopulations?.message as string | undefined}
+              >
+                <MultiSelect
+                  options={COG_SPECIAL_POPULATIONS_OPTIONS.map((p) => ({ value: p.value, label: p.label }))}
+                  value={(cogForm.watch('cogSpecialPopulations') ?? []) as string[]}
+                  onChange={(next) => cogForm.setValue(
+                    'cogSpecialPopulations',
+                    next as CognitiveDebriefingFormData['cogSpecialPopulations'],
+                    { shouldValidate: true, shouldDirty: true },
+                  )}
+                  placeholder="Select populations…"
+                />
+              </FormField>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    {...cogForm.register('cogGcpTrained')}
+                    className="text-cethos-teal focus:ring-cethos-teal"
+                  />
+                  <span className="text-sm text-cethos-navy">I have completed Good Clinical Practice (GCP) training.</span>
+                </label>
+                {cogForm.watch('cogGcpTrained') && (
+                  <div className="ml-6">
+                    <FormField label="Year of most recent GCP training">
+                      <input
+                        {...cogForm.register('cogGcpYear')}
+                        type="number"
+                        min="2000"
+                        max="2030"
+                        className={inputClasses}
+                        placeholder="e.g. 2025"
+                      />
+                    </FormField>
+                  </div>
+                )}
+              </div>
+            </FormSection>
+
+            {/* Section 5c: Professional License (optional, clinician-style CDs) */}
+            <FormSection title="Professional License (optional)">
+              <p className="text-sm text-gray-500 -mt-2">
+                Only complete if you hold a professional license (RN, MD, PsyD, LCSW, etc.). All fields optional.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="License type">
+                  <input {...cogForm.register('cogLicenseType')} className={inputClasses} placeholder="e.g. RN, MD, PsyD" />
+                </FormField>
+                <FormField label="Jurisdiction">
+                  <input {...cogForm.register('cogLicenseJurisdiction')} className={inputClasses} placeholder="e.g. California, Ontario, UK" />
+                </FormField>
+                <FormField label="License number">
+                  <input {...cogForm.register('cogLicenseNumber')} className={inputClasses} placeholder="License #" />
+                </FormField>
+                <FormField label="Status">
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      {...cogForm.register('cogLicenseActive')}
+                      className="text-cethos-teal focus:ring-cethos-teal"
+                    />
+                    <span className="text-sm text-cethos-navy">Active and in good standing</span>
+                  </label>
+                </FormField>
+              </div>
+            </FormSection>
+
             {/* Section 6: Availability & Rate */}
             <FormSection title="Availability & Rate">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Availability" required error={cogForm.formState.errors.cogAvailability?.message}>
                   <select {...cogForm.register('cogAvailability')} className={selectClasses}>
                     <option value="">Select...</option>
@@ -1048,6 +1158,22 @@ export function Apply() {
                   </select>
                 </FormField>
 
+                <FormField
+                  label="Time zone"
+                  required
+                  hint="For scheduling interviews across geographies."
+                  error={cogForm.formState.errors.cogTimezone?.message}
+                >
+                  <select {...cogForm.register('cogTimezone')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {TIMEZONE_OPTIONS.map((tz) => (
+                      <option key={tz.value} value={tz.value}>{tz.label}</option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   label="Hourly rate"
                   required
