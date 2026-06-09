@@ -30,15 +30,27 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Status:** active.
 - **Affects:** [client/pages/admin/RecruitmentDetail.tsx](client/pages/admin/RecruitmentDetail.tsx) (admin repo).
 
-### 2026-06-09 — Agency applicant onboarding: no upfront CV; blinded roster + per-job picker comes in a later phase (PLANNED)
-- **Decision:** When the join.cethos.com forms learn to distinguish individuals from agencies, the agency path will NOT collect a CV at application time. After approval, agencies will build a **blinded-CV roster** inside their vendor profile, and on each job they will pick which linguist from that roster performed the work. The per-job picker drives QMS qualification gating and downstream payable attribution. This is a planned phase, not yet scheduled — explicitly to be discussed before any UI/schema work starts.
-- **Implications for application-form work:** The simpler is-business toggle (business name / registration country / tax ID / company profile PDF) is a tempting half-step but should NOT ship in isolation — agencies arriving at a half-built path will ask "where do I add my linguists?". Either ship the toggle + roster + per-job picker as one phase, or keep agencies applying through the individual form for now (current state) and capture the agency-vs-individual decision later when the roster phase lands.
-- **Scope constraints when the phase ships:**
-  - **Only for roles where agency vendors are legitimate:** translator, interpreter, transcriber. NOT clinician_reviewer or cognitive_debriefing — those forms vet a specific named person's credentials/license/interview volume, and the per-job picker can't substitute for that screening at application time (ISO 17100 §5.3 + QMS gating).
-  - **Blinded CVs:** roster CVs are stored without applicant-identifying contact info (Cethos handles assignment via the agency contact, not direct outreach to the named linguist).
-  - **Hooks into existing model:** `vendors.business_name`, `vendor_type='agency'`, `contractor_type='business'` already exist (shipped 2026-06-04). `step_deliveries.vendor_identifier` already captures the per-delivery linguist identifier for agencies. The roster table is new; the per-job picker should write the chosen linguist into `vendor_identifier` plus a new structured FK so QMS can read which qualified individual performed the step.
-- **Status:** planned (no PR yet). Captured here so future sessions don't redesign the agency-onboarding flow when the question resurfaces.
-- **Affects:** future work on `apps/recruitment/src/pages/Apply.tsx`, future `vendor_roster` table, vendor portal job-submission UI, QMS competence-evidence resolution path.
+### 2026-06-09 — Agency vendor onboarding + blinded roster + per-job linguist picker (PLANNED, decisions captured)
+- **Decision:** Sequenced 7-PR build (A1–A7) for agency-applicant flow on join.cethos.com + blinded-roster vendor portal + per-job linguist picker. To be developed right after the CD form expansion. Eligible roles: translator, interpreter, transcriber. NOT clinician_reviewer or cognitive_debriefing (those vet a specific named person).
+- **Open decisions answered (2026-06-09):**
+  1. **Existing agency-shaped vendors require migration** — bulk-convert vendors where `vendors.business_name` is populated to `vendor_type='agency'`, mark roster-required, prompt at next portal login. Don't grandfather.
+  2. **Roster strictly private to the agency** — display name is even optional for the agency itself; RLS denies all staff/admin SELECT on roster CV path + display name. Cethos sees only roster UUID + AI completeness flag. Product copy must say "Your roster is private. Cethos sees only the AI completeness flag + a roster UUID."
+  3. **Per-job picker always required** for agency deliveries (every role, every job), not just regulated work.
+  4. **CV redaction is the agency's responsibility** — Cethos does not run a PII redactor. But Cethos DOES run an **AI completeness vetting pass** on every uploaded CV (new edge function `cvp-vet-roster-cv` using Anthropic doc input). Required CV completeness fields: education, years experience, language pairs claimed, **specializations (explicit ask per user)**, role-relevant credentials. AI returns `{ has_*, completeness_score, missing_fields[] }`. Agency sees the detail; staff sees only the boolean pass/fail. **A roster linguist is not selectable on a job until CV passes vetting.** CV upload is required for every roster row.
+  5. **Cross-agency roster reuse is out of scope** — each agency's roster is fully siloed.
+  6. **Application-time language-pair capture is required** — agencies declare approximate pair list at apply time for early routing; roster remains source of truth post-approval.
+  7. **Per-job linguist pick: editable until step approval, then WORM** — pick at accept, freely changeable until Cethos approves the step (status='approved'), then locked forever for audit. Every swap writes a `notification_log` row with `event_type='roster_swap'` (prior + new linguist + reason). Picker eligibility filter live (language pair + service + QMS qualification). Swap to ineligible returns 409 like the §6.2 separation check.
+- **Privacy contract is the load-bearing piece** — RLS on `vendor_roster_linguists` must deny staff SELECT on `display_name` and `redacted_cv_path` columns (only agency-owner role + service_role read). Any admin viewer that surfaces roster info shows only UUID + pass/fail flag + role + language pairs + QMS qualification state. The promise to agencies is product-level, but the DB-level RLS is what makes it real.
+- **PR sequence:**
+  - A1: Application toggle + agency-specific columns + UI + edge fn variant
+  - A2: Approval flow + existing-agency bulk migration
+  - A3: Roster table schema + vendor portal CRUD + RLS + `cvp-vet-roster-cv` AI edge function
+  - A4: QMS qualification at roster grain (`qms.role_qualifications.vendor_roster_linguist_id`)
+  - A5: Per-job picker on accept + swap audit + WORM on approval
+  - A6: Admin viewer (roster tab on agency vendor profile; UUID + flags only, no CV access)
+  - A7: WORM trigger extension + notify-step-lifecycle includes roster context for agency steps
+- **Status:** planned with all open decisions answered. Ready to start PR A1.
+- **Affects:** future work on `apps/recruitment/src/pages/Apply.tsx`, `cvp-submit-application`, `cvp-approve-application`, new `vendor_roster_linguists` table + RLS, new `cvp-vet-roster-cv` edge function, vendor portal Roster tab + DeliverModal picker, admin RecruitmentDetail + AdminVendorDetail, `qms.role_qualifications` schema change, WORM trigger extension.
 
 ### 2026-06-09 — CD application form: restore CV upload + add rate / interview specifics / eCOA platforms (PR #224)
 - **Decision:** Expand the Cognitive Debriefing applicant form on join.cethos.com to capture rate, interview volume + modes, direct-patient-interview confirmation, remote eCOA platforms, and a (mandatory) CV. Reuse the existing `cv_storage_path`, `cog_rate_expectation`, `cog_rate_currency`, and `cog_sample_report_path` columns that already existed on `cvp_applications` but were ignored by the schema/form/edge function.
