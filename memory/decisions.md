@@ -18,6 +18,15 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-09 — Agency services now include Cognitive Debriefing (PR #228)
+- **Decision:** Add `cognitive_debriefing` as a 4th selectable service on `/apply/agency`. Supersedes the earlier scoping decision ("CD stays individual-only because the form vets a named credentialed person") — that constraint was correct for the individual-applicant path but not for agencies, since the blinded-roster + per-job linguist picker model (PRs A3-A5) handles per-linguist clinician credentials post-approval.
+- **Why:** LSPs and CROs commonly offer CD alongside translation/interpretation, sub-contracted to in-house clinicians or vetted external clinicians on their roster. The form change is small (one chip in the Services Offered grid + a conditional CD Profile sub-section); the heavy lifting for clinician credential vetting moves to the roster build in PR A3.
+- **Agency-level CD declaration captures:** COA/PRO instrument types + therapy areas (both required when CD is picked). Language Pairs trigger also includes CD (study source → patient interview target).
+- **Out of scope for this PR:** per-linguist license / GCP / EMA familiarity / instrument depth — those go on the blinded roster (PR A3+).
+- **No DB migration needed:** `agency_services_offered` is text[] with no value CHECK; the existing `cog_instrument_types` + `cog_therapy_areas` columns receive the agency-level capability arrays.
+- **Verification:** Live verified on join.cethos.com — all 4 service options render; picking CD reveals "Cognitive Debriefing Profile" with required Instrument Types + Therapy Areas fields, plus Language Pairs; other service profile sub-sections stay hidden.
+- **Status:** active. Supersedes the "translator/interpreter/transcriber only" scope captured in the 2026-06-09 Agency-onboarding planning entry.
+
 ### 2026-06-09 — Agency-onboarding PR A1 → A1b (dedicated /apply/agency route, multi-service form) shipped
 - **Decision evolution:** Original PR A1 (#226) added an "Individual / Agency" toggle inline on the translator/interpreter/transcriber forms. User feedback caught the problem mid-stream: real LSPs offer multiple services in one application, and forcing them to pick a single role at apply time was wrong. PR A1b (#227) refactors agencies onto a dedicated `/apply/agency` route with a multi-service form (Translation / Interpretation / Transcription as checkboxes). Per-service sub-sections render conditionally based on the picks.
 - **Schema model:** Agency rows now use `role_type='agency'` + new `agency_services_offered text[]`. Migration `20260609_agency_services_offered_role_type.sql` widens the role_type CHECK and adds a cross-check constraint enforcing `applicant_type='agency' ⟺ role_type='agency'`. Per-service extras (domains for translation, modes+settings for interpretation, languages+specializations for transcription) reuse existing columns.
