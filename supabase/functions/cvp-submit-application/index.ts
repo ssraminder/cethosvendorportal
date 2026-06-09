@@ -91,7 +91,7 @@ interface AgencyLanguagePair {
 interface AgencyPayload {
   roleType: "agency";
   applicantType: "agency";
-  servicesOffered: ("translation" | "interpretation" | "transcription")[];
+  servicesOffered: ("translation" | "interpretation" | "transcription" | "cognitive_debriefing")[];
   email: string;
   phone?: string;
   country: string;
@@ -110,6 +110,8 @@ interface AgencyPayload {
   interpreterSettings?: string[];
   transcriberLanguages?: string[];
   transcriberSpecializations?: string[];
+  cogInstrumentTypes?: string[];
+  cogTherapyAreas?: string[];
   referralSource?: string;
   notes?: string;
 }
@@ -190,7 +192,7 @@ serve(async (req: Request) => {
           400,
         );
       }
-      const validServices = ["translation", "interpretation", "transcription"];
+      const validServices = ["translation", "interpretation", "transcription", "cognitive_debriefing"];
       if (!ap.servicesOffered.every((s) => validServices.includes(s))) {
         return jsonResponse(
           { success: false, error: "Invalid service in servicesOffered." },
@@ -299,6 +301,10 @@ serve(async (req: Request) => {
       if (ap.servicesOffered.includes("transcription")) {
         applicationRow.transcriber_languages = ap.transcriberLanguages ?? [];
         applicationRow.transcriber_specializations = ap.transcriberSpecializations ?? [];
+      }
+      if (ap.servicesOffered.includes("cognitive_debriefing")) {
+        applicationRow.cog_instrument_types = ap.cogInstrumentTypes ?? [];
+        applicationRow.cog_therapy_areas = ap.cogTherapyAreas ?? [];
       }
     } else if (payload.roleType === "translator") {
       const ip = payload as TranslatorPayload | CognitiveDebriefingPayload;

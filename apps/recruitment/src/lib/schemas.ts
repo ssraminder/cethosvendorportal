@@ -98,7 +98,9 @@ const agencySimplePairSchema = z.object({
   { message: 'Source and target language must be different', path: ['targetLanguageId'] },
 )
 
-const SERVICE_VALUES = ['translation', 'interpretation', 'transcription'] as const
+const SERVICE_VALUES = ['translation', 'interpretation', 'transcription', 'cognitive_debriefing'] as const
+const COG_INSTRUMENT_VALUES = ['pro', 'clinro', 'obro', 'interview_guide', 'survey'] as const
+const COG_THERAPY_VALUES = ['oncology', 'rheumatology', 'neurology', 'cardiology', 'rare_disease', 'general', 'other'] as const
 
 // Single multi-service agency schema. The applicant picks 1+ services and
 // the form conditionally renders per-service sub-sections. Per-service
@@ -122,17 +124,22 @@ export const agencyApplicationSchema = z.object({
   // Transcription extras
   transcriberLanguages: z.array(z.string()).default([]),
   transcriberSpecializations: z.array(z.enum(transcriberSpecValues)).default([]),
+  // Cognitive Debriefing extras (agency-level capability declaration; the
+  // per-linguist clinician credentials live on the blinded roster in PR A3+).
+  cogInstrumentTypes: z.array(z.enum(COG_INSTRUMENT_VALUES)).default([]),
+  cogTherapyAreas: z.array(z.enum(COG_THERAPY_VALUES)).default([]),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
   ...consentSchema.shape,
 }).superRefine((data, ctx) => {
   const wantsLangPairs = data.servicesOffered.includes('translation')
     || data.servicesOffered.includes('interpretation')
+    || data.servicesOffered.includes('cognitive_debriefing')
   if (wantsLangPairs && data.languagePairs.length === 0) {
     ctx.addIssue({
       code: 'custom',
       path: ['languagePairs'],
-      message: 'At least one language pair is required when Translation or Interpretation is selected',
+      message: 'At least one language pair is required for the selected services',
     })
   }
   if (data.servicesOffered.includes('translation') && data.domainsOffered.length === 0) {
@@ -156,6 +163,14 @@ export const agencyApplicationSchema = z.object({
     }
     if (data.transcriberSpecializations.length === 0) {
       ctx.addIssue({ code: 'custom', path: ['transcriberSpecializations'], message: 'Select at least one specialization' })
+    }
+  }
+  if (data.servicesOffered.includes('cognitive_debriefing')) {
+    if (data.cogInstrumentTypes.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['cogInstrumentTypes'], message: 'Select at least one COA/PRO instrument type' })
+    }
+    if (data.cogTherapyAreas.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['cogTherapyAreas'], message: 'Select at least one therapy area' })
     }
   }
 })

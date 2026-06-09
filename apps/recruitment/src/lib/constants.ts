@@ -126,6 +126,7 @@ export const AGENCY_SERVICE_OPTIONS = [
   { value: 'translation', label: 'Translation & Review', hint: 'Translation, review, proofreading, MTPE.' },
   { value: 'interpretation', label: 'Interpretation', hint: 'Consecutive, simultaneous, OPI, VRI.' },
   { value: 'transcription', label: 'Transcription', hint: 'Audio transcription across domains.' },
+  { value: 'cognitive_debriefing', label: 'Cognitive Debriefing', hint: 'COA/PRO interviewing + linguistic validation.' },
 ] as const
 
 // Stored as integer (lower bound of the bracket) — same pattern as
