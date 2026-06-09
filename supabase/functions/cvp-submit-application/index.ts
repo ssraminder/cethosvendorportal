@@ -60,7 +60,14 @@ interface CognitiveDebriefingPayload {
   cogIsporFamiliarity: string;
   cogFdaFamiliarity: string;
   cogPriorDebriefReports: boolean;
+  cogInterviewsConducted: string;
+  cogConductsDirectPatientInterviews: boolean;
+  cogInterviewModes: string[];
+  cogEcoaPlatforms?: string[];
   cogAvailability: string;
+  cogRateExpectation: string;
+  cogRateCurrency: string;
+  cogSampleReportPath?: string | null;
   referralSource?: string;
   notes?: string;
   cvStoragePath?: string;
@@ -209,13 +216,22 @@ serve(async (req: Request) => {
       applicationRow.cog_degree_field = cp.cogDegreeField;
       applicationRow.cog_credentials = cp.cogCredentials ?? null;
       applicationRow.cog_native_languages = cp.cogNativeLanguages ?? [];
+      applicationRow.cog_additional_languages = cp.cogAdditionalLanguages ?? [];
       applicationRow.cog_instrument_types = cp.cogInstrumentTypes;
       applicationRow.cog_therapy_areas = cp.cogTherapyAreas;
       applicationRow.cog_pharma_clients = cp.cogPharmaClients ?? null;
       applicationRow.cog_ispor_familiarity = cp.cogIsporFamiliarity;
       applicationRow.cog_fda_familiarity = cp.cogFdaFamiliarity;
       applicationRow.cog_prior_debrief_reports = cp.cogPriorDebriefReports;
+      applicationRow.cog_sample_report_path = cp.cogSampleReportPath ?? null;
+      applicationRow.cog_interviews_conducted = cp.cogInterviewsConducted;
+      applicationRow.cog_conducts_direct_patient_interviews =
+        cp.cogConductsDirectPatientInterviews;
+      applicationRow.cog_interview_modes = cp.cogInterviewModes ?? [];
+      applicationRow.cog_ecoa_platforms = cp.cogEcoaPlatforms ?? [];
       applicationRow.cog_availability = cp.cogAvailability;
+      applicationRow.cog_rate_expectation = parseFloat(cp.cogRateExpectation);
+      applicationRow.cog_rate_currency = cp.cogRateCurrency;
     }
 
     const { data: application, error: insertError } = await supabase
