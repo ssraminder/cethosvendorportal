@@ -248,7 +248,12 @@ serve(async (req: Request) => {
     });
   }
 
-  if (approveIds.length === 0) {
+  const isAgencyApp = app.applicant_type === "agency" || app.role_type === "agency";
+
+  // Agency applications never have test combinations at the agency level
+  // (per-linguist qualifications live on the blinded roster). The "no
+  // combinations" gate only applies to individual paths.
+  if (!isAgencyApp && approveIds.length === 0) {
     return json({ success: false, error: "no_combinations_to_approve" }, 400);
   }
 
@@ -268,8 +273,6 @@ serve(async (req: Request) => {
     service_type: c.service_type,
     approved_rate: c.approved_rate,
   }));
-
-  const isAgencyApp = app.applicant_type === "agency" || app.role_type === "agency";
 
   let vendorId: string | null = null;
   const { data: existingVendor } = await supabase
