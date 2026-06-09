@@ -269,6 +269,8 @@ serve(async (req: Request) => {
     approved_rate: c.approved_rate,
   }));
 
+  const isAgencyApp = app.applicant_type === "agency" || app.role_type === "agency";
+
   let vendorId: string | null = null;
   const { data: existingVendor } = await supabase
     .from("vendors")
@@ -278,6 +280,74 @@ serve(async (req: Request) => {
 
   if (existingVendor?.id) {
     vendorId = existingVendor.id;
+    // If we already had a vendor row (e.g. the same agency re-applied or
+    // staff manually created a stub), make sure agency mirror fields and
+    // the roster gate are brought up to date.
+    if (isAgencyApp) {
+      const agencyUpdate: Record<string, unknown> = {
+        vendor_type: "agency",
+        contractor_type: "business",
+        business_name: app.agency_business_name ?? app.full_name ?? null,
+        tax_id: app.agency_tax_id ?? null,
+        agency_services_offered: app.agency_services_offered ?? null,
+        agency_registration_country: app.agency_registration_country ?? null,
+        agency_company_profile_path: app.agency_company_profile_path ?? null,
+        agency_linguist_count: app.agency_linguist_count ?? null,
+        agency_years_operating: app.agency_years_operating ?? null,
+        agency_primary_contact_name: app.agency_primary_contact_name ?? null,
+        agency_primary_contact_role: app.agency_primary_contact_role ?? null,
+        roster_required: true,
+      };
+      const { error: vUpdErr } = await supabase
+        .from("vendors")
+        .update(agencyUpdate)
+        .eq("id", vendorId);
+      if (vUpdErr) {
+        return json({ success: false, error: "vendor_agency_update_failed", detail: vUpdErr.message }, 500);
+      }
+    }
+  } else if (isAgencyApp) {
+    const vendorRow = {
+      full_name: app.agency_business_name ?? app.full_name,
+      email: app.email,
+      additional_emails: [] as string[],
+      phone: app.phone ?? null,
+      country: app.country ?? null,
+      city: app.city ?? null,
+      vendor_type: "agency",
+      contractor_type: "business",
+      business_name: app.agency_business_name ?? app.full_name ?? null,
+      tax_id: app.agency_tax_id ?? null,
+      // Rate currency is not declared at the agency-application level — it is
+      // negotiated later. Keep the legacy NOT-NULL columns happy with CAD.
+      rate_currency: "CAD",
+      preferred_rate_currency: "CAD",
+      certifications: [],
+      years_experience: null,
+      status: "active",
+      availability_status: "available",
+      total_projects: 0,
+      // Agency mirror columns
+      agency_services_offered: app.agency_services_offered ?? null,
+      agency_registration_country: app.agency_registration_country ?? null,
+      agency_company_profile_path: app.agency_company_profile_path ?? null,
+      agency_linguist_count: app.agency_linguist_count ?? null,
+      agency_years_operating: app.agency_years_operating ?? null,
+      agency_primary_contact_name: app.agency_primary_contact_name ?? null,
+      agency_primary_contact_role: app.agency_primary_contact_role ?? null,
+      // Roster gate: agency cannot accept jobs until roster has eligible
+      // linguists (enforced in PR A5).
+      roster_required: true,
+    };
+    const { data: newVendor, error: vErr } = await supabase
+      .from("vendors")
+      .insert(vendorRow)
+      .select("id")
+      .single();
+    if (vErr || !newVendor) {
+      return json({ success: false, error: "vendor_create_failed", detail: vErr?.message }, 500);
+    }
+    vendorId = newVendor.id;
   } else {
     const vendorRow = {
       full_name: app.full_name,
@@ -314,69 +384,74 @@ serve(async (req: Request) => {
     vendorId = newVendor.id;
   }
 
+  // Agencies don't get a cvp_translators row — that table represents the
+  // *individual linguist* identity, which for agencies lives on the
+  // blinded roster (PR A3). The vendor record IS the agency.
   let translatorId: string | null = null;
-  const { data: existingTranslator } = await supabase
-    .from("cvp_translators")
-    .select("id")
-    .eq("email", app.email)
-    .maybeSingle();
-
-  if (existingTranslator?.id) {
-    translatorId = existingTranslator.id;
-    await supabase
+  if (!isAgencyApp) {
+    const { data: existingTranslator } = await supabase
       .from("cvp_translators")
-      .update({
-        approved_combinations: approvedCombos,
-        application_id: body.applicationId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", translatorId);
-  } else {
-    const trRow: Record<string, unknown> = {
-      application_id: body.applicationId,
-      email: app.email,
-      full_name: app.full_name,
-      phone: app.phone ?? null,
-      country: app.country ?? null,
-      linkedin_url: app.linkedin_url ?? null,
-      role_type: app.role_type,
-      tier: app.assigned_tier ?? "standard",
-      approved_combinations: approvedCombos,
-      certifications: app.certifications ?? [],
-      cat_tools: app.cat_tools ?? [],
-      default_rate_currency: app.rate_currency ?? "CAD",
-      is_active: true,
-      profile_completeness: 0,
-      total_jobs_completed: 0,
-      cog_instrument_types: app.cog_instrument_types ?? null,
-      cog_therapy_areas: app.cog_therapy_areas ?? null,
-      cog_ispor_familiarity: app.cog_ispor_familiarity ?? null,
-      cog_fda_familiarity: app.cog_fda_familiarity ?? null,
-    };
-    const { data: newTr, error: trErr } = await supabase
-      .from("cvp_translators")
-      .insert(trRow)
       .select("id")
-      .single();
-    if (trErr || !newTr) {
-      return json({ success: false, error: "translator_create_failed", detail: trErr?.message }, 500);
-    }
-    translatorId = newTr.id;
-  }
+      .eq("email", app.email)
+      .maybeSingle();
 
-  // Direct link from vendors back to the cvp_translators row (and through
-  // it, to cvp_applications). Without this, the admin vendor profile has
-  // no way to surface "the original application this vendor came from"
-  // except by joining on email — fragile if the email ever changes.
-  // Update is idempotent so re-approval just re-confirms the link.
-  if (translatorId && vendorId) {
-    const { error: vLinkErr } = await supabase
-      .from("vendors")
-      .update({ cvp_translator_id: translatorId })
-      .eq("id", vendorId);
-    if (vLinkErr) {
-      // Non-fatal: the email/lower-case fallback still works.
-      console.error("vendors.cvp_translator_id update failed:", vLinkErr.message);
+    if (existingTranslator?.id) {
+      translatorId = existingTranslator.id;
+      await supabase
+        .from("cvp_translators")
+        .update({
+          approved_combinations: approvedCombos,
+          application_id: body.applicationId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", translatorId);
+    } else {
+      const trRow: Record<string, unknown> = {
+        application_id: body.applicationId,
+        email: app.email,
+        full_name: app.full_name,
+        phone: app.phone ?? null,
+        country: app.country ?? null,
+        linkedin_url: app.linkedin_url ?? null,
+        role_type: app.role_type,
+        tier: app.assigned_tier ?? "standard",
+        approved_combinations: approvedCombos,
+        certifications: app.certifications ?? [],
+        cat_tools: app.cat_tools ?? [],
+        default_rate_currency: app.rate_currency ?? "CAD",
+        is_active: true,
+        profile_completeness: 0,
+        total_jobs_completed: 0,
+        cog_instrument_types: app.cog_instrument_types ?? null,
+        cog_therapy_areas: app.cog_therapy_areas ?? null,
+        cog_ispor_familiarity: app.cog_ispor_familiarity ?? null,
+        cog_fda_familiarity: app.cog_fda_familiarity ?? null,
+      };
+      const { data: newTr, error: trErr } = await supabase
+        .from("cvp_translators")
+        .insert(trRow)
+        .select("id")
+        .single();
+      if (trErr || !newTr) {
+        return json({ success: false, error: "translator_create_failed", detail: trErr?.message }, 500);
+      }
+      translatorId = newTr.id;
+    }
+
+    // Direct link from vendors back to the cvp_translators row (and through
+    // it, to cvp_applications). Without this, the admin vendor profile has
+    // no way to surface "the original application this vendor came from"
+    // except by joining on email — fragile if the email ever changes.
+    // Update is idempotent so re-approval just re-confirms the link.
+    if (translatorId && vendorId) {
+      const { error: vLinkErr } = await supabase
+        .from("vendors")
+        .update({ cvp_translator_id: translatorId })
+        .eq("id", vendorId);
+      if (vLinkErr) {
+        // Non-fatal: the email/lower-case fallback still works.
+        console.error("vendors.cvp_translator_id update failed:", vLinkErr.message);
+      }
     }
   }
 
@@ -457,6 +532,12 @@ serve(async (req: Request) => {
     .map((c) => `<li>${domainLabel(c.domain)} — ${pairLabel(c.source_language_id, c.target_language_id)}</li>`)
     .join("")}</ul>`;
 
+  // Skip every individual-only seeding step for agency approvals:
+  //   - cvp_translator_domains (per-linguist domain qualification rows)
+  //   - vendor_language_pairs + vendor_rates (per-linguist rate book)
+  // Agency-side, the equivalent live on the blinded roster (PR A3) and
+  // on the per-job linguist picker (PR A5).
+  if (!isAgencyApp) {
   // ---- Write cvp_translator_domains rows (T1) ----
   // One row per approved (pair × domain). This is the new durable source of
   // truth for "is vendor X approved for domain Y on pair Z?". The legacy
@@ -671,6 +752,7 @@ serve(async (req: Request) => {
       }
     }
   }
+  } // end if (!isAgencyApp) — close the individual-only seeding block
 
   const tpl = buildV11ApprovedWelcome({
     fullName: app.full_name,
