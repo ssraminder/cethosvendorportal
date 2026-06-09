@@ -117,6 +117,30 @@ export const COG_INTERVIEW_MODE_OPTIONS = [
   { value: 'video', label: 'Video' },
 ] as const
 
+export const APPLICANT_TYPE_OPTIONS = [
+  { value: 'individual', label: 'Individual freelancer', hint: 'I am the linguist who will do the work.' },
+  { value: 'agency', label: 'Agency / Translation company', hint: 'My company employs or sub-contracts linguists.' },
+] as const
+
+// Stored as integer (lower bound of the bracket) — same pattern as
+// cog_years_experience.
+export const AGENCY_LINGUIST_COUNT_OPTIONS = [
+  { value: '1', label: '1–5 linguists' },
+  { value: '6', label: '6–20 linguists' },
+  { value: '21', label: '21–50 linguists' },
+  { value: '51', label: '51–200 linguists' },
+  { value: '200', label: '200+ linguists' },
+] as const
+
+export const AGENCY_YEARS_OPERATING_OPTIONS = [
+  { value: '0', label: 'Less than 1 year' },
+  { value: '1', label: '1–3 years' },
+  { value: '3', label: '3–5 years' },
+  { value: '5', label: '5–10 years' },
+  { value: '10', label: '10–20 years' },
+  { value: '20', label: '20+ years' },
+] as const
+
 export const COG_SPECIAL_POPULATIONS_OPTIONS = [
   { value: 'pediatric', label: 'Pediatric' },
   { value: 'elderly', label: 'Elderly' },

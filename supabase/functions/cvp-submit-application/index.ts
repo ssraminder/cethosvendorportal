@@ -83,7 +83,44 @@ interface CognitiveDebriefingPayload {
   cvStoragePath?: string;
 }
 
-type ApplicationPayload = TranslatorPayload | CognitiveDebriefingPayload;
+interface AgencyLanguagePair {
+  sourceLanguageId: string;
+  targetLanguageId: string;
+}
+
+interface AgencyPayload {
+  roleType: "translator" | "interpreter" | "transcriber";
+  applicantType: "agency";
+  email: string;
+  phone?: string;
+  country: string;
+  linkedinUrl?: string;
+  agencyPrimaryContactName: string;
+  agencyPrimaryContactRole: string;
+  agencyBusinessName: string;
+  agencyRegistrationCountry: string;
+  agencyTaxId: string;
+  agencyLinguistCount: string;
+  agencyYearsOperating: string;
+  agencyCompanyProfilePath: string;
+  languagePairs?: AgencyLanguagePair[];
+  domainsOffered?: string[];
+  interpreterModes?: string[];
+  interpreterSettings?: string[];
+  transcriberLanguages?: string[];
+  transcriberSpecializations?: string[];
+  referralSource?: string;
+  notes?: string;
+}
+
+type ApplicationPayload =
+  | TranslatorPayload
+  | CognitiveDebriefingPayload
+  | AgencyPayload;
+
+function isAgencyPayload(p: ApplicationPayload): p is AgencyPayload {
+  return (p as AgencyPayload).applicantType === "agency";
+}
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -124,35 +161,58 @@ serve(async (req: Request) => {
     );
 
     const payload: ApplicationPayload = await req.json();
+    const isAgency = isAgencyPayload(payload);
 
-    if (!payload.fullName || !payload.email || !payload.country) {
-      return jsonResponse(
-        { success: false, error: "Missing required fields: fullName, email, country" },
-        400
-      );
+    // Agency path supports translator / interpreter / transcriber.
+    // Individual path supports translator + cognitive_debriefing today;
+    // interpreter / transcriber / clinician_reviewer individual flows are
+    // a separate (out-of-scope) workstream.
+    const validRoles = isAgency
+      ? ["translator", "interpreter", "transcriber"]
+      : ["translator", "cognitive_debriefing"];
+    if (!payload.roleType || !validRoles.includes(payload.roleType)) {
+      return jsonResponse({ success: false, error: "Invalid role type for this applicant type" }, 400);
     }
 
-    if (!payload.roleType || !["translator", "cognitive_debriefing"].includes(payload.roleType)) {
-      return jsonResponse({ success: false, error: "Invalid role type" }, 400);
-    }
-
-    // CV is required and must be a PDF (Anthropic document input requirement).
-    // Frontend should have uploaded to cvp-applicant-cvs and passed cvStoragePath.
-    if (!payload.cvStoragePath || typeof payload.cvStoragePath !== "string") {
-      return jsonResponse(
-        { success: false, error: "CV is required (PDF, max 10MB)." },
-        400,
-      );
-    }
-    if (!payload.cvStoragePath.toLowerCase().endsWith(".pdf")) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Only PDF format is accepted for CVs. Please export your DOCX to PDF and resubmit.",
-        },
-        400,
-      );
+    if (isAgency) {
+      const ap = payload as AgencyPayload;
+      if (!ap.email || !ap.country || !ap.agencyBusinessName || !ap.agencyPrimaryContactName) {
+        return jsonResponse(
+          { success: false, error: "Missing required agency fields." },
+          400,
+        );
+      }
+      if (!ap.agencyCompanyProfilePath || !ap.agencyCompanyProfilePath.toLowerCase().endsWith(".pdf")) {
+        return jsonResponse(
+          { success: false, error: "Company profile is required (PDF, max 10MB)." },
+          400,
+        );
+      }
+    } else {
+      const ip = payload as TranslatorPayload | CognitiveDebriefingPayload;
+      if (!ip.fullName || !ip.email || !ip.country) {
+        return jsonResponse(
+          { success: false, error: "Missing required fields: fullName, email, country" },
+          400,
+        );
+      }
+      // CV is required and must be a PDF (Anthropic document input requirement).
+      if (!ip.cvStoragePath || typeof ip.cvStoragePath !== "string") {
+        return jsonResponse(
+          { success: false, error: "CV is required (PDF, max 10MB)." },
+          400,
+        );
+      }
+      if (!ip.cvStoragePath.toLowerCase().endsWith(".pdf")) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Only PDF format is accepted for CVs. Please export your DOCX to PDF and resubmit.",
+          },
+          400,
+        );
+      }
     }
 
     // Reapplication cooldown
@@ -187,20 +247,57 @@ serve(async (req: Request) => {
       application_number: applicationNumber,
       role_type: payload.roleType,
       email: payload.email,
-      full_name: payload.fullName,
-      phone: payload.phone ?? null,
-      city: payload.city ?? null,
       country: payload.country,
       linkedin_url: payload.linkedinUrl ?? null,
       referral_source: payload.referralSource ?? null,
       notes: payload.notes ?? null,
+      phone: payload.phone ?? null,
       ip_address: ipAddress,
       user_agent: userAgent,
       status: "submitted",
-      cv_storage_path: payload.cvStoragePath,
+      applicant_type: isAgency ? "agency" : "individual",
     };
 
-    if (payload.roleType === "translator") {
+    if (isAgency) {
+      const ap = payload as AgencyPayload;
+      // Agency rows: full_name carries the business name so list views stay
+      // consistent; primary contact lives in dedicated columns.
+      applicationRow.full_name = ap.agencyBusinessName;
+      applicationRow.agency_business_name = ap.agencyBusinessName;
+      applicationRow.agency_registration_country = ap.agencyRegistrationCountry;
+      applicationRow.agency_tax_id = ap.agencyTaxId;
+      applicationRow.agency_company_profile_path = ap.agencyCompanyProfilePath;
+      applicationRow.agency_primary_contact_name = ap.agencyPrimaryContactName;
+      applicationRow.agency_primary_contact_role = ap.agencyPrimaryContactRole;
+      applicationRow.agency_linguist_count = parseInt(ap.agencyLinguistCount, 10);
+      applicationRow.agency_years_operating = parseInt(ap.agencyYearsOperating, 10);
+      applicationRow.agency_language_pairs = ap.languagePairs ?? null;
+      // Role-specific extras stored in existing columns where they line up
+      if (ap.roleType === "translator") {
+        applicationRow.domains_offered = ap.domainsOffered ?? [];
+      } else if (ap.roleType === "interpreter") {
+        applicationRow.interpreter_modes = ap.interpreterModes ?? [];
+        applicationRow.interpreter_settings = ap.interpreterSettings ?? [];
+      } else if (ap.roleType === "transcriber") {
+        applicationRow.transcriber_languages = ap.transcriberLanguages ?? [];
+        applicationRow.transcriber_specializations = ap.transcriberSpecializations ?? [];
+      }
+    } else if (payload.roleType === "translator") {
+      const ip = payload as TranslatorPayload | CognitiveDebriefingPayload;
+      applicationRow.full_name = ip.fullName;
+      applicationRow.city = (payload as TranslatorPayload).city ?? null;
+      applicationRow.cv_storage_path = ip.cvStoragePath;
+    } else {
+      const ip = payload as CognitiveDebriefingPayload;
+      applicationRow.full_name = ip.fullName;
+      applicationRow.city = (payload as CognitiveDebriefingPayload).city ?? null;
+      applicationRow.cv_storage_path = ip.cvStoragePath;
+    }
+
+    if (isAgency) {
+      // Agency: no per-applicant CV / rate / certifications / years.
+      // Roster + per-job picker fills those in post-approval.
+    } else if (payload.roleType === "translator") {
       const tp = payload as TranslatorPayload;
       applicationRow.years_experience = parseInt(tp.yearsExperience, 10);
       applicationRow.education_level = tp.educationLevel;
@@ -278,7 +375,7 @@ serve(async (req: Request) => {
     // staff approves them on CV + references alone.
     // Rate info is NOT written to approved_rate here; it's owned by
     // cvp_applications.rate_card at the (pair × service) level.
-    if (payload.roleType === "translator") {
+    if (!isAgency && payload.roleType === "translator") {
       const tp = payload as TranslatorPayload;
 
       const domainsToTest = new Set<string>(tp.domainsOffered ?? []);
@@ -315,12 +412,15 @@ serve(async (req: Request) => {
 
     // Send V1 confirmation email via Mailgun.
     try {
+      const recipientName = isAgency
+        ? (payload as AgencyPayload).agencyPrimaryContactName
+        : (payload as TranslatorPayload | CognitiveDebriefingPayload).fullName;
       const tpl = buildV1ApplicationReceived({
-        fullName: payload.fullName,
+        fullName: recipientName,
         applicationNumber,
       });
       await sendMailgunEmail({
-        to: { email: payload.email, name: payload.fullName },
+        to: { email: payload.email, name: recipientName },
         subject: tpl.subject,
         html: tpl.html,
         text: tpl.text,
