@@ -6,6 +6,7 @@ import { VendorSidebar } from "./VendorSidebar";
 import { VendorHeader } from "./VendorHeader";
 import { ImpersonationBanner } from "./ImpersonationBanner";
 import { BugReportFab } from "../support/BugReportFab";
+import { AgreementGateModal } from "../agreements/AgreementGateModal";
 import { Loader2 } from "lucide-react";
 
 export function VendorShell() {
@@ -56,6 +57,7 @@ export function VendorShell() {
         </main>
       </div>
       <BugReportFab />
+      <AgreementGateModal />
     </div>
   );
 }

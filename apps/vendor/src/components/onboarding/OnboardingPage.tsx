@@ -23,7 +23,7 @@ import { uploadCv } from "../../api/vendorCvs";
 
 export function OnboardingPage() {
   const { vendor, sessionToken } = useVendorAuth();
-  const { loading, passes, hasCv, hasNda, cvCount, ndaSignedAt, ndaWaivedUntil, cvRequired, refresh } = useOnboardingGate();
+  const { loading, passes, hasCv, hasNda, hasGvsa, cvCount, ndaSignedAt, gvsaSignedAt, ndaWaivedUntil, cvRequired, agreements, refresh } = useOnboardingGate();
   const navigate = useNavigate();
   const [uploadingCv, setUploadingCv] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
@@ -80,7 +80,7 @@ export function OnboardingPage() {
             </h1>
           </div>
           <p className="text-sm text-gray-600">
-            Two quick steps are required before you can start receiving job offers and using the rest of the portal. You can come back to this page any time.
+            A few quick steps are required before you can start receiving job offers and using the rest of the portal. You can come back to this page any time.
           </p>
         </div>
 
@@ -140,8 +140,8 @@ export function OnboardingPage() {
 
         <GateCard
           icon={ShieldCheck}
-          title="Sign the NDA"
-          description="Cethos's confidentiality agreement. Two-factor verification via email or phone OTP."
+          title="Sign the Confidentiality Agreement (NDA)"
+          description="Cethos's confidentiality and non-solicitation agreement. Identity verification via email or phone OTP."
           done={hasNda}
           doneCopy={
             ndaSignedAt
@@ -155,6 +155,27 @@ export function OnboardingPage() {
             label: "Sign now",
           }}
         />
+
+        {/* Only surfaced once a GVSA template has been published. */}
+        {agreements.some((a) => a.agreement_type === "gvsa" && a.template) && (
+          <GateCard
+            icon={ShieldCheck}
+            title="Sign the General Vendor Service Agreement"
+            description="The framework service agreement covering assignments, fees, and work product. Sign the NDA first — the same verification code covers both."
+            done={hasGvsa}
+            doneCopy={
+              gvsaSignedAt
+                ? `Signed ${new Date(gvsaSignedAt).toLocaleDateString()}.`
+                : ndaWaivedUntil
+                  ? `Waived by Cethos staff through ${new Date(ndaWaivedUntil).toLocaleDateString()}.`
+                  : "Signed."
+            }
+            action={hasGvsa ? null : {
+              to: "/gvsa",
+              label: "Review & sign",
+            }}
+          />
+        )}
 
         <div className="text-center text-[11px] text-gray-400">
           Questions? Email vendor@cethos.com — we're happy to help.

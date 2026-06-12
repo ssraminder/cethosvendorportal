@@ -168,6 +168,13 @@
   status = 200
   force = true
 
+# Agreements (NDA + GVSA) — combined status incl. 14-day grace enforcement.
+[[redirects]]
+  from = "/sb/get-agreement-status"
+  to = "/.netlify/functions/get-agreement-status"
+  status = 200
+  force = true
+
 # Contractor type upgrade request (individual → business).
 [[redirects]]
   from = "/sb/request-contractor-upgrade"
