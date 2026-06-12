@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { listMyDocRequests, type MyDocRequest } from "../../api/isoEvidence";
+import { LegalAgreementsSection } from "./LegalAgreementsSection";
+import { ClientDeclarationsSection } from "./ClientDeclarationsSection";
 
 const STATUS_STYLE: Record<MyDocRequest["status"], { bg: string; fg: string; label: string }> = {
   draft: { bg: "bg-gray-100", fg: "text-gray-700", label: "Draft" },
@@ -71,9 +73,16 @@ export function VendorDocuments() {
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Documents</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Requests from Cethos for ISO 17100 evidence — degrees, certifications, language proficiency, and profile fields. Click any open request to upload or fill in what's needed.
+          Legal agreements with Cethos, pre-existing client declarations, and ISO 17100 evidence requests — degrees, certifications, language proficiency, and profile fields.
         </p>
       </div>
+
+      <LegalAgreementsSection />
+      <ClientDeclarationsSection />
+
+      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        ISO 17100 evidence requests
+      </h2>
 
       {loading && (
         <div className="flex items-center gap-2 text-sm text-gray-500">

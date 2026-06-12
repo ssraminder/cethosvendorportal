@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2, ShieldCheck, AlertTriangle, Calendar, FileText, Download, Mail, Phone, CheckCircle2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Loader2, ShieldCheck, AlertTriangle, Calendar, FileText, Download, Mail, Phone, CheckCircle2, ChevronRight } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 
 // Same-origin /sb/* (Netlify Function → Postgres). Mirrors the Phase 2/3
@@ -60,6 +61,14 @@ interface NDAStatus {
   error?: string;
 }
 
+interface AgreementStatusEntry {
+  agreement_type: "nda" | "gvsa";
+  template: NDATemplate | null;
+  current_signature: CurrentSignature | null;
+  needs_signature: boolean;
+  reason: string | null;
+}
+
 interface OtpSendResp { success?: boolean; channel?: string; masked_contact?: string; error?: string }
 interface OtpVerifyResp { success?: boolean; error?: string }
 interface SignResp { success?: boolean; signature_id?: string; error?: string; missing?: string[] }
@@ -75,8 +84,34 @@ type OtpState = {
 
 const blankOtp: OtpState = { sent: false, sending: false, verified: false, code: "", maskedTo: null, error: "" };
 
+const DOC_META = {
+  nda: {
+    h1: "Confidentiality Agreement",
+    intro:
+      "Cethos keeps a signed confidentiality and non-solicitation agreement on file for every vendor we work with — part of our ISO 17100 compliance.",
+    route: "/nda",
+  },
+  gvsa: {
+    h1: "General Vendor Service Agreement",
+    intro:
+      "The framework service agreement that governs every assignment Cethos sends you — engagement, fees, work product, and termination terms.",
+    route: "/gvsa",
+  },
+} as const;
+
 export function NDAPage() {
+  return <AgreementPage agreementType="nda" />;
+}
+
+export function GVSAPage() {
+  return <AgreementPage agreementType="gvsa" />;
+}
+
+function AgreementPage({ agreementType }: { agreementType: "nda" | "gvsa" }) {
+  const meta = DOC_META[agreementType];
+  const otherType = agreementType === "nda" ? "gvsa" : "nda";
   const { sessionToken, vendor } = useVendorAuth();
+  const [otherPending, setOtherPending] = useState(false);
   const [status, setStatus] = useState<NDAStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -110,11 +145,26 @@ export function NDAPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await postSb<NDAStatus>("get-nda-status", { session_token: sessionToken });
-      if (data?.error) {
-        setError(data.error);
+      const data = await postSb<{ agreements?: AgreementStatusEntry[]; error?: string }>(
+        "get-agreement-status",
+        { session_token: sessionToken },
+      );
+      if (data?.error || !Array.isArray(data?.agreements)) {
+        setError(data?.error || "Failed to load agreement status");
       } else {
-        setStatus(data);
+        const mine = data.agreements!.find((a) => a.agreement_type === agreementType);
+        const other = data.agreements!.find((a) => a.agreement_type === otherType);
+        setOtherPending(!!other?.needs_signature);
+        if (!mine?.template) {
+          setError("This agreement isn't published yet. Please check back later.");
+        } else {
+          setStatus({
+            template: mine.template,
+            current_signature: mine.current_signature,
+            needs_signature: mine.needs_signature,
+            reason: mine.reason,
+          });
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -126,7 +176,7 @@ export function NDAPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionToken]);
+  }, [sessionToken, agreementType]);
 
   const sendOtp = async (channel: "email" | "phone") => {
     if (!sessionToken) return;
@@ -181,6 +231,7 @@ export function NDAPage() {
       const data = await postSb<SignResp>("sign-nda", {
         session_token: sessionToken,
         signed_full_name: typedName.trim(),
+        agreement_type: agreementType,
       });
       if (!data.success) {
         setError(data.error || "Failed to sign");
@@ -327,11 +378,11 @@ export function NDAPage() {
       const pageCount = pdf.getNumberOfPages();
       for (let p = 1; p <= pageCount; p++) {
         pdf.setPage(p);
-        drawHeader(pdf, { logo, versionLabel, pageWidth, headerH: HEADER_H, side: SIDE });
+        drawHeader(pdf, { logo, versionLabel, docTitle: status.template.title, pageWidth, headerH: HEADER_H, side: SIDE });
         drawFooter(pdf, { sig, pageWidth, pageHeight, footerH: FOOTER_H, side: SIDE, pageNum: p, pageCount });
       }
 
-      pdf.save(`cethos-nda-${versionLabel}-${sig.signed_at.slice(0, 10)}.pdf`);
+      pdf.save(`cethos-${agreementType}-${versionLabel}-${sig.signed_at.slice(0, 10)}.pdf`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate PDF");
     } finally {
@@ -378,12 +429,8 @@ export function NDAPage() {
       <div className="flex items-start gap-3 mb-6">
         <FileText className="w-7 h-7 text-teal-600 mt-1" />
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Confidentiality Agreement</h1>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Cethos is working toward ISO 17100 certification. As part of
-            that, we keep a signed confidentiality agreement on file for
-            every translator we work with.
-          </p>
+          <h1 className="text-2xl font-semibold text-gray-900">{meta.h1}</h1>
+          <p className="text-sm text-gray-600 mt-0.5">{meta.intro}</p>
         </div>
       </div>
 
@@ -571,8 +618,19 @@ export function NDAPage() {
       )}
 
       {justSigned && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900">
-          <strong>Thank you — signed.</strong> A copy is now on file with Cethos and downloadable from this page anytime.
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900 space-y-3">
+          <div>
+            <strong>Thank you — signed.</strong> A copy is now on file with Cethos and downloadable from this page anytime.
+          </div>
+          {otherPending && (
+            <Link
+              to={DOC_META[otherType].route}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white rounded text-sm font-semibold hover:bg-teal-700"
+            >
+              Continue to the {DOC_META[otherType].h1}
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          )}
         </div>
       )}
     </div>
@@ -689,6 +747,7 @@ async function fetchLogo(): Promise<LogoData | null> {
 interface HeaderArgs {
   logo: LogoData | null;
   versionLabel: string;
+  docTitle: string;
   pageWidth: number;
   headerH: number;
   side: number;
@@ -699,7 +758,7 @@ interface HeaderArgs {
 // that type adds a lot of generic noise for no real benefit.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function drawHeader(pdf: any, args: HeaderArgs) {
-  const { logo, versionLabel, pageWidth, headerH, side } = args;
+  const { logo, versionLabel, docTitle, pageWidth, headerH, side } = args;
   // Logo: cap at 24pt high AND 70pt wide so it never crowds the title.
   // The previous 36pt-high free-aspect version produced a logo wider
   // than half the page which overlapped the centered title.
@@ -726,7 +785,7 @@ function drawHeader(pdf: any, args: HeaderArgs) {
   pdf.setFontSize(11);
   pdf.setTextColor(31, 41, 55);
   pdf.text(
-    "Confidentiality & Non-Disclosure Agreement",
+    docTitle,
     pageWidth - side,
     headerH / 2 - 2,
     { align: "right" },
@@ -777,7 +836,7 @@ function drawAuditPage(pdf: any, args: AuditArgs) {
   pdf.setFontSize(9.5);
   pdf.setTextColor(107, 114, 128);
   pdf.text(
-    "Proof-of-identity factors verified at the moment this NDA was signed.",
+    "Proof-of-identity factors verified at the moment this agreement was signed.",
     side,
     y + 8,
   );

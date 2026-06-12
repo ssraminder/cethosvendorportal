@@ -45,6 +45,7 @@ const mainNavItems: NavItem[] = [
     icon: Folder,
     children: [
       { to: "/nda", label: "NDA", icon: ShieldCheck },
+      { to: "/gvsa", label: "Service Agreement", icon: ShieldCheck },
     ],
   },
   { to: "/request-test", label: "Competence tests", icon: GraduationCap },

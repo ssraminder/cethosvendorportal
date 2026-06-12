@@ -15,7 +15,7 @@ import { JobDetail } from "./components/jobs/JobDetail";
 import { InvoiceList } from "./components/invoices/InvoiceList";
 import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
 import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
-import { NDAPage } from "./components/nda/NDAPage";
+import { NDAPage, GVSAPage } from "./components/nda/NDAPage";
 import { VendorReferencesEntry } from "./components/references/VendorReferencesEntry";
 import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
 import { IsoEvidencePage } from "./components/iso-evidence/IsoEvidencePage";
@@ -41,6 +41,7 @@ function App() {
             <Route path="onboarding" element={<OnboardingPage />} />
             <Route path="profile" element={<VendorProfile />} />
             <Route path="nda" element={<NDAPage />} />
+            <Route path="gvsa" element={<GVSAPage />} />
 
             {/* Gated routes — vendor must have CV + NDA on file. */}
             <Route element={<OnboardingGate />}>
