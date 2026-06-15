@@ -62,6 +62,11 @@ interface ApprovePayload {
   editedWelcomeMessage?: string;
   /** Staff-edited subject line (replaces template default when sending). */
   editedSubject?: string;
+  /** Trusted internal auto-approval (recruitment §3.1.4 scorer). Only honoured
+   *  when the caller presents the service-role key — external callers can't.
+   *  `actingStaffId` is the accountable human who enabled auto-approval. */
+  internalAuto?: boolean;
+  actingStaffId?: string;
 }
 
 serve(async (req: Request) => {
@@ -70,9 +75,29 @@ serve(async (req: Request) => {
 
   try {
 
-  const authed = await requireStaff(req);
-  if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
-  const staffId = authed.staff.staffId;
+  const supabaseUrlEnv = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^bearer\s+/i, "").trim();
+
+  // Auth: normal staff sessions go through requireStaff. A trusted internal
+  // call (the auto-approve scorer, server-side) presents the service-role key
+  // + internalAuto + an actingStaffId we verify is an active staff row.
+  let staffId: string;
+  {
+    const peek = await req.clone().json().catch(() => ({} as Record<string, unknown>));
+    const isInternalAuto = peek?.internalAuto === true && bearer && bearer === serviceKeyEnv;
+    if (isInternalAuto) {
+      const acting = String(peek?.actingStaffId ?? "");
+      const probe = createClient(supabaseUrlEnv, serviceKeyEnv, { auth: { persistSession: false } });
+      const { data: srow } = await probe.from("staff_users").select("id, is_active").eq("id", acting).maybeSingle();
+      if (!srow || !srow.is_active) return json({ success: false, error: "invalid_acting_staff" }, 400);
+      staffId = srow.id;
+    } else {
+      const authed = await requireStaff(req);
+      if (!authed.ok) return json({ success: false, error: authed.error }, authed.status);
+      staffId = authed.staff.staffId;
+    }
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
