@@ -413,6 +413,12 @@ export function IsoEvidencePage() {
               "{resolved.request.staff_message}"
             </div>
           )}
+          {resolved.request.ai_generated && (
+            <p className="mt-2 text-[11px] text-gray-400 leading-relaxed">
+              This message was generated using AI and may contain errors. If this request doesn't apply to you, please email{" "}
+              <a href="mailto:vendor@cethos.com" className="text-teal-600 hover:underline">vendor@cethos.com</a>.
+            </p>
+          )}
           <div className="mt-4 flex items-center gap-3 text-xs text-gray-500">
             <span>
               Expires {new Date(resolved.request.expires_at).toLocaleDateString()}
@@ -472,6 +478,36 @@ export function IsoEvidencePage() {
           </div>
         )}
 
+        {!allDone && items.length > 0 && (() => {
+          const outstanding = items.filter((it) => !it.completed_at && !it.declined_at);
+          if (outstanding.length === 0) return null;
+          const chosenRoute = routeContext.chosen
+            ? QUALIFYING_ROUTES.find((r) => r.key === routeContext.chosen)
+            : null;
+          return (
+            <div className="bg-white rounded-xl border border-teal-200 bg-teal-50/40 p-4">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="w-5 h-5 text-teal-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-teal-900 min-w-0">
+                  <strong>What's still needed to qualify</strong>
+                  {chosenRoute ? (
+                    <div className="text-xs mt-0.5">
+                      You're pursuing <strong>{chosenRoute.title}</strong>. Upload the items below to complete it.
+                    </div>
+                  ) : routeContext.applicable.length >= 2 ? (
+                    <div className="text-xs mt-0.5">Pick a qualifying route below, then upload what it needs.</div>
+                  ) : null}
+                  <ul className="list-disc pl-5 mt-1.5 space-y-0.5 text-xs text-teal-800">
+                    {outstanding.map((it) => (
+                      <li key={it.slug}>{it.label}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {routeContext.applicable.length >= 2 && (
           <div className={routeBusy ? "opacity-50 pointer-events-none" : ""}>
             <QualifyingRouteSelector
@@ -528,27 +564,28 @@ export function IsoEvidencePage() {
                       <p className="text-xs text-gray-500 mt-0.5">{item.rationale}</p>
                     )}
 
-                    {/* What counts? / Examples disclosure */}
+                    {/* What counts? — description always visible; examples/tips behind a toggle */}
                     {(() => {
                       const guide = guideFor(item.slug);
                       if (!guide) return null;
                       const isOpen = !!openGuides[item.slug];
                       return (
                         <div className="mt-2">
+                          {/* Always-visible plain-language "what counts" line */}
+                          <div className="flex gap-2 text-xs mb-1.5">
+                            <Info className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                            <p className="text-gray-600 leading-relaxed">{guide.description}</p>
+                          </div>
                           <button
                             type="button"
                             onClick={() => setOpenGuides((s) => ({ ...s, [item.slug]: !s[item.slug] }))}
                             className="inline-flex items-center gap-1 text-[12px] text-teal-700 hover:text-teal-900 font-medium"
                           >
                             {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                            {isOpen ? "Hide instructions & examples" : "What counts? Show instructions & examples"}
+                            {isOpen ? "Hide examples & tips" : "Examples we accept & tips"}
                           </button>
                           {isOpen && (
                             <div className="mt-2 p-3 rounded-lg border border-gray-100 bg-gray-50 space-y-3">
-                              <div className="flex gap-2 text-xs">
-                                <Info className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
-                                <p className="text-gray-700 leading-relaxed">{guide.description}</p>
-                              </div>
                               <div>
                                 <div className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide mb-1">
                                   Examples we accept
