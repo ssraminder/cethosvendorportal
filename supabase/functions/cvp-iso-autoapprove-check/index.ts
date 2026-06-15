@@ -297,6 +297,65 @@ serve(async (req) => {
       return json({ success: true, results: (rows ?? []).map((r) => ({ ...r, application: m[r.application_id] ?? null })) });
     }
 
+    // Onboard the decision='auto' applications (documented §3.1.4). Gated on
+    // the auto_approve toggle. Each call goes through cvp-approve-application,
+    // which re-enforces the evidence gate — so experience without references
+    // can never slip through even here. Batched.
+    if (action === "apply") {
+      const { run_id } = body;
+      const limit = Math.min(Math.max(num(body.limit) ?? 10, 1), 25);
+      if (!run_id) return json({ success: false, error: "run_id required" }, 400);
+
+      const { data: cfg } = await sb.from("cvp_system_config").select("value").eq("key", "auto_approve").maybeSingle();
+      const toggle = (cfg?.value ?? {}) as { enabled?: boolean; acting_staff_id?: string | null };
+      if (!toggle.enabled) {
+        return json({ success: false, code: "AUTO_APPROVE_DISABLED", error: "Auto-approval is turned off. Enable it in config (auto_approve.enabled) before applying." }, 409);
+      }
+      const actingStaffId = toggle.acting_staff_id;
+      if (!actingStaffId) return json({ success: false, error: "auto_approve.acting_staff_id not configured" }, 400);
+
+      const { data: targets } = await sb.from("cvp_iso_autoapprove_results")
+        .select("id, application_id, basis_code")
+        .eq("run_id", run_id).eq("status", "processed").eq("decision", "auto")
+        .is("applied_at", null).limit(limit);
+
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+      const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const applied: string[] = [];
+      const failed: Array<Record<string, unknown>> = [];
+      for (const t of targets ?? []) {
+        try {
+          const resp = await fetch(`${SUPABASE_URL}/functions/v1/cvp-approve-application`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              applicationId: t.application_id,
+              internalAuto: true,
+              actingStaffId,
+              skipTesting: true,
+              qualificationBasis: t.basis_code,
+              staffNotes: `[AUTO-APPROVED §3.1.4 ${t.basis_code}] Documented basis confirmed by the recruitment auto-approve scorer (run ${run_id}).`,
+            }),
+          });
+          const out = await resp.json();
+          if (resp.ok && out?.success !== false) {
+            await sb.from("cvp_iso_autoapprove_results").update({ applied_at: new Date().toISOString(), applied_vendor_id: out?.data?.vendorId ?? null }).eq("id", t.id);
+            applied.push(t.application_id);
+          } else {
+            const msg = out?.error ?? `HTTP ${resp.status}`;
+            await sb.from("cvp_iso_autoapprove_results").update({ apply_error: typeof msg === "string" ? msg : JSON.stringify(msg) }).eq("id", t.id);
+            failed.push({ application_id: t.application_id, error: msg });
+          }
+        } catch (e) {
+          failed.push({ application_id: t.application_id, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      const { count: remaining } = await sb.from("cvp_iso_autoapprove_results")
+        .select("id", { count: "exact", head: true })
+        .eq("run_id", run_id).eq("decision", "auto").is("applied_at", null);
+      return json({ success: true, applied: applied.length, failed, remaining: remaining ?? 0 });
+    }
+
     return json({ success: false, error: `Unknown action: ${action}` }, 400);
   } catch (e) {
     return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
