@@ -48,6 +48,7 @@ export interface ResolvedDocRequest {
     expires_at: string;
     requested_items: IsoRequestItem[];
     staff_message: string | null;
+    ai_generated?: boolean;
     subject: string | null;
   };
   vendor: {

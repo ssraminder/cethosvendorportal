@@ -48,7 +48,7 @@ serve(async (req: Request) => {
 
   const { data: request, error: reqErr } = await supabase
     .from("vendor_document_requests")
-    .select("id, vendor_id, request_token_expires_at, requested_items, staff_message, subject, status, completed_at, created_at")
+    .select("id, vendor_id, request_token_expires_at, requested_items, staff_message, ai_drafted_message, subject, status, completed_at, created_at")
     .eq("request_token", token)
     .maybeSingle();
 
@@ -77,6 +77,9 @@ serve(async (req: Request) => {
       expires_at: request.request_token_expires_at,
       requested_items: request.requested_items,
       staff_message: request.staff_message,
+      // True when the request message was AI-drafted — drives the AI
+      // disclaimer + vendor@cethos.com fallback on the landing page.
+      ai_generated: !!request.ai_drafted_message,
       subject: request.subject,
     },
     vendor: {
