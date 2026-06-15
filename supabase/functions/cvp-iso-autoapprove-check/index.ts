@@ -19,7 +19,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-const PROMPT_VERSION = "cvp-iso-autoapprove-v2";
+const PROMPT_VERSION = "cvp-iso-autoapprove-v3";
 const MODEL = "claude-sonnet-4-6";
 const CV_BUCKET = "cvp-applicant-cvs";
 const DEGREE_LEVELS = ["bachelor", "master", "phd"];
@@ -96,7 +96,8 @@ function decide(args: {
   selfYears: number | null;
   cvCorroborates: string | null;   // fully | partially | contradicts | not_readable | null
   hasCv: boolean;
-}): { decision: "auto" | "hitl" | "not_met"; basis: string | null; evidenced: boolean; confidence: number; reasons: string[]; flags: string[] } {
+  refConfirmedYears: number | null; // years confirmed by RECEIVED references (documented), or null
+}): { decision: "auto" | "pending" | "hitl" | "not_met"; basis: string | null; evidenced: boolean; confidence: number; reasons: string[]; flags: string[] } {
   const reasons: string[] = [];
   const flags: string[] = [];
 
@@ -105,7 +106,6 @@ function decide(args: {
 
   const ex = args.extraction;
   const corrob = args.cvCorroborates;
-  const fullyCorrob = corrob === "fully";
   const higherEd = (ex.degrees ?? []).filter((d) => d.quote?.trim() && DEGREE_LEVELS.includes((d.level ?? "").toLowerCase()));
   const transDegree = higherEd.find((d) => d.is_translation_degree);
   const anyDegree = higherEd[0];
@@ -128,29 +128,37 @@ function decide(args: {
     return { decision: "auto", basis: "degree_translation", evidenced: true, confidence: 0.9, reasons, flags };
   }
 
-  // Experience routes — require the CV to FULLY corroborate (documented), else HITL.
-  const expReason = cvYears != null
-    ? `CV shows ~${cvYears}y translation experience — "${ex.translation_experience?.quote ?? ""}"`
-    : `experience is self-declared (${args.selfYears ?? "?"}y) — not documented in the CV`;
+  // Experience routes. Per policy, self-reported experience is NOT a basis:
+  // approval requires DOCUMENTED experience — references that confirm the
+  // duration (§3.1.4 "documented evidence"). A consistent CV is not enough.
+  // Plausible-but-undocumented → 'pending' (request references, wait).
+  const refYears = args.refConfirmedYears;
+  const refNote = refYears != null
+    ? `references confirm ~${refYears}y of professional experience (documented)`
+    : "no references on file confirming the experience yet";
+  const claimNote = cvYears != null
+    ? `CV indicates ~${cvYears}y — "${ex.translation_experience?.quote ?? ""}"`
+    : `self-declared ${args.selfYears ?? "?"}y`;
+  const flagged = (ex.red_flags ?? []).length > 0 || corrob === "contradicts";
 
-  // §3.1.4(b) — other degree + ≥2y, corroborated.
+  // §3.1.4(b) — other degree + ≥2 years.
   if (anyDegree && years != null && years >= 2) {
-    if (fullyCorrob && (ex.red_flags ?? []).length === 0 && corrob !== "contradicts") {
-      reasons.push(`§3.1.4(b) degree (${anyDegree.field}) — "${anyDegree.quote}"`, expReason, "CV fully corroborates the experience claim");
+    if (refYears != null && refYears >= 2 && !flagged) {
+      reasons.push(`§3.1.4(b) degree (${anyDegree.field}) — "${anyDegree.quote}"`, refNote);
       return { decision: "auto", basis: "degree_other_plus_2y", evidenced: true, confidence: 0.8, reasons, flags };
     }
-    reasons.push(`§3.1.4(b) plausible (degree + ${years}y) but experience not fully documented (cv_corroborates_form=${corrob ?? "n/a"}) — needs human review / references`, expReason);
-    return { decision: "hitl", basis: "degree_other_plus_2y", evidenced: false, confidence: 0.45, reasons, flags };
+    reasons.push(`§3.1.4(b) plausible (degree + ${claimNote}) but experience not documented — ${refNote}. Request references to qualify.`);
+    return { decision: flagged ? "hitl" : "pending", basis: "degree_other_plus_2y", evidenced: false, confidence: 0.4, reasons, flags };
   }
 
-  // §3.1.4(c) — ≥5y, corroborated.
+  // §3.1.4(c) — ≥5 years.
   if (years != null && years >= 5) {
-    if (fullyCorrob && (ex.red_flags ?? []).length === 0 && corrob !== "contradicts") {
-      reasons.push(`§3.1.4(c) ${years}y experience`, expReason, "CV fully corroborates the experience claim");
+    if (refYears != null && refYears >= 5 && !flagged) {
+      reasons.push(`§3.1.4(c) experience`, refNote);
       return { decision: "auto", basis: "experience_5y", evidenced: true, confidence: 0.75, reasons, flags };
     }
-    reasons.push(`§3.1.4(c) plausible (${years}y) but experience not fully documented (cv_corroborates_form=${corrob ?? "n/a"}) — needs human review / references`, expReason);
-    return { decision: "hitl", basis: "experience_5y", evidenced: false, confidence: 0.4, reasons, flags };
+    reasons.push(`§3.1.4(c) plausible (${claimNote}) but experience not documented — ${refNote}. Request references to qualify.`);
+    return { decision: flagged ? "hitl" : "pending", basis: "experience_5y", evidenced: false, confidence: 0.4, reasons, flags };
   }
 
   reasons.push("No §3.1.4 route met even on the evidence available — needs human decision");
@@ -213,17 +221,29 @@ serve(async (req) => {
             else extraction = await extractFromCv(await file.arrayBuffer());
           }
 
+          // Documented experience evidence: RECEIVED references that confirm a
+          // start year. Earliest confirmed start → most years.
+          const { data: refs } = await sb.from("cvp_application_references")
+            .select("reference_confirmed_start_year")
+            .eq("application_id", row.application_id)
+            .eq("status", "received")
+            .not("reference_confirmed_start_year", "is", null);
+          const startYears = (refs ?? []).map((r) => num(r.reference_confirmed_start_year)).filter((y): y is number => y != null);
+          const refConfirmedYears = startYears.length ? new Date().getUTCFullYear() - Math.min(...startYears) : null;
+
           const inputs = {
             education_level: app?.education_level ?? null,
             self_years: num(app?.years_experience),
             cv_corroborates_form: cvCorroborates,
             prescreen_overall_score: pres["overall_score"] ?? null,
+            references_received: (refs ?? []).length,
+            ref_confirmed_years: refConfirmedYears,
             has_cv: !!app?.cv_storage_path,
             extraction_error: extractionError,
           };
           const verdict = extractionError
             ? { decision: "hitl" as const, basis: null, evidenced: false, confidence: 0, reasons: [extractionError], flags: ["extraction_failed"] }
-            : decide({ extraction, selfYears: num(app?.years_experience), cvCorroborates, hasCv: !!app?.cv_storage_path });
+            : decide({ extraction, selfYears: num(app?.years_experience), cvCorroborates, hasCv: !!app?.cv_storage_path, refConfirmedYears });
 
           await sb.from("cvp_iso_autoapprove_results").update({
             status: "processed",
