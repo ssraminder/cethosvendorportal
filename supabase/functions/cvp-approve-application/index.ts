@@ -45,6 +45,16 @@ interface ApprovePayload {
   combinationRationales?: Record<string, string>;
   /** Optional staff notes — captured + AI-rephrased for inclusion in V11. */
   staffNotes?: string;
+  /**
+   * Skip-testing onboarding (ISO 17100 §3.1.4). When true, approval does NOT
+   * require a passed/validated test combination: ALL of the applicant's
+   * declared combinations are approved on an experience/qualification basis.
+   * `qualificationBasis` is then REQUIRED — onboarding without a recorded
+   * §3.1.4 basis would leave the §3.1.1 evidence record empty (audit gap).
+   */
+  skipTesting?: boolean;
+  /** One of the three ISO 17100 §3.1.4 routes. Required when skipTesting. */
+  qualificationBasis?: "degree_translation" | "degree_other_plus_2y" | "experience_5y";
   /** Preview-only: runs AI + renders V11 with placeholder setup link. No
    *  vendor/translator row creation, no DB mutations, no email send. */
   dryRun?: boolean;
@@ -93,6 +103,12 @@ serve(async (req: Request) => {
     });
   }
 
+  // Audit-safe skip: onboarding without a test still needs a recorded §3.1.4
+  // basis, so the §3.1.1 evidence record is never empty.
+  if (body.skipTesting && !body.qualificationBasis) {
+    return json({ success: false, error: "qualification_basis_required" }, 400);
+  }
+
   // Include `status` so we can distinguish combos that passed a test
   // (pending/assessed/approved) from certified skip-review combos. The
   // distinction is written to cvp_translator_domains.approval_source.
@@ -110,9 +126,15 @@ serve(async (req: Request) => {
     .select("id, source_language_id, target_language_id, domain, service_type, approved_rate, status, test_submission_id")
     .eq("application_id", body.applicationId);
 
+  //   - When skipTesting is set (experience/degree onboarding), approve ALL
+  //     of the applicant's declared combinations regardless of test status —
+  //     this is the "no test required" path; the §3.1.4 basis is recorded
+  //     separately on the application.
   const { data: combos, error: comboErr } = body.combinationIds && body.combinationIds.length > 0
     ? await comboQuery.in("id", body.combinationIds)
-    : await comboQuery.in("status", ["approved", "skip_manual_review"]);
+    : body.skipTesting
+      ? await comboQuery
+      : await comboQuery.in("status", ["approved", "skip_manual_review"]);
   if (comboErr) return json({ success: false, error: "combination_lookup_failed", detail: comboErr.message }, 500);
 
   // Validate: every requested ID belongs to this application. Foreign IDs
@@ -500,6 +522,16 @@ serve(async (req: Request) => {
       staff_reviewed_at: now.toISOString(),
       staff_review_notes: staffNotes || null,
       updated_at: now.toISOString(),
+      // ISO 17100 §3.1.4 basis, recorded when onboarding without a test so the
+      // §3.1.1 evidence record is never empty.
+      ...(body.skipTesting && body.qualificationBasis
+        ? {
+            qualification_basis: body.qualificationBasis,
+            qualification_basis_notes: staffNotes || null,
+            qualification_basis_recorded_at: now.toISOString(),
+            qualification_basis_recorded_by: staffId,
+          }
+        : {}),
     })
     .eq("id", body.applicationId);
 
@@ -556,7 +588,11 @@ serve(async (req: Request) => {
     target_language_id: c.target_language_id,
     domain: c.domain,
     status: "approved",
-    approval_source: c.status === "skip_manual_review" ? "staff_manual" : "application",
+    // skip-testing onboarding → 'experience' (degree/experience basis, no test);
+    // certified skip_manual_review → 'staff_manual'; otherwise the test pipeline.
+    approval_source: body.skipTesting
+      ? "experience"
+      : c.status === "skip_manual_review" ? "staff_manual" : "application",
     approved_at: now.toISOString(),
     approved_by: staffId,
     test_combination_id: c.id,
