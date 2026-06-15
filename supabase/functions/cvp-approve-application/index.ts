@@ -279,6 +279,39 @@ serve(async (req: Request) => {
     return json({ success: false, error: "no_combinations_to_approve" }, 400);
   }
 
+  // ISO 17100 §3.1.4 evidence gate — applies to EVERY approval path (auto or
+  // HITL): experience-based bases (b: degree + 2y, c: 5y) require DOCUMENTED
+  // experience, never a self-declared number. References that confirm the
+  // start year are the documentary evidence. Without enough confirmed years
+  // the approval is refused and the application stays pending until references
+  // (or proof) arrive. §3.1.4(a) translation degree is exempt — the degree is
+  // itself the documented evidence. Agencies qualify per-linguist on the roster.
+  if (!isAgencyApp && body.skipTesting &&
+      (body.qualificationBasis === "degree_other_plus_2y" || body.qualificationBasis === "experience_5y")) {
+    const requiredYears = body.qualificationBasis === "experience_5y" ? 5 : 2;
+    const { data: refs } = await supabase
+      .from("cvp_application_references")
+      .select("reference_confirmed_start_year")
+      .eq("application_id", body.applicationId)
+      .eq("status", "received")
+      .not("reference_confirmed_start_year", "is", null);
+    const startYears = (refs ?? [])
+      .map((r) => Number(r.reference_confirmed_start_year))
+      .filter((y) => Number.isFinite(y));
+    const confirmedYears = startYears.length ? new Date().getUTCFullYear() - Math.min(...startYears) : 0;
+    if (confirmedYears < requiredYears) {
+      return json({
+        success: false,
+        error: "experience_evidence_required",
+        detail: {
+          required_years: requiredYears,
+          references_confirm_years: confirmedYears,
+          message: `ISO 17100 §3.1.4 requires documented experience, not a self-declared figure. References on file confirm ${confirmedYears} year(s); ${requiredYears} are needed. Request references (or experience-proof documents) first — the application stays pending until the evidence is on file.`,
+        },
+      }, 409);
+    }
+  }
+
   await supabase
     .from("cvp_test_combinations")
     .update({
