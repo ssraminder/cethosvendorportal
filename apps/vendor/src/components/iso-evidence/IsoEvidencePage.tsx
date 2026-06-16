@@ -406,7 +406,7 @@ export function IsoEvidencePage() {
             complete the following items so we can keep your vendor profile
             aligned with ISO 17100. Items marked <em>(profile)</em> are short
             fields you fill in right here; items marked <em>(file)</em> need a
-            PDF upload.
+            file upload — a PDF, or a clear photo or scan (JPG, PNG, HEIC).
           </p>
           {resolved.request.staff_message && (
             <div className="mt-3 p-3 rounded border border-gray-200 bg-gray-50 text-xs text-gray-700 italic">
@@ -635,10 +635,10 @@ export function IsoEvidencePage() {
                       <div className="mt-3">
                         <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${busy ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>
                           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                          {busy ? "Uploading…" : "Upload PDF"}
+                          {busy ? "Uploading…" : "Upload file"}
                           <input
                             type="file"
-                            accept="application/pdf"
+                            accept=".pdf,application/pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,image/*,.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             disabled={busy}
                             className="hidden"
                             onChange={(e) => {
