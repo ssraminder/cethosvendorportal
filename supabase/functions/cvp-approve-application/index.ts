@@ -670,6 +670,38 @@ serve(async (req: Request) => {
     }
   }
 
+  // ---- CVP → QMS bridge: materialise the recruitment competence result into
+  //      the formal QMS record — a translator role_qualification + verified
+  //      competence_evidence for each passed test/quiz (linked via source_cvp_*)
+  //      + language_pair_qualifications from the approved combos. This unifies
+  //      "competence test" with "role qualification". Non-fatal — never blocks
+  //      approval or the welcome email.
+  if (vendorId) {
+    try {
+      const { data: srow } = await supabase
+        .from("staff_users").select("auth_user_id").eq("id", staffId).maybeSingle();
+      const actingAuthId = (srow?.auth_user_id as string | null) ?? null;
+      if (actingAuthId) {
+        const basisMap: Record<string, string> = {
+          degree_translation: "t_a_degree_translation",
+          degree_other_plus_2y: "t_b_degree_other_plus_2y",
+          experience_5y: "t_c_5y_experience",
+        };
+        const { error: bridgeErr } = await supabase.rpc("qms_bridge_cvp_competence", {
+          p_vendor_id: vendorId,
+          p_application_id: body.applicationId,
+          p_acting_user_id: actingAuthId,
+          p_basis_code: body.qualificationBasis ? (basisMap[body.qualificationBasis] ?? null) : null,
+        });
+        if (bridgeErr) console.error("qms_bridge_cvp_competence failed:", bridgeErr.message);
+      } else {
+        console.warn(`qms bridge skipped: no auth_user_id for staff ${staffId}`);
+      }
+    } catch (e) {
+      console.error("qms bridge error:", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // ---- Seed vendor_language_pairs + vendor_rates from the approved combos
   //      and the applicant's rate_card.
   //
