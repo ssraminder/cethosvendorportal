@@ -13,6 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { notifyEvidenceSubmission } from "../_shared/notify-evidence-submission.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -91,6 +92,17 @@ serve(async (req: Request) => {
     .update({ requested_items: updatedItems, status: nextStatus, completed_at: completedAt })
     .eq("id", request.id);
   if (updErr) return json({ success: false, error: "update_failed", detail: updErr.message }, 500);
+
+  // Notify Vendor Management (vendor@cethos.com) on status change.
+  await notifyEvidenceSubmission({
+    supabase,
+    vendorId: request.vendor_id,
+    requestId: request.id,
+    prevStatus: request.status,
+    nextStatus,
+    resolvedCount,
+    totalCount: updatedItems.length,
+  });
 
   // Mirror Phase 3 behaviour — when the last item is resolved (whether
   // completed or declined-with-reason), fire the ISO assessment so the
