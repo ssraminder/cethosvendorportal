@@ -694,6 +694,13 @@ serve(async (req: Request) => {
           p_basis_code: body.qualificationBasis ? (basisMap[body.qualificationBasis] ?? null) : null,
         });
         if (bridgeErr) console.error("qms_bridge_cvp_competence failed:", bridgeErr.message);
+        // Phase 3 — roll approved domains up into subject_matter_qualifications
+        // + record any passed post-onboarding competence quizzes as evidence.
+        const { error: domErr } = await supabase.rpc("qms_ingest_domain_competence", {
+          p_vendor_id: vendorId,
+          p_acting_user_id: actingAuthId,
+        });
+        if (domErr) console.error("qms_ingest_domain_competence failed:", domErr.message);
       } else {
         console.warn(`qms bridge skipped: no auth_user_id for staff ${staffId}`);
       }
