@@ -21,6 +21,15 @@ interface QuizQuestion {
   options: { label: string; value: string }[]
 }
 
+interface TranslationItem {
+  id: string
+  source_text: string
+  construct: string
+  difficulty: string | null
+  flawed_draft: string | null
+  target_language_code: string | null
+}
+
 interface QuizData {
   submissionId: string
   token: string
@@ -31,7 +40,9 @@ interface QuizData {
   remainingHours: number
   remainingMinutes: number
   status: string
+  isCoa?: boolean
   questions: QuizQuestion[]
+  translationItems?: TranslationItem[]
 }
 
 type PageState =
@@ -46,6 +57,7 @@ const COMPETENCE_LABELS: Record<string, string> = {
   domain_competence: 'Domain',
   research_competence: 'Research',
   technical_competence: 'Technical',
+  coa_methodology: 'COA Methodology',
 }
 
 async function callEdgeFunction(
@@ -85,6 +97,7 @@ export function QuizSubmission() {
   const { token } = useParams<{ token: string }>()
   const [pageState, setPageState] = useState<PageState>({ kind: 'loading' })
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [translationAnswers, setTranslationAnswers] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [timeDisplay, setTimeDisplay] = useState('')
@@ -150,9 +163,13 @@ export function QuizSubmission() {
         question_id,
         selected_option,
       }))
+      const translations = Object.entries(translationAnswers)
+        .filter(([, v]) => v.trim().length > 0)
+        .map(([item_id, translation]) => ({ item_id, translation }))
       const result = await callEdgeFunction('cvp-submit-quiz', {
         token,
         responses,
+        translations,
       })
       if (result.success) {
         setPageState({ kind: 'submitted' })
@@ -238,7 +255,11 @@ export function QuizSubmission() {
   const { data } = pageState
   const isExpiringSoon =
     new Date(data.expiresAt).getTime() - Date.now() < 2 * 60 * 60 * 1000
-  const allAnswered = answeredCount === totalCount
+  const tItems = data.translationItems ?? []
+  const tAnswered = tItems.filter((t) => (translationAnswers[t.id] ?? '').trim().length > 0).length
+  const combinedTotal = totalCount + tItems.length
+  const combinedAnswered = answeredCount + tAnswered
+  const allAnswered = combinedAnswered === combinedTotal
 
   return (
     <Layout>
@@ -275,11 +296,11 @@ export function QuizSubmission() {
           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-cethos-teal transition-all"
-              style={{ width: `${(answeredCount / totalCount) * 100}%` }}
+              style={{ width: `${(combinedAnswered / combinedTotal) * 100}%` }}
             />
           </div>
           <span className="text-sm text-gray-600 font-medium">
-            {answeredCount} / {totalCount}
+            {combinedAnswered} / {combinedTotal}
           </span>
         </div>
 
@@ -361,6 +382,47 @@ export function QuizSubmission() {
           )
         })}
 
+        {/* Part 2 — sentence translation (COA track) */}
+        {tItems.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
+            <h2 className="text-sm font-semibold text-cethos-navy uppercase tracking-wide border-b border-gray-100 pb-2">
+              Translation — into {data.targetLanguageName}
+            </h2>
+            <p className="text-sm text-gray-500">
+              Translate each item into {data.targetLanguageName}. Aim for natural,
+              patient-appropriate wording that preserves the meaning — not
+              word-for-word. For any item marked “correct the draft”, fix the draft shown.
+            </p>
+            {tItems.map((t, i) => (
+              <div key={t.id} className="space-y-2">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-xs font-semibold text-gray-400 mt-1">T{i + 1}</span>
+                  <p className="text-sm text-gray-900 leading-relaxed">
+                    {t.construct === 'error_correction'
+                      ? 'Correct the draft translation of: '
+                      : ''}
+                    {t.source_text}
+                  </p>
+                </div>
+                {t.construct === 'error_correction' && t.flawed_draft && (
+                  <div className="ml-7 text-sm bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
+                    <span className="font-medium">Draft to correct:</span> {t.flawed_draft}
+                  </div>
+                )}
+                <textarea
+                  className="ml-7 w-[calc(100%-1.75rem)] border border-gray-300 rounded-lg p-2 text-sm focus:ring-cethos-teal focus:border-cethos-teal"
+                  rows={2}
+                  placeholder={`Your ${data.targetLanguageName} translation...`}
+                  value={translationAnswers[t.id] ?? ''}
+                  onChange={(e) =>
+                    setTranslationAnswers((prev) => ({ ...prev, [t.id]: e.target.value }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Warning when expiring */}
         {isExpiringSoon && (
           <div className="bg-red-50 rounded-lg border border-red-200 p-3 flex items-center gap-3">
@@ -377,11 +439,11 @@ export function QuizSubmission() {
           <div className="text-sm text-gray-600">
             {allAnswered ? (
               <span className="text-green-700 font-medium">
-                All {totalCount} questions answered.
+                All {combinedTotal} items answered.
               </span>
             ) : (
               <span>
-                {totalCount - answeredCount} question{totalCount - answeredCount === 1 ? '' : 's'} remaining.
+                {combinedTotal - combinedAnswered} item{combinedTotal - combinedAnswered === 1 ? '' : 's'} remaining.
               </span>
             )}
           </div>
@@ -412,7 +474,7 @@ export function QuizSubmission() {
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
             <h3 className="text-lg font-semibold text-cethos-navy">Confirm Submission</h3>
             <p className="text-sm text-gray-600">
-              You've answered {answeredCount} of {totalCount} questions. Once
+              You've answered {combinedAnswered} of {combinedTotal} items. Once
               submitted, you cannot change your answers or retake this quiz.
               Ready to submit?
             </p>
