@@ -81,6 +81,7 @@ export async function screenEvidenceDocument(args: {
       `  "holder_name": "the name on the document or null",\n` +
       `  "name_matches_vendor": true | false | null,\n` +
       `  "matches_claim": true | false,\n` +
+      `  "confidence": 0-100 (your confidence this is a genuine, legible qualification document of the stated type belonging to this vendor),\n` +
       `  "summary": "1-2 sentence factual description",\n` +
       `  "concerns": "any red flags (name mismatch, wrong doc type, illegible, expired) or empty string"\n` +
       `}`;
@@ -111,8 +112,25 @@ export async function screenEvidenceDocument(args: {
 
     const nameMatch = ex.name_matches_vendor;
     const concerns = String(ex.concerns ?? "").trim();
+    const confidence = Math.max(0, Math.min(100, Number(ex.confidence ?? 0) || 0));
+
+    // Auto-verify policy: high-confidence + name match + type match + no
+    // concerns can verify itself to Tier-2 (config-driven, with a human policy
+    // owner recorded as the verifier for the audit trail).
+    let settings: { enabled?: boolean; threshold?: number; policy_owner?: string } = {};
+    try {
+      const { data } = await supabase.rpc("qms_ai_autoverify_settings");
+      settings = (data ?? {}) as typeof settings;
+    } catch (_) { /* default off */ }
+    const clean = nameMatch !== false && ex.matches_claim !== false && concerns === "";
+    const autoVerify = !!settings.enabled && !!settings.policy_owner
+      && confidence >= (settings.threshold ?? 90) && clean;
+
     const note =
-      `SCREENED (AI document review of vendor upload; not yet verified by staff). ` +
+      `${autoVerify ? "AUTO-VERIFIED" : "SCREENED"} (AI document review of vendor upload` +
+      `${autoVerify ? `; auto-verified at ${confidence}% confidence per QMS policy — no concerns`
+                     : "; not yet verified by staff"}). ` +
+      `AI confidence: ${confidence}%. ` +
       `Document: ${String(ex.summary ?? "").trim()} ` +
       `Holder: ${String(ex.holder_name ?? "unknown")} ` +
       `(name match: ${nameMatch === true ? "yes" : nameMatch === false ? "NO — review" : "uncertain"}). ` +
@@ -136,10 +154,10 @@ export async function screenEvidenceDocument(args: {
       p_file_mime: fileMime,
       p_file_size: bytes.length,
       p_sha256: sha256,
-      p_verified: false,
-      p_verification_method: "ai_document_screen",
+      p_verified: autoVerify,
+      p_verification_method: autoVerify ? "ai_auto_verified" : "ai_document_screen",
       p_verification_notes: note,
-      p_acting_user_id: null,
+      p_acting_user_id: autoVerify ? (settings.policy_owner ?? null) : null,
     });
     if (error) console.error("screen-evidence: qms_add_evidence_wrapper failed", error.message);
   } catch (e) {
