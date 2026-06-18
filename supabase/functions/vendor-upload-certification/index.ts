@@ -27,6 +27,10 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { screenEvidenceDocument } from "../_shared/screen-evidence-document.ts";
+
+// EdgeRuntime is available in Supabase edge functions for post-response work.
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -134,7 +138,7 @@ serve(async (req: Request) => {
 
     const { data: vendor } = await supabase
       .from("vendors")
-      .select("certifications, email")
+      .select("certifications, email, full_name")
       .eq("id", session.vendor_id)
       .single();
     if (!vendor) return json({ error: "Vendor not found" }, 404);
@@ -143,6 +147,7 @@ serve(async (req: Request) => {
 
     if (body.action === "add") {
       let storagePath: string | null = null;
+      let uploadedBytes: Uint8Array | null = null;
 
       // Multipart path — preferred. File is already a streamable File
       // instance; Supabase storage handles the upload natively without
@@ -153,9 +158,11 @@ serve(async (req: Request) => {
         }
         const safeName = (body.file_name || "cert.pdf").replace(/[^\w.\-]+/g, "_").slice(0, 80);
         const path = `${session.vendor_id}/${Date.now()}-${safeName}`;
+        // Read bytes first so we can both store the file and AI-screen it.
+        uploadedBytes = new Uint8Array(await body.file.arrayBuffer());
         const { error: uploadErr } = await supabase.storage
           .from(BUCKET)
-          .upload(path, body.file, {
+          .upload(path, uploadedBytes, {
             contentType: body.file.type || "application/pdf",
             upsert: false,
           });
@@ -186,6 +193,7 @@ serve(async (req: Request) => {
             // Continue without file — cert record is still useful.
           } else {
             storagePath = path;
+            uploadedBytes = fileData;
           }
         } catch (e) {
           console.error("base64 decode failed:", e);
@@ -200,6 +208,27 @@ serve(async (req: Request) => {
         verified: false,
       };
       certs.push(newCert);
+
+      // AI-screen the uploaded document → files it as Tier-1 screened evidence
+      // on the QMS tab (verified=false). Runs after the response so the vendor's
+      // upload stays fast. Never affects the upload result.
+      if (uploadedBytes && storagePath) {
+        const screenPromise = screenEvidenceDocument({
+          supabase,
+          vendorId: session.vendor_id,
+          vendorName: (vendor.full_name as string) ?? "",
+          claimedLabel: body.cert_name,
+          bytes: uploadedBytes,
+          fileName: body.file_name ?? "document",
+          fileMime: body.file_type ?? "application/pdf",
+          storagePath,
+        });
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+          EdgeRuntime.waitUntil(screenPromise);
+        } else {
+          screenPromise.catch((e) => console.error("screen-evidence (await) failed:", e));
+        }
+      }
     } else if (body.action === "remove") {
       const index = certs.findIndex((c) => c.name === body.cert_name);
       if (index === -1) return json({ error: "Certification not found" }, 404);
