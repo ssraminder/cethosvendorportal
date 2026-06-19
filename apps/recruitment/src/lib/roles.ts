@@ -1,11 +1,12 @@
 // Role catalog + per-role option lists. role_type values match the CHECK
 // constraint on cvp_applications.role_type.
 
+// Roles currently OFFERED on the apply form (each has an end-to-end backend
+// path). Interpreter / Transcriber / Clinician Reviewer forms + schemas still
+// exist in code but are not offered yet — re-add them here once their submit
+// persistence is wired, so applicants never hit a 400 on an unsupported role.
 export const ROLE_OPTIONS = [
   { value: 'translator', label: 'Translator / Reviewer', hint: 'Translation, review, proofreading, MTPE' },
-  { value: 'interpreter', label: 'Interpreter', hint: 'Consecutive, simultaneous, OPI, VRI, sign, escort' },
-  { value: 'transcriber', label: 'Transcriber', hint: 'Audio transcription (medical, legal, research, media)' },
-  { value: 'clinician_reviewer', label: 'Clinician Reviewer', hint: 'Clinical review for linguistic validation (RN/MD/PharmD/PsyD)' },
   { value: 'cognitive_debriefing', label: 'Cognitive Debriefing Interviewer', hint: 'Conducting COA/PRO cognitive debriefing interviews with patients' },
   { value: 'cd_clinician_consultant', label: 'Cognitive Debriefing & Clinician Review Consultant', hint: 'Participant & clinician recruitment, CD/ClinRO study consulting & coordination' },
 ] as const
