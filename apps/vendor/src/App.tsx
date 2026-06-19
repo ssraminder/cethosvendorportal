@@ -20,6 +20,8 @@ import { VendorReferencesEntry } from "./components/references/VendorReferencesE
 import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
 import { IsoEvidencePage } from "./components/iso-evidence/IsoEvidencePage";
 import { VendorDocuments } from "./components/documents/VendorDocuments";
+import { TrainingsList } from "./components/trainings/TrainingsList";
+import { TrainingDetail } from "./components/trainings/TrainingDetail";
 import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
 
@@ -55,6 +57,8 @@ function App() {
               <Route path="jobs/:id" element={<JobDetail />} />
               <Route path="invoices" element={<InvoiceList />} />
               <Route path="invoices/:id" element={<InvoiceDetail />} />
+              <Route path="trainings" element={<TrainingsList />} />
+              <Route path="trainings/:id" element={<TrainingDetail />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
