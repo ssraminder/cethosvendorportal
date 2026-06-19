@@ -13,10 +13,12 @@ import {
   BookOpen,
   ShieldCheck,
   Folder,
+  Users,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useVendorAuth } from "../../context/VendorAuthContext";
 
 interface VendorSidebarProps {
   isOpen: boolean;
@@ -34,11 +36,16 @@ interface NavBranch extends NavLeaf {
 }
 type NavItem = NavLeaf | NavBranch;
 
-const mainNavItems: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutGrid },
-  { to: "/profile", label: "Profile", icon: User },
-  { to: "/languages", label: "Languages", icon: Globe },
-  { to: "/rates", label: "Services & Rates", icon: DollarSign },
+function buildNavItems(isAgency: boolean): NavItem[] {
+  const items: NavItem[] = [
+    { to: "/", label: "Dashboard", icon: LayoutGrid },
+    { to: "/profile", label: "Profile", icon: User },
+    { to: "/languages", label: "Languages", icon: Globe },
+  ];
+  // Agencies maintain a roster of subcontractor linguists.
+  if (isAgency) items.push({ to: "/roster", label: "Linguist Roster", icon: Users });
+  items.push(
+    { to: "/rates", label: "Services & Rates", icon: DollarSign },
   { to: "/payment", label: "Payment", icon: CreditCard },
   {
     to: "/documents",
@@ -49,11 +56,13 @@ const mainNavItems: NavItem[] = [
       { to: "/gvsa", label: "Service Agreement", icon: ShieldCheck },
     ],
   },
-  { to: "/request-test", label: "Competence tests", icon: GraduationCap },
-  { to: "/trainings", label: "Trainings", icon: BookOpen },
-  { to: "/jobs", label: "Jobs", icon: Briefcase },
-  { to: "/invoices", label: "Invoices", icon: FileText },
-];
+    { to: "/request-test", label: "Competence tests", icon: GraduationCap },
+    { to: "/trainings", label: "Trainings", icon: BookOpen },
+    { to: "/jobs", label: "Jobs", icon: Briefcase },
+    { to: "/invoices", label: "Invoices", icon: FileText },
+  );
+  return items;
+}
 
 function hasChildren(item: NavItem): item is NavBranch {
   return "children" in item && Array.isArray(item.children);
@@ -61,6 +70,9 @@ function hasChildren(item: NavItem): item is NavBranch {
 
 export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
   const location = useLocation();
+  const { vendor } = useVendorAuth();
+  const isAgency = (vendor?.vendor_type ?? "").toLowerCase() === "agency";
+  const mainNavItems = buildNavItems(isAgency);
 
   // Auto-expand any branch whose own route or one of its children matches
   // the current path so vendors don't have to re-open it on every nav.

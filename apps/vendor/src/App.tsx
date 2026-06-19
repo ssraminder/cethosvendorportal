@@ -20,6 +20,7 @@ import { VendorReferencesEntry } from "./components/references/VendorReferencesE
 import { VendorReferenceFeedback } from "./components/references/VendorReferenceFeedback";
 import { IsoEvidencePage } from "./components/iso-evidence/IsoEvidencePage";
 import { VendorDocuments } from "./components/documents/VendorDocuments";
+import { RosterManager } from "./components/roster/RosterManager";
 import { TrainingsList } from "./components/trainings/TrainingsList";
 import { TrainingDetail } from "./components/trainings/TrainingDetail";
 import { OnboardingGate } from "./components/onboarding/OnboardingGate";
@@ -49,6 +50,7 @@ function App() {
             <Route element={<OnboardingGate />}>
               <Route index element={<VendorDashboard />} />
               <Route path="languages" element={<LanguagePairs />} />
+              <Route path="roster" element={<RosterManager />} />
               <Route path="rates" element={<VendorRates />} />
               <Route path="payment" element={<PaymentInfo />} />
               <Route path="documents" element={<VendorDocuments />} />
