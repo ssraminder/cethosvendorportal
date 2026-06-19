@@ -30,7 +30,9 @@ const personalInfoSchema = z.object({
   phone: z.string().optional(),
   city: z.string().optional(),
   country: z.string().min(1, 'Country is required'),
-  linkedinUrl: z.string().url('Please enter a valid URL').optional().or(z.literal('')),
+  // Optional contact link. Kept lenient (accepts e.g. "linkedin.com/in/name"
+  // without a scheme) so it never blocks submission — it's optional info.
+  linkedinUrl: z.string().trim().optional().or(z.literal('')),
 })
 
 const consentSchema = z.object({
@@ -81,7 +83,9 @@ const agencyContactSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().optional(),
   country: z.string().min(1, 'Country is required'),
-  linkedinUrl: z.string().url('Please enter a valid URL').optional().or(z.literal('')),
+  // Optional contact link. Kept lenient (accepts e.g. "linkedin.com/in/name"
+  // without a scheme) so it never blocks submission — it's optional info.
+  linkedinUrl: z.string().trim().optional().or(z.literal('')),
 })
 
 const agencyBusinessSchema = z.object({

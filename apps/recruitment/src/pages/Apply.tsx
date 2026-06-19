@@ -487,7 +487,7 @@ export function Apply() {
                 </FormField>
 
                 <FormField label="LinkedIn URL" error={translatorForm.formState.errors.linkedinUrl?.message}>
-                  <input {...translatorForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                  <input {...translatorForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
                 </FormField>
               </div>
             </FormSection>
@@ -803,7 +803,7 @@ export function Apply() {
                 </FormField>
 
                 <FormField label="LinkedIn URL" error={cogForm.formState.errors.linkedinUrl?.message}>
-                  <input {...cogForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                  <input {...cogForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
                 </FormField>
               </div>
             </FormSection>
@@ -1365,7 +1365,7 @@ export function Apply() {
                   </select>
                 </FormField>
                 <FormField label="LinkedIn URL" error={interpreterForm.formState.errors.linkedinUrl?.message}>
-                  <input {...interpreterForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                  <input {...interpreterForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
                 </FormField>
               </div>
             </FormSection>
@@ -1519,7 +1519,7 @@ export function Apply() {
                   </select>
                 </FormField>
                 <FormField label="LinkedIn URL" error={transcriberForm.formState.errors.linkedinUrl?.message}>
-                  <input {...transcriberForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                  <input {...transcriberForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
                 </FormField>
               </div>
             </FormSection>
@@ -1642,7 +1642,7 @@ export function Apply() {
                   </select>
                 </FormField>
                 <FormField label="LinkedIn URL" error={clinicianForm.formState.errors.linkedinUrl?.message}>
-                  <input {...clinicianForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                  <input {...clinicianForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
                 </FormField>
               </div>
             </FormSection>
@@ -1763,7 +1763,7 @@ export function Apply() {
                   </select>
                 </FormField>
                 <FormField label="LinkedIn URL" error={consultantForm.formState.errors.linkedinUrl?.message}>
-                  <input {...consultantForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                  <input {...consultantForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
                 </FormField>
               </div>
             </FormSection>
