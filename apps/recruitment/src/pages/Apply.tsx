@@ -86,6 +86,9 @@ export function Apply() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [cvFile, setCvFile] = useState<File | null>(null)
   const [cogSampleFile, setCogSampleFile] = useState<File | null>(null)
+  // Duplicate-email detection: if the entered email already belongs to a vendor
+  // or a prior application, block the submission and point them to log in.
+  const [emailExists, setEmailExists] = useState<null | { type: 'vendor' | 'application' }>(null)
   const { languages, loading: languagesLoading, error: languagesError } = useLanguages()
   const navigate = useNavigate()
 
@@ -210,6 +213,21 @@ export function Apply() {
     setRoleType(newRole)
     setSubmitError(null)
   }
+
+  // Check (on email blur) whether this email already has a vendor account or an
+  // application, and block the form if so. Fail-open on any error — the submit
+  // endpoint is the authoritative guard.
+  const checkEmail = useCallback(async (email: string) => {
+    const e = (email ?? '').trim().toLowerCase()
+    if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setEmailExists(null); return }
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cvp-check-email`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e }),
+      })
+      const r = await resp.json()
+      setEmailExists(r?.exists ? { type: r.type } : null)
+    } catch { setEmailExists(null) }
+  }, [])
 
   const handleToggleCheckbox = useCallback((
     form: { getValues: (field: string) => string[]; setValue: (field: string, value: string[], options?: { shouldValidate?: boolean }) => void },
@@ -455,6 +473,29 @@ export function Apply() {
           </a>
         </div>
 
+        {/* Duplicate-email block: this email already has a vendor / application. */}
+        {emailExists && (
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4" role="alert">
+            <p className="text-sm text-amber-900">
+              {emailExists.type === 'vendor' ? (
+                <>
+                  You already have a Cethos vendor account with this email. Please{' '}
+                  <a href="https://vendor.cethos.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                    log in to your vendor account
+                  </a>{' '}
+                  to manage your profile and check your status — there's no need to apply again.
+                </>
+              ) : (
+                <>
+                  We already have an application on file for this email. Please watch your inbox for updates
+                  from our recruitment team — you don't need to submit again. If you need help, just reply to
+                  your application confirmation email.
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
         {/* ===== TRANSLATOR FORM (individual) ===== */}
         {roleType === 'translator' && (
           <form onSubmit={translatorForm.handleSubmit(onTranslatorSubmit)} className="space-y-6">
@@ -466,7 +507,7 @@ export function Apply() {
                 </FormField>
 
                 <FormField label="Email" required error={translatorForm.formState.errors.email?.message}>
-                  <input {...translatorForm.register('email')} type="email" className={inputClasses} placeholder="john@example.com" />
+                  <input {...translatorForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} placeholder="john@example.com" />
                 </FormField>
 
                 <FormField label="Phone" error={translatorForm.formState.errors.phone?.message}>
@@ -782,7 +823,7 @@ export function Apply() {
                 </FormField>
 
                 <FormField label="Email" required error={cogForm.formState.errors.email?.message}>
-                  <input {...cogForm.register('email')} type="email" className={inputClasses} placeholder="john@example.com" />
+                  <input {...cogForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} placeholder="john@example.com" />
                 </FormField>
 
                 <FormField label="Phone" error={cogForm.formState.errors.phone?.message}>
@@ -1350,7 +1391,7 @@ export function Apply() {
                   <input {...interpreterForm.register('fullName')} className={inputClasses} placeholder="Jane Smith" />
                 </FormField>
                 <FormField label="Email" required error={interpreterForm.formState.errors.email?.message}>
-                  <input {...interpreterForm.register('email')} type="email" className={inputClasses} />
+                  <input {...interpreterForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} />
                 </FormField>
                 <FormField label="Phone" error={interpreterForm.formState.errors.phone?.message}>
                   <input {...interpreterForm.register('phone')} type="tel" className={inputClasses} />
@@ -1488,7 +1529,7 @@ export function Apply() {
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
             )}
-            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+            <button type="submit" disabled={submitting || Boolean(emailExists)} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}
             </button>
@@ -1504,7 +1545,7 @@ export function Apply() {
                   <input {...transcriberForm.register('fullName')} className={inputClasses} />
                 </FormField>
                 <FormField label="Email" required error={transcriberForm.formState.errors.email?.message}>
-                  <input {...transcriberForm.register('email')} type="email" className={inputClasses} />
+                  <input {...transcriberForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} />
                 </FormField>
                 <FormField label="Phone" error={transcriberForm.formState.errors.phone?.message}>
                   <input {...transcriberForm.register('phone')} type="tel" className={inputClasses} />
@@ -1611,7 +1652,7 @@ export function Apply() {
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
             )}
-            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+            <button type="submit" disabled={submitting || Boolean(emailExists)} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}
             </button>
@@ -1627,7 +1668,7 @@ export function Apply() {
                   <input {...clinicianForm.register('fullName')} className={inputClasses} />
                 </FormField>
                 <FormField label="Email" required error={clinicianForm.formState.errors.email?.message}>
-                  <input {...clinicianForm.register('email')} type="email" className={inputClasses} />
+                  <input {...clinicianForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} />
                 </FormField>
                 <FormField label="Phone" error={clinicianForm.formState.errors.phone?.message}>
                   <input {...clinicianForm.register('phone')} type="tel" className={inputClasses} />
@@ -1733,7 +1774,7 @@ export function Apply() {
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
             )}
-            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+            <button type="submit" disabled={submitting || Boolean(emailExists)} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}
             </button>
@@ -1748,7 +1789,7 @@ export function Apply() {
                   <input {...consultantForm.register('fullName')} className={inputClasses} />
                 </FormField>
                 <FormField label="Email" required error={consultantForm.formState.errors.email?.message}>
-                  <input {...consultantForm.register('email')} type="email" className={inputClasses} />
+                  <input {...consultantForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} />
                 </FormField>
                 <FormField label="Phone" error={consultantForm.formState.errors.phone?.message}>
                   <input {...consultantForm.register('phone')} type="tel" className={inputClasses} />
@@ -1901,7 +1942,7 @@ export function Apply() {
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
             )}
-            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+            <button type="submit" disabled={submitting || Boolean(emailExists)} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Submitting...' : 'Submit Application'}
             </button>
