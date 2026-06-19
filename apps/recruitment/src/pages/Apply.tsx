@@ -70,7 +70,10 @@ const CV_MISSING_ERROR = 'Please upload your CV before submitting (PDF only, max
 const CV_NOT_PDF_ERROR = 'Only PDF format is accepted. If you have a DOCX, please export to PDF first.'
 const CV_TOO_LARGE_ERROR = 'CV is too large — maximum 10MB.'
 
-const VALID_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber', 'clinician_reviewer', 'cognitive_debriefing', 'cd_clinician_consultant']
+// Only roles offered on the form (must match ROLE_OPTIONS). Interpreter /
+// transcriber / clinician_reviewer forms remain in code but are not offered, so
+// a ?role= deep link can't select an unsupported (400-on-submit) role.
+const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'cd_clinician_consultant']
 
 export function Apply() {
   const [searchParams] = useSearchParams()
