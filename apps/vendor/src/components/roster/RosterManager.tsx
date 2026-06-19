@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   listRoster, upsertRosterLinguist, deleteRosterLinguist, uploadRosterCv,
+  listEvidenceDemands, releaseEvidence,
   type RosterLinguist, type RosterReference, type RosterLanguagePair, type RosterUpsertPayload,
+  type EvidenceDemand,
 } from "../../api/vendorRoster";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import {
   Users, Plus, X, Pencil, Trash2, Upload, CheckCircle2, AlertCircle, ShieldCheck, Loader2, FileText,
+  FolderUp, Inbox,
 } from "lucide-react";
 
 const EMPTY_REF: RosterReference = { competence_bases: [], role_types: [], subject_matters: [], languages: [] };
@@ -20,20 +23,28 @@ export function RosterManager() {
   const [editing, setEditing] = useState<RosterLinguist | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [demands, setDemands] = useState<EvidenceDemand[]>([]);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
   const cvTargetId = useRef<string | null>(null);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const evidenceDemandId = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!sessionToken) return;
     setLoading(true);
     try {
-      const res = await listRoster(sessionToken);
+      const [res, dem] = await Promise.all([
+        listRoster(sessionToken),
+        listEvidenceDemands(sessionToken, false),
+      ]);
       if (res.error) { setError(res.error); }
       else {
         setRoster(res.roster ?? []);
         setReference(res.reference ?? EMPTY_REF);
         setError("");
       }
+      setDemands(dem.demands ?? []);
     } catch {
       setError("Failed to load roster");
     } finally {
@@ -54,6 +65,19 @@ export function RosterManager() {
       const res = await deleteRosterLinguist(sessionToken, l.id);
       if (res.error) setError(res.error); else await load();
     } finally { setBusyId(null); }
+  };
+
+  const triggerRelease = (demandId: string) => { evidenceDemandId.current = demandId; evidenceInputRef.current?.click(); };
+  const onEvidenceSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    e.target.value = "";
+    const demandId = evidenceDemandId.current;
+    if (!fileList || fileList.length === 0 || !demandId || !sessionToken) return;
+    setReleasingId(demandId);
+    try {
+      const res = await releaseEvidence(sessionToken, demandId, Array.from(fileList));
+      if (res.error) setError(res.detail || res.error); else await load();
+    } finally { setReleasingId(null); }
   };
 
   const triggerCvUpload = (id: string) => { cvTargetId.current = id; cvInputRef.current?.click(); };
@@ -77,6 +101,8 @@ export function RosterManager() {
     <div className="max-w-5xl mx-auto">
       <input ref={cvInputRef} type="file" className="hidden"
         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={onCvSelected} />
+      <input ref={evidenceInputRef} type="file" multiple className="hidden"
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={onEvidenceSelected} />
 
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
@@ -102,6 +128,33 @@ export function RosterManager() {
           you hold their evidence; Cethos may request those documents for a specific project, and you release them then.
         </p>
       </div>
+
+      {/* Evidence requests from Cethos */}
+      {demands.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 mb-5">
+          <p className="font-medium text-amber-900 flex items-center gap-2 mb-2">
+            <Inbox className="w-4 h-4" /> Evidence requested by Cethos ({demands.length})
+          </p>
+          <div className="space-y-2">
+            {demands.map((d) => (
+              <div key={d.id} className="flex items-start justify-between gap-3 rounded-lg bg-white border border-amber-200 p-3">
+                <div className="text-sm text-gray-700 min-w-0">
+                  <p className="font-medium text-gray-900">
+                    {d.handle ?? "Linguist"}{d.order_number ? ` · ${d.order_number}` : ""}{d.step_label ? ` · ${d.step_label}` : ""}
+                  </p>
+                  {d.reason && <p className="text-xs text-gray-500 mt-0.5">{d.reason}</p>}
+                  <p className="text-[11px] text-gray-400 mt-0.5">Requested {new Date(d.raised_at).toLocaleDateString()}</p>
+                </div>
+                <button onClick={() => triggerRelease(d.id)} disabled={releasingId === d.id}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 shrink-0">
+                  {releasingId === d.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderUp className="w-3.5 h-3.5" />}
+                  Upload & release
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 mb-4">

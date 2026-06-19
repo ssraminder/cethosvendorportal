@@ -77,6 +77,13 @@ serve(async (req: Request) => {
       typeof vendorIdentifierRaw === "string" && vendorIdentifierRaw.trim().length > 0
         ? vendorIdentifierRaw.trim()
         : null;
+    // Agencies tag each delivery with the roster linguist who performed it
+    // (replaces the free-text identifier). Validated below.
+    const rosterLinguistRaw = form.get("roster_linguist_id");
+    const rosterLinguistId =
+      typeof rosterLinguistRaw === "string" && rosterLinguistRaw.trim().length > 0
+        ? rosterLinguistRaw.trim()
+        : null;
     const files = form.getAll("files").filter((f): f is File => f instanceof File);
     if (!stepId) return json({ success: false, error: "Missing step_id" }, 400);
     if (files.length === 0) return json({ success: false, error: "No files provided" }, 400);
@@ -93,6 +100,24 @@ serve(async (req: Request) => {
     }
     if (!ALLOWED_STATUS.has(step.status)) {
       return json({ success: false, error: `Step status '${step.status}' is not deliverable` }, 409);
+    }
+
+    // If a roster linguist was supplied, it must belong to this vendor and be
+    // eligible (deterministic ISO gate). Keeps blinded attribution trustworthy.
+    if (rosterLinguistId) {
+      const { data: linguist } = await sb
+        .from("vendor_roster_linguists")
+        .select("id")
+        .eq("id", rosterLinguistId)
+        .eq("vendor_id", vendorId)
+        .maybeSingle();
+      if (!linguist) {
+        return json({ success: false, error: "Selected linguist is not on your roster" }, 403);
+      }
+      const { data: eligible } = await sb.rpc("roster_linguist_is_eligible", { p_id: rosterLinguistId });
+      if (!eligible) {
+        return json({ success: false, error: "Selected linguist is not eligible (profile incomplete)" }, 409);
+      }
     }
 
     // Determine the next delivery version.
@@ -142,6 +167,7 @@ serve(async (req: Request) => {
         file_paths: filePayload,
         notes: notesStr,
         vendor_identifier: vendorIdentifier,
+        roster_linguist_id: rosterLinguistId,
         review_status: "pending_review",
       })
       .select("id, version")

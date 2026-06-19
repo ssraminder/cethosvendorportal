@@ -98,6 +98,46 @@ export async function deleteRosterLinguist(
   return jsonResult(res);
 }
 
+export interface EvidenceDemand {
+  id: string;
+  roster_linguist_id: string;
+  handle: string | null;
+  order_number: string | null;
+  step_label: string | null;
+  reason: string | null;
+  status: string;
+  raised_at: string;
+  released_at: string | null;
+}
+
+export async function listEvidenceDemands(
+  token: string,
+  includeReleased = false,
+): Promise<{ success?: boolean; demands?: EvidenceDemand[]; error?: string }> {
+  const res = await safePost(`${FUNCTIONS_BASE}/vendor-roster-list-demands`, {
+    session_token: token, include_released: includeReleased,
+  });
+  return jsonResult(res);
+}
+
+export async function releaseEvidence(
+  token: string,
+  demandId: string,
+  files: File[],
+  evidenceKind?: string,
+): Promise<{ success?: boolean; released_count?: number; error?: string; detail?: string }> {
+  const formData = new FormData();
+  formData.append("demand_id", demandId);
+  if (evidenceKind) formData.append("evidence_kind", evidenceKind);
+  for (const f of files) formData.append("files", f);
+  const res = await fetch(`${FUNCTIONS_BASE}/vendor-roster-release-evidence`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  return jsonResult(res);
+}
+
 export async function uploadRosterCv(
   token: string,
   rosterLinguistId: string,
