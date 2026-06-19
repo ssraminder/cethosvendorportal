@@ -7,6 +7,7 @@ export const DOMAIN_OPTIONS = [
   { value: 'immigration', label: 'Immigration' },
   { value: 'medical', label: 'Medical' },
   { value: 'life_sciences', label: 'Life Sciences / Clinical Trials' },
+  { value: 'coa_linguistic_validation', label: 'COA / Linguistic Validation' },
   { value: 'pharmaceutical', label: 'Pharmaceutical' },
   { value: 'financial', label: 'Financial' },
   { value: 'insurance', label: 'Insurance' },
