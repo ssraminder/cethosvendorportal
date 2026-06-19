@@ -407,8 +407,8 @@ export function Apply() {
         <div>
           <h1 className="text-2xl font-bold text-cethos-navy">Apply to Join CETHOS</h1>
           <p className="mt-2 text-gray-600">
-            We're recruiting translators, revisers, interpreters, transcribers, clinician
-            reviewers, and cognitive debriefing interviewers for our growing clinical and
+            We're recruiting translators &amp; revisers, cognitive debriefing interviewers, and
+            cognitive debriefing &amp; clinician review consultants for our growing clinical and
             COA linguistic validation work. Complete the form below to start the application process.
           </p>
         </div>
