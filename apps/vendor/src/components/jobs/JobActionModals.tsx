@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   acceptStep,
@@ -7,12 +8,14 @@ import {
   deliverStep,
   type VendorStep,
 } from "../../api/vendorJobs";
+import { listRoster, type RosterLinguist } from "../../api/vendorRoster";
 import {
   X,
   Loader2,
   Upload,
   FileText,
   AlertTriangle,
+  Users,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -248,13 +251,40 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Agencies & business contractors must tag each delivery with their
-  // own reference (translator name, internal job code, etc.) so Cethos
-  // can trace which linguist did the work for QMS / ISO 17100 audits.
-  // Solo individuals see the same field but it's optional.
-  const isAgencyLike =
-    vendor?.vendor_type === "agency" || vendor?.contractor_type === "business";
-  const identifierRequired = isAgencyLike;
+  // Agencies pick the roster linguist who performed the step from a dropdown
+  // (replaces the free-text identifier). Non-agency business contractors keep
+  // the free-text reference. Solo individuals see the optional free-text field.
+  const isAgency = vendor?.vendor_type === "agency";
+  const isBusinessNonAgency = !isAgency && vendor?.contractor_type === "business";
+  const identifierRequired = isBusinessNonAgency;
+
+  const [rosterLinguists, setRosterLinguists] = useState<RosterLinguist[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(isAgency);
+  const [selectedLinguistId, setSelectedLinguistId] = useState("");
+
+  // Eligible roster, with pairs matching this step's language pair first.
+  const stepSrc = (step.source_language ?? "").toUpperCase();
+  const stepTgt = (step.target_language ?? "").toUpperCase();
+  const matchesPair = (l: RosterLinguist) =>
+    l.language_pairs.some((p) => p.source_language === stepSrc && p.target_language === stepTgt);
+
+  useEffect(() => {
+    if (!isAgency || !sessionToken) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await listRoster(sessionToken);
+        if (!active) return;
+        const eligible = (res.roster ?? []).filter((l) => l.is_eligible);
+        eligible.sort((a, b) => (matchesPair(b) ? 1 : 0) - (matchesPair(a) ? 1 : 0));
+        setRosterLinguists(eligible);
+      } finally {
+        if (active) setRosterLoading(false);
+      }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAgency, sessionToken]);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const newFiles: File[] = [];
@@ -299,6 +329,10 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
   const handleSubmit = async () => {
     if (!sessionToken || files.length === 0) return;
     const trimmedIdentifier = vendorIdentifier.trim();
+    if (isAgency && !selectedLinguistId) {
+      setError("Select the linguist from your roster who performed this step before delivering.");
+      return;
+    }
     if (identifierRequired && !trimmedIdentifier) {
       setError("Please add your reference (translator name or internal job code) before delivering.");
       return;
@@ -311,7 +345,8 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
         step.id,
         files,
         notes || undefined,
-        trimmedIdentifier || undefined,
+        isAgency ? undefined : (trimmedIdentifier || undefined),
+        isAgency ? selectedLinguistId : undefined,
       );
       if (result.success) {
         onSuccess(isRevision ? (step.revision_count ?? 0) + 1 : undefined);
@@ -412,34 +447,76 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
             </div>
           )}
 
-          {/* Vendor identifier — required for agencies / business contractors */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Linguist / vendor used{" "}
-              {identifierRequired ? (
-                <span className="text-red-500" aria-label="required">*</span>
+          {/* Linguist used — roster picker for agencies, free-text otherwise */}
+          {isAgency ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Roster linguist who did this work <span className="text-red-500" aria-label="required">*</span>
+              </label>
+              {rosterLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading your roster…
+                </div>
+              ) : rosterLinguists.length === 0 ? (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                  <p className="flex items-center gap-2 font-medium"><Users className="w-4 h-4" /> No eligible linguists yet</p>
+                  <p className="mt-1">
+                    Add a linguist (blinded CV, specializations, ISO attestation) on your{" "}
+                    <Link to="/roster" className="underline font-medium" onClick={onClose}>Linguist Roster</Link>{" "}
+                    before delivering this step.
+                  </p>
+                </div>
               ) : (
-                <span className="text-gray-400 font-normal">(optional)</span>
+                <>
+                  <select
+                    value={selectedLinguistId}
+                    onChange={(e) => setSelectedLinguistId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    <option value="">Select linguist…</option>
+                    {rosterLinguists.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.handle}
+                        {l.real_name ? ` — ${l.real_name}` : ""}
+                        {matchesPair(l) ? "  ✓ pair match" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Only this name/handle is recorded with Cethos (blinded). Required for ISO 17100 §6.1.2 competence records.
+                  </p>
+                </>
               )}
-            </label>
-            <input
-              type="text"
-              value={vendorIdentifier}
-              onChange={(e) => setVendorIdentifier(e.target.value)}
-              placeholder={
-                isAgencyLike
-                  ? "Name or ID of the linguist from your database who did this work"
-                  : "Optional — your reference for this delivery"
-              }
-              required={identifierRequired}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-            />
-            {isAgencyLike && (
-              <p className="mt-1 text-xs text-gray-500">
-                Which translator / reviewer from your vendor pool performed this step. Required for ISO 17100 §6.1.2 competence records.
-              </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Linguist / vendor used{" "}
+                {identifierRequired ? (
+                  <span className="text-red-500" aria-label="required">*</span>
+                ) : (
+                  <span className="text-gray-400 font-normal">(optional)</span>
+                )}
+              </label>
+              <input
+                type="text"
+                value={vendorIdentifier}
+                onChange={(e) => setVendorIdentifier(e.target.value)}
+                placeholder={
+                  identifierRequired
+                    ? "Name or ID of the linguist from your database who did this work"
+                    : "Optional — your reference for this delivery"
+                }
+                required={identifierRequired}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+              {identifierRequired && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Which translator / reviewer from your vendor pool performed this step. Required for ISO 17100 §6.1.2 competence records.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>

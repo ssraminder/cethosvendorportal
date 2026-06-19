@@ -237,12 +237,14 @@ export async function deliverStep(
   stepId: string,
   files: File[],
   notes?: string,
-  vendorIdentifier?: string
+  vendorIdentifier?: string,
+  rosterLinguistId?: string
 ): Promise<StepActionResponse> {
   const formData = new FormData();
   formData.append("step_id", stepId);
   if (notes) formData.append("notes", notes);
   if (vendorIdentifier) formData.append("vendor_identifier", vendorIdentifier);
+  if (rosterLinguistId) formData.append("roster_linguist_id", rosterLinguistId);
   for (const file of files) {
     formData.append("files", file);
   }
