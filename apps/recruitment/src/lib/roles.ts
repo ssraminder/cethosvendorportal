@@ -7,6 +7,7 @@ export const ROLE_OPTIONS = [
   { value: 'transcriber', label: 'Transcriber', hint: 'Audio transcription (medical, legal, research, media)' },
   { value: 'clinician_reviewer', label: 'Clinician Reviewer', hint: 'Clinical review for linguistic validation (RN/MD/PharmD/PsyD)' },
   { value: 'cognitive_debriefing', label: 'Cognitive Debriefing Interviewer', hint: 'Conducting COA/PRO cognitive debriefing interviews with patients' },
+  { value: 'cd_clinician_consultant', label: 'Cognitive Debriefing & Clinician Review Consultant', hint: 'Participant & clinician recruitment, CD/ClinRO study consulting & coordination' },
 ] as const
 
 export type RoleValue = typeof ROLE_OPTIONS[number]['value']
@@ -67,6 +68,17 @@ export const CLINICIAN_CREDENTIALS = [
   { value: 'LMFT', label: 'LMFT (Marriage & Family Therapist)' },
   { value: 'LCSW', label: 'LCSW (Licensed Clinical Social Worker)' },
   { value: 'Other', label: 'Other' },
+] as const
+
+// Services a CD & Clinician Review Consultant can provide (recruitment + consulting).
+export const CONSULTANT_SERVICES = [
+  { value: 'participant_recruitment', label: 'Cognitive debriefing participant recruitment' },
+  { value: 'clinician_recruitment', label: 'Clinician (ClinRO) recruitment & sourcing' },
+  { value: 'cd_study_design', label: 'Cognitive debriefing study design & methodology' },
+  { value: 'clinro_coordination', label: 'Clinician review coordination' },
+  { value: 'lv_project_management', label: 'Linguistic validation project management' },
+  { value: 'site_coordination', label: 'In-country site / logistics coordination' },
+  { value: 'other', label: 'Other' },
 ] as const
 
 export const CLINICIAN_THERAPY_AREAS = [

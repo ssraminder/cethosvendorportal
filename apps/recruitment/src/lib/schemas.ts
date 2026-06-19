@@ -9,6 +9,7 @@ import {
   TRANSCRIBER_TIMESTAMPING,
   CLINICIAN_CREDENTIALS,
   CLINICIAN_THERAPY_AREAS,
+  CONSULTANT_SERVICES,
 } from './roles'
 
 const modeValues = INTERPRETER_MODES.map((m) => m.value) as [string, ...string[]]
@@ -19,6 +20,7 @@ const verbatimValues = TRANSCRIBER_VERBATIM.map((v) => v.value) as [string, ...s
 const timestampingValues = TRANSCRIBER_TIMESTAMPING.map((t) => t.value) as [string, ...string[]]
 const credentialValues = CLINICIAN_CREDENTIALS.map((c) => c.value) as [string, ...string[]]
 const clinicianAreaValues = CLINICIAN_THERAPY_AREAS.map((a) => a.value) as [string, ...string[]]
+const consultantServiceValues = CONSULTANT_SERVICES.map((s) => s.value) as [string, ...string[]]
 
 // -- Shared fields --
 
@@ -318,11 +320,43 @@ export const clinicianReviewerSchema = z.object({
   ...consentSchema.shape,
 })
 
+// -- Cognitive Debriefing & Clinician Review Consultant --
+// Recruitment/consulting role: NO skills test/quiz (consent block omits the
+// test acknowledgements). Auto-approved to a parked vendor record server-side.
+export const cdConsultantSchema = z.object({
+  roleType: z.literal('cd_clinician_consultant'),
+  ...personalInfoSchema.shape,
+  consultantYearsExperience: z.string().min(1, 'Years of experience is required'),
+  educationLevel: z.string().min(1, 'Education level is required'),
+  consultantServices: z.array(z.enum(consultantServiceValues))
+    .min(1, 'Select at least one service you provide'),
+  canRecruitParticipants: z.boolean().default(false),
+  canRecruitClinicians: z.boolean().default(false),
+  clinicianTypesSourced: z.array(z.enum(credentialValues)).default([]),
+  consultantTherapyAreas: z.array(z.enum(clinicianAreaValues))
+    .min(1, 'Select at least one therapy area'),
+  consultantRegionsCovered: z.string().min(1, 'List the countries / regions you cover'),
+  consultantWorkingLanguages: z.array(z.string().min(1))
+    .min(1, 'Select at least one working language'),
+  consultantIsporFamiliarity: z.enum(['yes', 'no', 'partially'], { error: 'This field is required' }),
+  consultantFdaFamiliarity: z.enum(['yes', 'no', 'partially'], { error: 'This field is required' }),
+  consultantEmaFamiliarity: z.enum(['yes', 'no', 'partially'], { error: 'This field is required' }),
+  consultantGcpTrained: z.boolean().default(false),
+  consultantAvailability: z.enum(['full_time', 'part_time', 'project_based'], { error: 'Availability is required' }),
+  consultantRateExpectation: z.string().min(1, 'Rate is required'),
+  rateCurrency: z.string().min(3, 'Select a currency'),
+  referralSource: z.string().optional(),
+  notes: z.string().optional(),
+  // Consultants take no skills test — only the privacy consent applies.
+  privacyPolicy: z.literal(true, { error: 'You must agree to the Privacy Policy' }),
+})
+
 export type TranslatorFormData = z.infer<typeof translatorSchema>
 export type CognitiveDebriefingFormData = z.infer<typeof cognitiveDebriefingSchema>
 export type InterpreterFormData = z.infer<typeof interpreterSchema>
 export type TranscriberFormData = z.infer<typeof transcriberSchema>
 export type ClinicianReviewerFormData = z.infer<typeof clinicianReviewerSchema>
+export type CdConsultantFormData = z.infer<typeof cdConsultantSchema>
 export type AgencyApplicationFormData = z.infer<typeof agencyApplicationSchema>
 export type ApplicationFormData =
   | TranslatorFormData
@@ -330,5 +364,6 @@ export type ApplicationFormData =
   | InterpreterFormData
   | TranscriberFormData
   | ClinicianReviewerFormData
+  | CdConsultantFormData
   | AgencyApplicationFormData
 export type PairServiceRate = z.infer<typeof pairServiceRateSchema>
