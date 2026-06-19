@@ -6,7 +6,7 @@ export const ROLE_OPTIONS = [
   { value: 'interpreter', label: 'Interpreter', hint: 'Consecutive, simultaneous, OPI, VRI, sign, escort' },
   { value: 'transcriber', label: 'Transcriber', hint: 'Audio transcription (medical, legal, research, media)' },
   { value: 'clinician_reviewer', label: 'Clinician Reviewer', hint: 'Clinical review for linguistic validation (RN/MD/PharmD/PsyD)' },
-  { value: 'cognitive_debriefing', label: 'Cognitive Debriefing Consultant', hint: 'COA/PRO interviewing + linguistic validation' },
+  { value: 'cognitive_debriefing', label: 'Cognitive Debriefing Interviewer', hint: 'Conducting COA/PRO cognitive debriefing interviews with patients' },
 ] as const
 
 export type RoleValue = typeof ROLE_OPTIONS[number]['value']
