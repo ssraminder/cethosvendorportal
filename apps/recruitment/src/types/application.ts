@@ -4,6 +4,7 @@ export type RoleType =
   | 'transcriber'
   | 'clinician_reviewer'
   | 'cognitive_debriefing'
+  | 'cd_clinician_consultant'
 
 export type Domain = 'legal' | 'medical' | 'immigration' | 'financial' | 'technical' | 'general'
 

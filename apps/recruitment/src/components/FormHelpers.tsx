@@ -58,9 +58,12 @@ export function CvSection({ cvFile, setCvFile, handleCvUpload, showMissingError 
 
 interface ConsentSectionProps<T extends FieldValues> {
   form: UseFormReturn<T>
+  /** Show the skills-test consent acknowledgements. Default true; pass false
+   *  for roles that take no test (e.g. the CD & Clinician Review Consultant). */
+  testConsent?: boolean
 }
 
-export function ConsentSection<T extends FieldValues>({ form }: ConsentSectionProps<T>) {
+export function ConsentSection<T extends FieldValues>({ form, testConsent = true }: ConsentSectionProps<T>) {
   const errors = form.formState.errors as Record<string, { message?: string } | undefined>
   return (
     <FormSection title="Consent">
@@ -83,6 +86,7 @@ export function ConsentSection<T extends FieldValues>({ form }: ConsentSectionPr
           <p className="text-sm text-red-600 ml-6">{errors.privacyPolicy.message}</p>
         )}
 
+        {testConsent && (<>
         <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -110,6 +114,7 @@ export function ConsentSection<T extends FieldValues>({ form }: ConsentSectionPr
         {errors.consentUnpaid?.message && (
           <p className="text-sm text-red-600 ml-6">{errors.consentUnpaid.message}</p>
         )}
+        </>)}
       </div>
     </FormSection>
   )

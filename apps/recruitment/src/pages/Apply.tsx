@@ -19,6 +19,7 @@ import {
   interpreterSchema,
   transcriberSchema,
   clinicianReviewerSchema,
+  cdConsultantSchema,
 } from '../lib/schemas'
 import type {
   TranslatorFormData,
@@ -26,6 +27,7 @@ import type {
   InterpreterFormData,
   TranscriberFormData,
   ClinicianReviewerFormData,
+  CdConsultantFormData,
 } from '../lib/schemas'
 import {
   COUNTRIES,
@@ -57,6 +59,7 @@ import {
   TRANSCRIBER_TIMESTAMPING,
   CLINICIAN_CREDENTIALS,
   CLINICIAN_THERAPY_AREAS,
+  CONSULTANT_SERVICES,
 } from '../lib/roles'
 import type { RoleType } from '../types/application'
 
@@ -67,7 +70,7 @@ const CV_MISSING_ERROR = 'Please upload your CV before submitting (PDF only, max
 const CV_NOT_PDF_ERROR = 'Only PDF format is accepted. If you have a DOCX, please export to PDF first.'
 const CV_TOO_LARGE_ERROR = 'CV is too large — maximum 10MB.'
 
-const VALID_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber', 'clinician_reviewer', 'cognitive_debriefing']
+const VALID_ROLES: RoleType[] = ['translator', 'interpreter', 'transcriber', 'clinician_reviewer', 'cognitive_debriefing', 'cd_clinician_consultant']
 
 export function Apply() {
   const [searchParams] = useSearchParams()
@@ -180,6 +183,23 @@ export function Apply() {
       privacyPolicy: false as unknown as true,
       consentTest: false as unknown as true,
       consentUnpaid: false as unknown as true,
+    },
+  })
+
+  // CD & Clinician Review Consultant form (recruitment/consulting; no skills test)
+  const consultantForm = useForm<CdConsultantFormData>({
+    resolver: zodResolver(cdConsultantSchema) as Resolver<CdConsultantFormData>,
+    defaultValues: {
+      roleType: 'cd_clinician_consultant',
+      consultantServices: [],
+      clinicianTypesSourced: [],
+      consultantTherapyAreas: [],
+      consultantWorkingLanguages: [],
+      canRecruitParticipants: false,
+      canRecruitClinicians: false,
+      consultantGcpTrained: false,
+      rateCurrency: 'CAD',
+      privacyPolicy: false as unknown as true,
     },
   })
 
@@ -303,6 +323,7 @@ export function Apply() {
   const onInterpreterSubmit = (data: InterpreterFormData) => submitSimpleRole(data)
   const onTranscriberSubmit = (data: TranscriberFormData) => submitSimpleRole(data)
   const onClinicianSubmit = (data: ClinicianReviewerFormData) => submitSimpleRole(data)
+  const onConsultantSubmit = (data: CdConsultantFormData) => submitSimpleRole(data)
 
   const onCogSubmit = async (data: CognitiveDebriefingFormData) => {
     setSubmitting(true)
@@ -1705,6 +1726,174 @@ export function Apply() {
             </FormSection>
 
             <ConsentSection form={clinicianForm} />
+
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
+            )}
+            <button type="submit" disabled={submitting} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? 'Submitting...' : 'Submit Application'}
+            </button>
+          </form>
+        )}
+
+        {roleType === 'cd_clinician_consultant' && (
+          <form onSubmit={consultantForm.handleSubmit(onConsultantSubmit)} className="space-y-6">
+            <FormSection title="Personal Information">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Full name" required error={consultantForm.formState.errors.fullName?.message}>
+                  <input {...consultantForm.register('fullName')} className={inputClasses} />
+                </FormField>
+                <FormField label="Email" required error={consultantForm.formState.errors.email?.message}>
+                  <input {...consultantForm.register('email')} type="email" className={inputClasses} />
+                </FormField>
+                <FormField label="Phone" error={consultantForm.formState.errors.phone?.message}>
+                  <input {...consultantForm.register('phone')} type="tel" className={inputClasses} />
+                </FormField>
+                <FormField label="City" error={consultantForm.formState.errors.city?.message}>
+                  <input {...consultantForm.register('city')} className={inputClasses} />
+                </FormField>
+                <FormField label="Country" required error={consultantForm.formState.errors.country?.message}>
+                  <select {...consultantForm.register('country')} className={selectClasses}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="LinkedIn URL" error={consultantForm.formState.errors.linkedinUrl?.message}>
+                  <input {...consultantForm.register('linkedinUrl')} type="url" className={inputClasses} placeholder="https://linkedin.com/in/..." />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Professional Background">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Years of relevant experience" required error={consultantForm.formState.errors.consultantYearsExperience?.message}>
+                  <select {...consultantForm.register('consultantYearsExperience')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EXPERIENCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="Education level" required error={consultantForm.formState.errors.educationLevel?.message}>
+                  <select {...consultantForm.register('educationLevel')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EDUCATION_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Services & Capabilities" description="Tell us what you can provide for cognitive debriefing and clinician review studies.">
+              <FormField label="Services you provide" required error={consultantForm.formState.errors.consultantServices?.message as string | undefined}>
+                <MultiSelect
+                  options={CONSULTANT_SERVICES.map((s) => ({ value: s.value, label: s.label }))}
+                  value={(consultantForm.watch('consultantServices') ?? []) as string[]}
+                  onChange={(next) => consultantForm.setValue('consultantServices', next as CdConsultantFormData['consultantServices'], { shouldValidate: true })}
+                  placeholder="Select services…"
+                />
+              </FormField>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <input type="checkbox" {...consultantForm.register('canRecruitParticipants')} className="text-cethos-teal focus:ring-cethos-teal" />
+                  I can recruit cognitive debriefing participants
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <input type="checkbox" {...consultantForm.register('canRecruitClinicians')} className="text-cethos-teal focus:ring-cethos-teal" />
+                  I can recruit / source clinicians (ClinRO reviewers)
+                </label>
+              </div>
+              <FormField label="Clinician types you can source (optional)">
+                <MultiSelect
+                  options={CLINICIAN_CREDENTIALS.map((c) => ({ value: c.value, label: c.label }))}
+                  value={(consultantForm.watch('clinicianTypesSourced') ?? []) as string[]}
+                  onChange={(next) => consultantForm.setValue('clinicianTypesSourced', next as CdConsultantFormData['clinicianTypesSourced'], { shouldValidate: true })}
+                  placeholder="Select clinician types…"
+                />
+              </FormField>
+              <FormField label="Therapy areas" required error={consultantForm.formState.errors.consultantTherapyAreas?.message as string | undefined}>
+                <MultiSelect
+                  options={CLINICIAN_THERAPY_AREAS.map((a) => ({ value: a.value, label: a.label }))}
+                  value={(consultantForm.watch('consultantTherapyAreas') ?? []) as string[]}
+                  onChange={(next) => consultantForm.setValue('consultantTherapyAreas', next as CdConsultantFormData['consultantTherapyAreas'], { shouldValidate: true })}
+                  placeholder="Select therapy areas…"
+                />
+              </FormField>
+            </FormSection>
+
+            <FormSection title="Coverage">
+              <FormField label="Countries / regions you cover" required error={consultantForm.formState.errors.consultantRegionsCovered?.message}>
+                <input {...consultantForm.register('consultantRegionsCovered')} className={inputClasses} placeholder="e.g. India, UK, Germany, LatAm" />
+              </FormField>
+              <FormField label="Working languages" required error={consultantForm.formState.errors.consultantWorkingLanguages?.message as string | undefined}>
+                <MultiSelect
+                  options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                  value={(consultantForm.watch('consultantWorkingLanguages') ?? []) as string[]}
+                  onChange={(next) => consultantForm.setValue('consultantWorkingLanguages', next, { shouldValidate: true })}
+                  placeholder="Select languages…"
+                />
+              </FormField>
+            </FormSection>
+
+            <FormSection title="Methodology Familiarity">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField label="ISPOR" required error={consultantForm.formState.errors.consultantIsporFamiliarity?.message}>
+                  <select {...consultantForm.register('consultantIsporFamiliarity')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {FAMILIARITY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="FDA" required error={consultantForm.formState.errors.consultantFdaFamiliarity?.message}>
+                  <select {...consultantForm.register('consultantFdaFamiliarity')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {FAMILIARITY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="EMA" required error={consultantForm.formState.errors.consultantEmaFamiliarity?.message}>
+                  <select {...consultantForm.register('consultantEmaFamiliarity')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {FAMILIARITY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                <input type="checkbox" {...consultantForm.register('consultantGcpTrained')} className="text-cethos-teal focus:ring-cethos-teal" />
+                GCP trained
+              </label>
+            </FormSection>
+
+            <FormSection title="Availability & Rate">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField label="Availability" required error={consultantForm.formState.errors.consultantAvailability?.message}>
+                  <select {...consultantForm.register('consultantAvailability')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {AVAILABILITY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="Rate expectation" required error={consultantForm.formState.errors.consultantRateExpectation?.message}>
+                  <input {...consultantForm.register('consultantRateExpectation')} type="text" className={inputClasses} placeholder="e.g. 80/hour or per-project" />
+                </FormField>
+                <FormField label="Currency" required error={consultantForm.formState.errors.rateCurrency?.message}>
+                  <select {...consultantForm.register('rateCurrency')} className={selectClasses}>
+                    {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} showMissingError={submitError === CV_MISSING_ERROR} />
+
+            <FormSection title="Additional Information">
+              <FormField label="How did you hear about us?">
+                <select {...consultantForm.register('referralSource')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {REFERRAL_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+              <FormField label="Additional notes">
+                <textarea {...consultantForm.register('notes')} rows={3} className={inputClasses} />
+              </FormField>
+            </FormSection>
+
+            <ConsentSection form={consultantForm} testConsent={false} />
 
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
