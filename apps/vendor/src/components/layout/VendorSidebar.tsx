@@ -10,6 +10,7 @@ import {
   FileText,
   X,
   GraduationCap,
+  BookOpen,
   ShieldCheck,
   Folder,
   ChevronDown,
@@ -49,6 +50,7 @@ const mainNavItems: NavItem[] = [
     ],
   },
   { to: "/request-test", label: "Competence tests", icon: GraduationCap },
+  { to: "/trainings", label: "Trainings", icon: BookOpen },
   { to: "/jobs", label: "Jobs", icon: Briefcase },
   { to: "/invoices", label: "Invoices", icon: FileText },
 ];
