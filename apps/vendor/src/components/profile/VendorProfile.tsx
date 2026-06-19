@@ -12,10 +12,12 @@ import {
   requestContractorUpgrade,
   type Province,
   type ContractorUpgradeRequest,
+  type CertificationEntry,
 } from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { CvSection } from "./CvSection";
+import { SupportingDocsSection } from "./SupportingDocsSection";
 import { COUNTRIES } from "../../data/countries";
 import { LANGUAGES } from "../../data/languages";
 import {
@@ -842,6 +844,7 @@ export function VendorProfile() {
   const [provinceState, setProvinceState] = useState("");
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
+  const [certifications, setCertifications] = useState<CertificationEntry[]>([]);
   const [contractorType, setContractorType] = useState<"individual" | "business">("individual");
   const [upgradeRequest, setUpgradeRequest] = useState<ContractorUpgradeRequest | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -876,6 +879,7 @@ export function VendorProfile() {
         setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
         setProvinceState(result.vendor.province_state || "");
         setNativeLanguages(result.vendor.native_languages || []);
+        setCertifications(result.vendor.certifications || []);
         setContractorType(result.vendor.contractor_type === "business" ? "business" : "individual");
         setUpgradeRequest(result.contractor_upgrade_request ?? null);
 
@@ -1109,6 +1113,16 @@ export function VendorProfile() {
       {profileLoaded && (
         <div className="mt-5">
           <CvSection />
+        </div>
+      )}
+
+      {/* Supporting documents (diplomas, certs, proficiency) */}
+      {profileLoaded && (
+        <div className="mt-5">
+          <SupportingDocsSection
+            sessionToken={sessionToken}
+            initialCertifications={certifications}
+          />
         </div>
       )}
 
