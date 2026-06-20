@@ -898,6 +898,7 @@ serve(async (req: Request) => {
     passwordSetupExpiryHours: 72,
     approvedCombinationsList: approvedCombinationsListHtml,
     staffMessage: staffMessageForEmail,
+    isAgency: isAgencyApp,
   });
   const subject = (body.editedSubject ?? "").trim() || tpl.subject;
   await sendMailgunEmail({

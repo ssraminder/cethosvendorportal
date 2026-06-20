@@ -323,6 +323,7 @@ export interface V11Params {
   passwordSetupExpiryHours: number;
   approvedCombinationsList: string; // pre-rendered <ul>…</ul>
   staffMessage?: string | null;     // optional AI-rephrased staff note
+  isAgency?: boolean;               // agency applicants get a roster note
 }
 export function buildV11ApprovedWelcome(p: V11Params): RenderedEmail {
   return render(`Welcome to CETHOS · ${p.applicationNumber}`, {
@@ -333,6 +334,11 @@ export function buildV11ApprovedWelcome(p: V11Params): RenderedEmail {
       <p><strong>Approved for:</strong></p>
       ${p.approvedCombinationsList}
       ${staffMessageBlock(p.staffMessage)}
+      ${p.isAgency ? `
+      <div style="background:#E6F4F4;border:1px solid ${BRAND.teal};border-radius:8px;padding:12px 14px;margin:14px 0;">
+        <p style="margin:0 0 6px;"><strong>Set up your Linguist Roster</strong></p>
+        <p style="margin:0;">As an agency, add the subcontractor linguists you&rsquo;ll assign to our projects to your <strong>Linguist Roster</strong>, then select the one who did the work each time you deliver (for ISO 17100 traceability). A step-by-step guide is in the portal under <strong>Profile &rarr; Guides &amp; Manuals</strong>.</p>
+      </div>` : ""}
       <p>Set your password to activate your vendor portal access. The link expires in <strong>${p.passwordSetupExpiryHours} hours</strong>.</p>
     `,
     cta: { label: "Set up your password", url: p.passwordSetupLink },
