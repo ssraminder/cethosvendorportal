@@ -143,7 +143,13 @@ serve(async (req: Request) => {
       .single();
     if (!vendor) return json({ error: "Vendor not found" }, 404);
 
-    const certs = (vendor.certifications as Array<Record<string, unknown>>) || [];
+    // certifications must be an array. Legacy rows (and some import paths) seeded
+    // it as an empty object `{}`, which is truthy — so a plain `|| []` fallback
+    // leaves a non-array here and the later `certs.push(...)` throws TypeError,
+    // surfacing as a generic 500. Coerce anything that isn't an array to [].
+    const certs = Array.isArray(vendor.certifications)
+      ? (vendor.certifications as Array<Record<string, unknown>>)
+      : [];
 
     if (body.action === "add") {
       let storagePath: string | null = null;
