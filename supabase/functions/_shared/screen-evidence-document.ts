@@ -13,8 +13,32 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 
 type SB = ReturnType<typeof createClient>;
+
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+// A .docx is a ZIP whose body text lives in word/document.xml. Claude can't
+// ingest .docx natively, so we extract plain text here and classify that (the
+// text is digital — no OCR needed). Returns "" on any failure (caller skips).
+function extractDocxText(bytes: Uint8Array): string {
+  try {
+    const files = unzipSync(bytes);
+    const xmlBytes = files["word/document.xml"];
+    if (!xmlBytes) return "";
+    let xml = new TextDecoder().decode(xmlBytes);
+    xml = xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\/?>/g, "\t");
+    let text = xml.replace(/<[^>]+>/g, "");
+    text = text
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    return text.replace(/\n{3,}/g, "\n\n").trim();
+  } catch (e) {
+    console.error("screen-evidence: docx text extraction failed", e);
+    return "";
+  }
+}
 
 // AI doc_type → qms.evidence_types.code. "unknown" → skip (logged only).
 const TYPE_MAP: Record<string, string> = {
@@ -57,17 +81,31 @@ export async function screenEvidenceDocument(args: {
     if (!apiKey) { console.error("screen-evidence: ANTHROPIC_API_KEY missing"); return; }
 
     const mime = (fileMime || "").toLowerCase();
+    const lowerName = (fileName || "").toLowerCase();
     const isPdf = mime === "application/pdf";
     const isImage = IMAGE_MIMES.includes(mime);
-    if (!isPdf && !isImage) {
+    const isDocx = mime === DOCX_MIME || lowerName.endsWith(".docx");
+    if (!isPdf && !isImage && !isDocx) {
       console.log(`screen-evidence: unsupported mime ${mime} — skipping AI screen for ${fileName}`);
       return;
     }
 
-    const b64 = bytesToBase64(bytes);
-    const docBlock = isPdf
-      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
-      : { type: "image", source: { type: "base64", media_type: mime === "image/jpg" ? "image/jpeg" : mime, data: b64 } };
+    // For PDFs/images we send a vision/document block; for .docx we extract the
+    // text and send it as plain text (Claude can't read .docx natively).
+    let docBlock: Record<string, unknown> | null = null;
+    let docText = "";
+    if (isDocx) {
+      docText = extractDocxText(bytes);
+      if (!docText) {
+        console.log(`screen-evidence: empty/unreadable docx text — skipping AI screen for ${fileName}`);
+        return;
+      }
+    } else {
+      const b64 = bytesToBase64(bytes);
+      docBlock = isPdf
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
+        : { type: "image", source: { type: "base64", media_type: mime === "image/jpg" ? "image/jpeg" : mime, data: b64 } };
+    }
 
     const prompt =
       `You are screening a document a translation vendor uploaded as ISO 17100 qualification evidence. ` +
@@ -86,13 +124,18 @@ export async function screenEvidenceDocument(args: {
       `  "concerns": "any red flags (name mismatch, wrong doc type, illegible, expired) or empty string"\n` +
       `}`;
 
+    // .docx has no visual — give the model the extracted text instead of a doc block.
+    const userContent = isDocx
+      ? [{ type: "text", text: `The uploaded file is a Word document. Its full extracted text is below, between the markers.\n\n--- BEGIN DOCUMENT TEXT ---\n${docText.slice(0, 30000)}\n--- END DOCUMENT TEXT ---\n\n${prompt}` }]
+      : [docBlock, { type: "text", text: prompt }];
+
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({
         model: Deno.env.get("ISO17100_MODEL") || "claude-sonnet-4-6",
         max_tokens: 700,
-        messages: [{ role: "user", content: [docBlock, { type: "text", text: prompt }] }],
+        messages: [{ role: "user", content: userContent }],
       }),
     });
     if (!res.ok) { console.error("screen-evidence: Claude call failed", res.status, (await res.text()).slice(0, 300)); return; }
