@@ -6,10 +6,11 @@ import {
   type RosterLinguist, type RosterReference, type RosterLanguagePair, type RosterUpsertPayload,
   type EvidenceDemand,
 } from "../../api/vendorRoster";
+import { listGuides } from "../../api/vendorGuides";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
 import {
   Users, Plus, X, Pencil, Trash2, Upload, CheckCircle2, AlertCircle, ShieldCheck, Loader2, FileText,
-  FolderUp, Inbox,
+  FolderUp, Inbox, BookOpen,
 } from "lucide-react";
 
 const EMPTY_REF: RosterReference = { competence_bases: [], role_types: [], subject_matters: [], languages: [] };
@@ -25,6 +26,7 @@ export function RosterManager() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [demands, setDemands] = useState<EvidenceDemand[]>([]);
   const [releasingId, setReleasingId] = useState<string | null>(null);
+  const [guideUrl, setGuideUrl] = useState<string | null>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
   const cvTargetId = useRef<string | null>(null);
   const evidenceInputRef = useRef<HTMLInputElement>(null);
@@ -34,9 +36,10 @@ export function RosterManager() {
     if (!sessionToken) return;
     setLoading(true);
     try {
-      const [res, dem] = await Promise.all([
+      const [res, dem, guides] = await Promise.all([
         listRoster(sessionToken),
         listEvidenceDemands(sessionToken, false),
+        listGuides(sessionToken).catch(() => ({ documents: [] as any[] })),
       ]);
       if (res.error) { setError(res.error); }
       else {
@@ -45,6 +48,9 @@ export function RosterManager() {
         setError("");
       }
       setDemands(dem.demands ?? []);
+      const docs = (guides as any).documents ?? [];
+      const guide = docs.find((d: any) => d.doc_code === "CTH-ARG-001") ?? docs[0] ?? null;
+      setGuideUrl(guide?.url ?? null);
     } catch {
       setError("Failed to load roster");
     } finally {
@@ -118,6 +124,15 @@ export function RosterManager() {
           <Plus className="w-4 h-4" /> Add linguist
         </button>
       </div>
+
+      {/* Link to the training guide */}
+      {guideUrl && (
+        <a href={guideUrl} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-2 rounded-lg bg-white border border-gray-200 px-4 py-2.5 mb-3 text-sm text-gray-700 hover:border-teal-300 hover:bg-teal-50/40 transition-colors">
+          <BookOpen className="w-4 h-4 text-teal-600 shrink-0" />
+          <span>New here? Read the <span className="font-medium text-teal-700">Agency Linguist Roster Guide</span> — building your roster &amp; tagging linguists at delivery.</span>
+        </a>
+      )}
 
       {/* Privacy + ISO explainer */}
       <div className="rounded-lg bg-teal-50 border border-teal-200 p-4 mb-5 text-sm text-teal-900">
