@@ -16,7 +16,6 @@ import {
   Clock,
   FileText,
   ChevronRight,
-  Camera,
   CalendarCheck,
   Languages,
   Settings,
@@ -58,7 +57,6 @@ const AVAILABILITY_OPTIONS = [
 ] as const;
 
 const PROFILE_STEPS = [
-  { key: "photo", label: "Add a profile photo", icon: Camera },
   { key: "availability", label: "Set your availability", icon: CalendarCheck },
   { key: "languages", label: "Add language pairs", icon: Languages },
   { key: "rates", label: "Configure services & rates", icon: Settings },

@@ -121,8 +121,9 @@ serve(async (req: Request) => {
     const hasIsoEvidence = (cvCount ?? 0) > 0 || (certCount ?? 0) > 0;
 
     const completedSteps: Record<string, boolean> = {
-      // Original 5 onboarding steps
-      photo: !!translatorProfile?.profile_photo_url,
+      // Onboarding steps (profile photo removed — no uploader exists and it's
+      // not required for a translation vendor or ISO 17100; was an unreachable
+      // completeness step. Bug 482f3dfa.)
       availability: !!vendor.availability_status && vendor.availability_status !== "available",
       languages: (languagePairs || []).some((lp: Record<string, unknown>) => lp.is_active),
       rates: (rates || []).length > 0,

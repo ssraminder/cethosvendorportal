@@ -155,7 +155,8 @@ export const handler = async (event: {
     const hasIsoEvidence = cvCount > 0 || certsArr.length > 0;
 
     const completedSteps: Record<string, boolean> = {
-      photo: !!translatorProfile?.profile_photo_url,
+      // Profile photo removed — no uploader exists; was an unreachable
+      // completeness step (bug 482f3dfa).
       availability: !!vendor.availability_status && vendor.availability_status !== "available",
       languages: languagePairs.some((lp) => lp.is_active),
       rates: rates.length > 0,
