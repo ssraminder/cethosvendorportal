@@ -39,6 +39,9 @@ const consentSchema = z.object({
   privacyPolicy: z.literal(true, {
     error: 'You must agree to the Privacy Policy',
   }),
+  declarationTrue: z.literal(true, {
+    error: 'You must declare that the information provided is true and accurate',
+  }),
   consentTest: z.literal(true, {
     error: 'You must consent to receiving a translation test',
   }),
@@ -351,8 +354,9 @@ export const cdConsultantSchema = z.object({
   rateCurrency: z.string().min(3, 'Select a currency'),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
-  // Consultants take no skills test — only the privacy consent applies.
+  // Consultants take no skills test — privacy consent + truthful-declaration apply.
   privacyPolicy: z.literal(true, { error: 'You must agree to the Privacy Policy' }),
+  declarationTrue: z.literal(true, { error: 'You must declare that the information provided is true and accurate' }),
 })
 
 export type TranslatorFormData = z.infer<typeof translatorSchema>
