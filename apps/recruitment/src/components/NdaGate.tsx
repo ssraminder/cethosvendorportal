@@ -72,7 +72,9 @@ export function NdaGate({ token, kind, applicantName, applicantEmail, nda, onSig
         </div>
         <p className="text-sm text-slate-600 mb-5">
           Before your assessment opens, please read and accept this short confidentiality agreement (NDA).
-          It protects the test materials and any client content you may see. This takes under a minute.
+          It protects the test materials and any client content you may see. This takes under a minute, and
+          <span className="font-medium text-slate-700"> you only need to do this once</span> — it carries
+          through to your assessments and, if you join, your vendor account.
         </p>
 
         <div className="rounded-lg border border-slate-200 bg-white">
