@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { NdaGate, type NdaTemplate } from '../components/NdaGate'
 import {
   Clock,
   CheckCircle,
@@ -48,6 +49,7 @@ interface QuizData {
 type PageState =
   | { kind: 'loading' }
   | { kind: 'error'; error: string; errorType?: string }
+  | { kind: 'nda_required'; nda: NdaTemplate | null; applicantName: string; applicantEmail: string | null }
   | { kind: 'loaded'; data: QuizData }
   | { kind: 'submitted' }
 
@@ -102,16 +104,25 @@ export function QuizSubmission() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [timeDisplay, setTimeDisplay] = useState('')
 
-  // Load quiz on mount
-  useEffect(() => {
+  // Load quiz (re-callable after the NDA is accepted).
+  const loadQuiz = useCallback(() => {
     if (!token) {
       setPageState({ kind: 'error', error: 'No quiz token provided.' })
       return
     }
+    setPageState({ kind: 'loading' })
     callEdgeFunction('cvp-get-quiz', { token })
       .then((result) => {
-        if (result.success && result.data) {
-          setPageState({ kind: 'loaded', data: result.data as unknown as QuizData })
+        const data = result.data as Record<string, unknown> | undefined
+        if (result.success && data?.nda_required) {
+          setPageState({
+            kind: 'nda_required',
+            nda: (data.nda as NdaTemplate | null) ?? null,
+            applicantName: (data.applicantName as string) ?? '',
+            applicantEmail: (data.applicantEmail as string | null) ?? null,
+          })
+        } else if (result.success && data) {
+          setPageState({ kind: 'loaded', data: data as unknown as QuizData })
         } else {
           setPageState({
             kind: 'error',
@@ -127,6 +138,10 @@ export function QuizSubmission() {
         }),
       )
   }, [token])
+
+  useEffect(() => {
+    loadQuiz()
+  }, [loadQuiz])
 
   // Timer
   useEffect(() => {
@@ -192,6 +207,20 @@ export function QuizSubmission() {
           <p className="text-gray-500">Loading your quiz...</p>
         </div>
       </Layout>
+    )
+  }
+
+  // ---- NDA GATE ----
+  if (pageState.kind === 'nda_required') {
+    return (
+      <NdaGate
+        token={token ?? ''}
+        kind="quiz"
+        nda={pageState.nda}
+        applicantName={pageState.applicantName}
+        applicantEmail={pageState.applicantEmail}
+        onSigned={loadQuiz}
+      />
     )
   }
 
