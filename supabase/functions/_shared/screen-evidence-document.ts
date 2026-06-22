@@ -86,7 +86,19 @@ export async function screenEvidenceDocument(args: {
     const isImage = IMAGE_MIMES.includes(mime);
     const isDocx = mime === DOCX_MIME || lowerName.endsWith(".docx");
     if (!isPdf && !isImage && !isDocx) {
-      console.log(`screen-evidence: unsupported mime ${mime} — skipping AI screen for ${fileName}`);
+      console.log(`screen-evidence: unsupported mime ${mime} — recording as other_document for ${fileName}`);
+      const sha256 = await sha256Hex(bytes);
+      await supabase.rpc("qms_add_evidence_wrapper", {
+        p_vendor_id: vendorId, p_role_qualification_id: null,
+        p_evidence_type_code: "other_document",
+        p_title: (claimedLabel || fileName).slice(0, 200),
+        p_org: null, p_country: null, p_issued_date: null, p_expiry_date: null,
+        p_storage_path: storagePath, p_file_name: fileName, p_file_mime: fileMime,
+        p_file_size: bytes.length, p_sha256: sha256, p_verified: false,
+        p_verification_method: "ai_document_screen",
+        p_verification_notes: `Unsupported file type (${mime}) — cannot AI-screen. Manual review needed.`,
+        p_acting_user_id: null,
+      });
       return;
     }
 
@@ -147,11 +159,9 @@ export async function screenEvidenceDocument(args: {
     } catch { console.error("screen-evidence: non-JSON output", raw.slice(0, 300)); return; }
 
     const docType = String(ex.doc_type ?? "unknown");
-    const typeCode = TYPE_MAP[docType];
-    if (!typeCode) {
-      console.log(`screen-evidence: classified '${docType}' (no evidence-type mapping) for ${fileName} — not recorded`);
-      return;
-    }
+    // "unknown" gets recorded as other_document so it leaves the screened set
+    // and doesn't loop forever through backfill. It is NOT a qualifying evidence record.
+    const typeCode = TYPE_MAP[docType] ?? "other_document";
 
     const nameMatch = ex.name_matches_vendor;
     const concerns = String(ex.concerns ?? "").trim();

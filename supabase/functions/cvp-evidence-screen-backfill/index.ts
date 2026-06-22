@@ -43,7 +43,7 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
   }
   const dryRun = body?.dry_run === true;
-  const limit = Math.min(Math.max(1, Number(body?.limit ?? 25)), 100);
+  const limit = Math.min(Math.max(1, Number(body?.limit ?? 25)), 50);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -99,28 +99,35 @@ serve(async (req: Request) => {
     });
   }
 
+  // Process in concurrent batches of 6 to stay under the edge-function wall-time
+  // while still saturating the AI-vision rate limit comfortably.
+  const CONCURRENCY = 6;
   const results: Array<Record<string, unknown>> = [];
-  for (const e of todo) {
-    try {
-      const { data: blob, error: dlErr } = await supabase.storage.from(BUCKET).download(e.storage_path);
-      if (dlErr || !blob) { results.push({ storage_path: e.storage_path, ok: false, reason: dlErr?.message ?? "download_failed" }); continue; }
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      const fileName = e.storage_path.split("/").pop() ?? "document";
-      await screenEvidenceDocument({
-        supabase,
-        vendorId: e.vendor_id,
-        vendorName: e.full_name,
-        claimedLabel: e.cert_name,
-        bytes,
-        fileName,
-        fileMime: mimeFromPath(e.storage_path),
-        storagePath: e.storage_path,
-      });
-      results.push({ storage_path: e.storage_path, vendor: e.full_name, ok: true });
-    } catch (err) {
-      results.push({ storage_path: e.storage_path, ok: false, reason: String(err) });
-    }
-    await sleep(800); // AI-vision throttle
+  for (let i = 0; i < todo.length; i += CONCURRENCY) {
+    const batch = todo.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async (e) => {
+      try {
+        const { data: blob, error: dlErr } = await supabase.storage.from(BUCKET).download(e.storage_path);
+        if (dlErr || !blob) return { storage_path: e.storage_path, ok: false, reason: dlErr?.message ?? "download_failed" };
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const fileName = e.storage_path.split("/").pop() ?? "document";
+        await screenEvidenceDocument({
+          supabase,
+          vendorId: e.vendor_id,
+          vendorName: e.full_name,
+          claimedLabel: e.cert_name,
+          bytes,
+          fileName,
+          fileMime: mimeFromPath(e.storage_path),
+          storagePath: e.storage_path,
+        });
+        return { storage_path: e.storage_path, vendor: e.full_name, ok: true };
+      } catch (err) {
+        return { storage_path: e.storage_path, ok: false, reason: String(err) };
+      }
+    }));
+    results.push(...batchResults);
+    if (i + CONCURRENCY < todo.length) await sleep(300);
   }
 
   return new Response(JSON.stringify({ processed: results.length, remaining: entries.length - todo.length, ok: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results }), {

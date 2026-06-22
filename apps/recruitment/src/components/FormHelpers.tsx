@@ -86,6 +86,20 @@ export function ConsentSection<T extends FieldValues>({ form, testConsent = true
           <p className="text-sm text-red-600 ml-6">{errors.privacyPolicy.message}</p>
         )}
 
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            {...form.register('declarationTrue' as Path<T>)}
+            className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
+          />
+          <span className="text-sm text-gray-700">
+            I declare that all information I have provided in this application is true, accurate, and complete to the best of my knowledge <span className="text-red-500">*</span>
+          </span>
+        </label>
+        {errors.declarationTrue?.message && (
+          <p className="text-sm text-red-600 ml-6">{errors.declarationTrue.message}</p>
+        )}
+
         {testConsent && (<>
         <label className="flex items-start gap-2 cursor-pointer">
           <input
