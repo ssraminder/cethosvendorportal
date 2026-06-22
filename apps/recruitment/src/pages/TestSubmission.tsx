@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { NdaGate, type NdaTemplate } from '../components/NdaGate'
 import { isRtlCode } from '../lib/rtl'
 import {
   Clock,
@@ -45,6 +46,7 @@ interface TestData {
 type PageState =
   | { kind: 'loading' }
   | { kind: 'error'; error: string; errorType?: string }
+  | { kind: 'nda_required'; nda: NdaTemplate | null; applicantName: string; applicantEmail: string | null }
   | { kind: 'loaded'; data: TestData }
   | { kind: 'submitted' }
 
@@ -110,22 +112,30 @@ export function TestSubmission() {
   const contentRef = useRef(content)
   contentRef.current = content
 
-  // Load test data on mount
-  useEffect(() => {
+  // Load test data (re-callable after the NDA is accepted).
+  const loadTest = useCallback(() => {
     if (!token) {
       setPageState({ kind: 'error', error: 'No test token provided.' })
       return
     }
-
+    setPageState({ kind: 'loading' })
     callEdgeFunction('cvp-get-test', { token }).then((result) => {
-      if (result.success && result.data) {
-        const data = result.data as unknown as TestData
-        setPageState({ kind: 'loaded', data })
-        if (data.draftContent) {
-          setContent(data.draftContent)
+      const data = result.data as Record<string, unknown> | undefined
+      if (result.success && data?.nda_required) {
+        setPageState({
+          kind: 'nda_required',
+          nda: (data.nda as NdaTemplate | null) ?? null,
+          applicantName: (data.applicantName as string) ?? '',
+          applicantEmail: (data.applicantEmail as string | null) ?? null,
+        })
+      } else if (result.success && data) {
+        const testData = data as unknown as TestData
+        setPageState({ kind: 'loaded', data: testData })
+        if (testData.draftContent) {
+          setContent(testData.draftContent)
         }
-        if (data.draftLastSavedAt) {
-          setLastSaved(data.draftLastSavedAt)
+        if (testData.draftLastSavedAt) {
+          setLastSaved(testData.draftLastSavedAt)
         }
       } else {
         setPageState({
@@ -141,6 +151,10 @@ export function TestSubmission() {
       })
     })
   }, [token])
+
+  useEffect(() => {
+    loadTest()
+  }, [loadTest])
 
   // Update timer display every minute
   useEffect(() => {
@@ -218,6 +232,20 @@ export function TestSubmission() {
           <p className="text-gray-500">Loading your test...</p>
         </div>
       </Layout>
+    )
+  }
+
+  // --- NDA GATE ---
+  if (pageState.kind === 'nda_required') {
+    return (
+      <NdaGate
+        token={token ?? ''}
+        kind="test"
+        nda={pageState.nda}
+        applicantName={pageState.applicantName}
+        applicantEmail={pageState.applicantEmail}
+        onSigned={loadTest}
+      />
     )
   }
 
