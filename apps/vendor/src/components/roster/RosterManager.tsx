@@ -418,8 +418,8 @@ function RosterModal({ linguist, reference, onClose, onSaved }: {
               className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
             <span>
               I confirm this linguist meets the ISO 17100 §6.1 competence requirements, that we hold the supporting
-              evidence (degrees, certificates and/or documented experience), and that we will produce it on demand if
-              Cethos or its client requests it.
+              evidence (degrees, certificates and/or documented experience), and that we will produce it, with personal
+              information redacted, on demand if Cethos or its client requests it.
             </span>
           </label>
 
