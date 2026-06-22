@@ -51,15 +51,12 @@ serve(async (req: Request) => {
   );
 
   // Files already screened (skip them) — by storage_path on competence_evidence.
+  // Uses an RPC because qms schema is not exposed via PostgREST directly.
   const screened = new Set<string>();
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
-      .schema("qms")
-      .from("competence_evidence")
-      .select("storage_path")
-      .not("storage_path", "is", null)
-      .range(offset, offset + 999);
-    if (error) break;
+      .rpc("qms_list_screened_storage_paths", { p_offset: offset, p_limit: 1000 });
+    if (error) { console.error("backfill: screened-set query failed", error.message); break; }
     for (const r of data ?? []) if ((r as { storage_path: string }).storage_path) screened.add((r as { storage_path: string }).storage_path);
     if ((data ?? []).length < 1000) break;
   }
