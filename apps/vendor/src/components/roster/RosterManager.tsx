@@ -140,7 +140,8 @@ export function RosterManager() {
         <p className="mt-1 text-teal-800">
           Cethos sees only an opaque handle, the language pairs, specializations and a readiness flag — never the
           real name, CV, or evidence files. You attest that each linguist meets ISO 17100 §6.1 competence and that
-          you hold their evidence; Cethos may request those documents for a specific project, and you release them then.
+          you hold their evidence; Cethos may request those documents for a specific project, and you release them
+          then, with personal information redacted.
         </p>
       </div>
 
