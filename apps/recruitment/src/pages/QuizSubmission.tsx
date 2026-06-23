@@ -9,6 +9,8 @@ import {
   Loader2,
   Send,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
@@ -103,6 +105,7 @@ export function QuizSubmission() {
   const [translationAnswers, setTranslationAnswers] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [currentIndex, setCurrentIndex] = useState(0)
   const [timeDisplay, setTimeDisplay] = useState('')
 
   // Load quiz (re-callable after the NDA is accepted).
@@ -291,6 +294,27 @@ export function QuizSubmission() {
   const combinedAnswered = answeredCount + tAnswered
   const allAnswered = combinedAnswered === combinedTotal
 
+  // Flatten into one ordered list of cards: MCQs (grouped by competence) then
+  // the Part-2 translation items. One card shown at a time.
+  type FlatItem =
+    | { kind: 'mcq'; q: QuizQuestion; competence: string; number: number }
+    | { kind: 'translation'; t: TranslationItem; number: number }
+  const flatItems: FlatItem[] = []
+  let qn = 1
+  for (const g of groupedQuestions)
+    for (const q of g.questions) flatItems.push({ kind: 'mcq', q, competence: g.competence, number: qn++ })
+  tItems.forEach((t, i) => flatItems.push({ kind: 'translation', t, number: i + 1 }))
+  const safeIndex = Math.min(Math.max(0, currentIndex), Math.max(0, flatItems.length - 1))
+  const current = flatItems[safeIndex]
+  const isLast = safeIndex >= flatItems.length - 1
+  const isCurrentAnswered = current
+    ? current.kind === 'mcq'
+      ? !!answers[current.q.id]
+      : (translationAnswers[current.t.id] ?? '').trim().length > 0
+    : false
+  const firstUnansweredIndex = flatItems.findIndex((it) =>
+    it.kind === 'mcq' ? !answers[it.q.id] : !(translationAnswers[it.t.id] ?? '').trim())
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -325,180 +349,158 @@ export function QuizSubmission() {
           </div>
         </div>
 
-        {/* Progress */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-4">
-          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        {/* Progress + position */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-2 gap-3">
+            <span className="text-sm font-semibold text-cethos-navy">
+              {current?.kind === 'translation'
+                ? `Translation ${current.number} of ${tItems.length}`
+                : `Question ${current?.number ?? 1} of ${totalCount}`}
+              <span className="text-gray-400 font-normal"> &middot; item {safeIndex + 1} of {flatItems.length}</span>
+            </span>
+            <span className="text-sm text-gray-600 font-medium whitespace-nowrap">
+              {combinedAnswered} / {combinedTotal} answered
+            </span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-cethos-teal transition-all"
               style={{ width: `${(combinedAnswered / combinedTotal) * 100}%` }}
             />
           </div>
-          <span className="text-sm text-gray-600 font-medium">
-            {combinedAnswered} / {combinedTotal}
-          </span>
         </div>
 
-        {/* Instructions */}
-        <div className="bg-cethos-bg-blue rounded-lg border border-cethos-teal p-4">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">Instructions</h3>
-          <ul className="text-sm text-cethos-teal space-y-1 list-disc pl-5">
-            <li>Pick one answer per question. Each question has exactly one correct answer.</li>
-            <li>Your answers are not saved until you submit. Complete the full quiz in one sitting.</li>
-            <li>Grading is automatic and immediate. We'll email you the next step within 1–2 business days.</li>
-          </ul>
-        </div>
-
-        {/* Question blocks grouped by competence */}
-        {groupedQuestions.map((group) => {
-          let questionNum = 1
-          // Compute the starting question number for this group across the whole quiz
-          for (const earlier of groupedQuestions) {
-            if (earlier.competence === group.competence) break
-            questionNum += earlier.questions.length
-          }
-          return (
-            <div
-              key={group.competence}
-              className="bg-white rounded-lg border border-gray-200 p-6 space-y-5"
-            >
-              <h2 className="text-sm font-semibold text-cethos-navy uppercase tracking-wide border-b border-gray-100 pb-2">
-                {COMPETENCE_LABELS[group.competence] ?? group.competence}
-              </h2>
-              {group.questions.map((q, idx) => {
-                const num = questionNum + idx
-                const selected = answers[q.id]
-                return (
-                  <div key={q.id} className="space-y-3">
-                    <div className="flex items-baseline gap-3">
-                      <span className="text-xs font-semibold text-gray-400 mt-1">
-                        Q{num}
-                      </span>
-                      <p className="text-sm text-gray-900 leading-relaxed">
-                        {q.question}
-                      </p>
-                    </div>
-                    <div className="space-y-2 pl-7">
-                      {q.options.map((o) => {
-                        const isSelected = selected === o.value
-                        return (
-                          <label
-                            key={o.value}
-                            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'border-cethos-teal bg-cethos-bg-blue'
-                                : 'border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name={`q-${q.id}`}
-                              value={o.value}
-                              checked={isSelected}
-                              onChange={() =>
-                                setAnswers((prev) => ({ ...prev, [q.id]: o.value }))
-                              }
-                              className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
-                            />
-                            <span className="text-sm text-gray-800 leading-relaxed">
-                              <span className="font-semibold text-cethos-navy mr-2 uppercase">
-                                {o.value}.
-                              </span>
-                              {o.label}
-                            </span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )
-        })}
-
-        {/* Part 2 — sentence translation (COA track) */}
-        {tItems.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
-            <h2 className="text-sm font-semibold text-cethos-navy uppercase tracking-wide border-b border-gray-100 pb-2">
-              Translation — into {data.targetLanguageName}
-            </h2>
-            <p className="text-sm text-gray-500">
-              Translate each item into {data.targetLanguageName}. Aim for natural,
-              patient-appropriate wording that preserves the meaning — not
-              word-for-word. For any item marked “correct the draft”, fix the draft shown.
-            </p>
-            {tItems.map((t, i) => (
-              <div key={t.id} className="space-y-2">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-xs font-semibold text-gray-400 mt-1">T{i + 1}</span>
-                  <p className="text-sm text-gray-900 leading-relaxed">
-                    {t.construct === 'error_correction'
-                      ? 'Correct the draft translation of: '
-                      : ''}
-                    {t.source_text}
-                  </p>
-                </div>
-                {t.construct === 'error_correction' && t.flawed_draft && (
-                  <div className="ml-7 text-sm bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
-                    <span className="font-medium">Draft to correct:</span> {t.flawed_draft}
-                  </div>
-                )}
-                <textarea
-                  className="ml-7 w-[calc(100%-1.75rem)] border border-gray-300 rounded-lg p-2 text-sm focus:ring-cethos-teal focus:border-cethos-teal"
-                  rows={2}
-                  placeholder={`Your ${data.targetLanguageName} translation...`}
-                  value={translationAnswers[t.id] ?? ''}
-                  onChange={(e) =>
-                    setTranslationAnswers((prev) => ({ ...prev, [t.id]: e.target.value }))
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Warning when expiring */}
+        {/* Expiring warning */}
         {isExpiringSoon && (
           <div className="bg-red-50 rounded-lg border border-red-200 p-3 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
             <p className="text-sm text-red-700">
-              Your quiz link is expiring soon. Please finish and submit before
-              the deadline.
+              Your quiz link is expiring soon. Please finish and submit before the deadline.
             </p>
           </div>
         )}
 
-        {/* Submit */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-12">
-          <div className="text-sm text-gray-600">
-            {allAnswered ? (
-              <span className="text-green-700 font-medium">
-                All {combinedTotal} items answered.
-              </span>
+        {/* Current item card */}
+        {current && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-5 min-h-[300px]">
+            {current.kind === 'mcq' ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-cethos-teal uppercase tracking-wide">
+                    {COMPETENCE_LABELS[current.competence] ?? current.competence}
+                  </span>
+                  {isCurrentAnswered && <CheckCircle className="w-4 h-4 text-green-500" />}
+                </div>
+                <p className="text-base text-gray-900 leading-relaxed font-medium">{current.q.question}</p>
+                <div className="space-y-2">
+                  {current.q.options.map((o) => {
+                    const isSelected = answers[current.q.id] === o.value
+                    return (
+                      <label
+                        key={o.value}
+                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          isSelected ? 'border-cethos-teal bg-cethos-bg-blue' : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`q-${current.q.id}`}
+                          value={o.value}
+                          checked={isSelected}
+                          onChange={() => setAnswers((prev) => ({ ...prev, [current.q.id]: o.value }))}
+                          className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
+                        />
+                        <span className="text-sm text-gray-800 leading-relaxed">
+                          <span className="font-semibold text-cethos-navy mr-2 uppercase">{o.value}.</span>
+                          {o.label}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </>
             ) : (
-              <span>
-                {combinedTotal - combinedAnswered} item{combinedTotal - combinedAnswered === 1 ? '' : 's'} remaining.
-              </span>
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-cethos-teal uppercase tracking-wide">
+                    Translation into {data.targetLanguageName}
+                  </span>
+                  {isCurrentAnswered && <CheckCircle className="w-4 h-4 text-green-500" />}
+                </div>
+                <p className="text-base text-gray-900 leading-relaxed font-medium">
+                  {current.t.construct === 'error_correction' ? 'Correct the draft translation of: ' : ''}
+                  {current.t.source_text}
+                </p>
+                {current.t.construct === 'error_correction' && current.t.flawed_draft && (
+                  <div className="text-sm bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
+                    <span className="font-medium">Draft to correct:</span> {current.t.flawed_draft}
+                  </div>
+                )}
+                <textarea
+                  className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-cethos-teal focus:border-cethos-teal"
+                  rows={4}
+                  placeholder={`Your ${data.targetLanguageName} translation...`}
+                  value={translationAnswers[current.t.id] ?? ''}
+                  onChange={(e) => setTranslationAnswers((prev) => ({ ...prev, [current.t.id]: e.target.value }))}
+                />
+                <p className="text-xs text-gray-400">
+                  Aim for natural, patient-appropriate wording that preserves the meaning — not word-for-word.
+                </p>
+              </>
             )}
           </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between gap-3 pb-12">
           <button
             type="button"
-            onClick={() => setShowConfirmDialog(true)}
-            disabled={isSubmitting || !allAnswered}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-cethos-teal rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setCurrentIndex(Math.max(0, safeIndex - 1))}
+            disabled={safeIndex === 0}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-cethos-navy bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Submit Quiz
-              </>
-            )}
+            <ChevronLeft className="w-4 h-4" /> Previous
           </button>
+
+          {!isLast ? (
+            <button
+              type="button"
+              onClick={() => setCurrentIndex(Math.min(flatItems.length - 1, safeIndex + 1))}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white bg-cethos-teal rounded-lg hover:bg-cethos-teal-light"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <div className="flex items-center gap-3">
+              {!allAnswered && firstUnansweredIndex >= 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentIndex(firstUnansweredIndex)}
+                  className="text-xs text-amber-700 underline whitespace-nowrap"
+                >
+                  {combinedTotal - combinedAnswered} unanswered — go to it
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowConfirmDialog(true)}
+                disabled={isSubmitting || !allAnswered}
+                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-cethos-teal rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Submit Quiz
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
