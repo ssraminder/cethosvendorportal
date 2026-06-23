@@ -55,6 +55,7 @@ Rules:
 - The "Year verification" line in the input describes how the applicant's stated start year compares with the reference's recollection. If it says DISAGREES, you MUST include a red flag along the lines of "reference contradicts applicant's stated working timeline (X-year gap)". If it says MATCHES, you MAY mention "timeline corroborated" as a theme. cant_recall is not a red flag.
 - The "Domain verification" line describes whether the reference confirmed at least one of the domains the applicant claimed they worked together on. DISJOINT (zero overlap, reference said they worked on something completely different) MUST be a red flag — applicant's claimed expertise is not corroborated by this reference. PARTIAL is the normal case (reference saw some but not all of the applicant's claimed work) — not a red flag. MATCHES MAY be a positive theme. cant_recall is not a red flag.
 - The MCQ answers may come in two shapes. When "single answer set" — one rating per competence applies to all confirmed domains. When "separately for each confirmed domain" — interpret per-domain variance: if the reference rates the applicant 'a' (strong) in one domain and 'd' (weak) in another, surface that as a theme (e.g. "uneven by domain: strong in legal, weak in medical") and consider whether the weak domain crosses into red-flag territory. Letter scale: a=strong positive, b=solid positive, c=mixed/partial, d=negative, e=can't speak to this.
+- The "Engagement" line states the referee's role/relationship + independence, and the applicant's full-time/part-time status and volume as the referee saw it. If the referee indicates they are NOT independent (a relative, or has a financial stake in the application), you MUST include a red flag (e.g. "reference may not be independent — relative/financial stake"). Full-time vs part-time and volume are tenure context, not red flags on their own.
 - Don't infer beyond the text. If the reference doesn't mention something, don't include it as a theme.`;
 
 interface YearVerificationContext {
@@ -169,6 +170,50 @@ const DOMAIN_LABEL_FB: Record<string, string> = {
   other: "Other",
 };
 
+// Applicant-wide claimed-approval domains (cvp_applications.domains_offered).
+// As of 2026-06-23 the referee confirms against THESE (the domains the vendor
+// actually claimed approval for), not the legacy 8 buckets — so
+// reference_confirmed_domains now stores these codes. Mirror of
+// apps/recruitment/src/lib/domains.ts DOMAIN_OPTIONS.
+const APPLICATION_DOMAIN_LABEL: Record<string, string> = {
+  legal: "Legal",
+  certified_official: "Certified / Official Documents",
+  immigration: "Immigration",
+  medical: "Medical",
+  life_sciences: "Life Sciences / Clinical Trials",
+  coa_linguistic_validation: "COA / Linguistic Validation",
+  pharmaceutical: "Pharmaceutical",
+  financial: "Financial",
+  insurance: "Insurance",
+  technical: "Technical",
+  it_software: "IT / Software",
+  automotive_engineering: "Automotive / Engineering",
+  energy: "Energy",
+  marketing_advertising: "Marketing & Advertising",
+  literary_publishing: "Literary & Publishing",
+  academic_scientific: "Academic & Scientific",
+  government_public: "Government & Public Sector",
+  business_corporate: "Business & Corporate",
+  gaming_entertainment: "Gaming & Entertainment",
+  media_journalism: "Media & Journalism",
+  tourism_hospitality: "Tourism & Hospitality",
+  general: "General",
+  other: "Other",
+};
+// Accept both the new 23-code application set and the legacy 8-bucket codes so an
+// in-flight old-form submission still validates.
+const VALID_CONFIRM_DOMAIN_CODES = new Set<string>([
+  ...Object.keys(APPLICATION_DOMAIN_LABEL),
+  ...DOMAIN_CODES_FB,
+]);
+
+// Engagement-detail enums (2026-06-23 referee-form enhancement).
+const EMPLOYMENT_TYPES = new Set(["full_time", "part_time", "unsure"]);
+const ANNUAL_VOLUMES = new Set(["lt_50k", "50k_150k", "150k_500k", "gt_500k", "unsure"]);
+const RELATIONSHIP_TYPES = new Set([
+  "client", "employer", "project_manager", "reviser_editor", "peer_translator", "other",
+]);
+
 interface DomainVerificationContext {
   applicantStatedDomains: string[] | null;
   applicantOtherDomainText: string | null;
@@ -214,7 +259,7 @@ function computeDomainVerification(
   for (const d of (rawConfirmedDomains ?? []) as unknown[]) {
     if (typeof d !== "string") return { ok: false, error: "confirmedDomains entries must be strings" };
     const code = d.trim().toLowerCase();
-    if (!DOMAIN_CODES_FB.has(code)) return { ok: false, error: `invalid domain: ${code}` };
+    if (!VALID_CONFIRM_DOMAIN_CODES.has(code)) return { ok: false, error: `invalid domain: ${code}` };
     // When applicant declared, restrict to that set (verification anchor).
     // When applicant didn't declare, accept any code — reference's self-
     // volunteered domain experience still useful even without verification.
@@ -267,6 +312,15 @@ async function analyseWithOpus(args: {
   yearVerification: YearVerificationContext;
   domainVerification: DomainVerificationContext;
   competenceResponses: Record<string, unknown>;
+  engagement?: {
+    employmentType: string | null;
+    annualVolume: string | null;
+    relationshipOngoing: boolean;
+    endYear: number | null;
+    refereeIndependent: boolean | null;
+    relationshipType: string | null;
+    roleTitle: string | null;
+  };
 }): Promise<{ ok: boolean; data: Record<string, unknown> | null; error: string | null }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return { ok: false, data: null, error: "ANTHROPIC_API_KEY not configured" };
@@ -295,7 +349,7 @@ async function analyseWithOpus(args: {
   const dv = args.domainVerification;
   const labelDomains = (codes: string[], otherText: string | null) => {
     const parts = codes.map((c) =>
-      c === "other" && otherText ? `Other (${otherText})` : (DOMAIN_LABEL_FB[c] ?? c),
+      c === "other" && otherText ? `Other (${otherText})` : (APPLICATION_DOMAIN_LABEL[c] ?? DOMAIN_LABEL_FB[c] ?? c),
     );
     return parts.length > 0 ? parts.join(", ") : "(none)";
   };
@@ -328,7 +382,7 @@ async function analyseWithOpus(args: {
     const byDomain = cr.by_domain as Record<string, Record<string, string>>;
     const lines: string[] = ["MCQ answers (reference answered SEPARATELY for each confirmed domain):"];
     for (const [code, answers] of Object.entries(byDomain)) {
-      const label = DOMAIN_LABEL_FB[code] ?? code;
+      const label = APPLICATION_DOMAIN_LABEL[code] ?? DOMAIN_LABEL_FB[code] ?? code;
       lines.push(`- ${label}:`);
       for (const slug of REQUIRED_SLUGS) {
         lines.push(`    ${slug}: ${answers[slug]}`);
@@ -344,12 +398,25 @@ async function analyseWithOpus(args: {
   }
   const wwa = cr.would_work_again ?? "(not given)";
 
+  const eng = args.engagement;
+  let engagementLine = "Engagement: (not provided)";
+  if (eng) {
+    const EMP: Record<string, string> = { full_time: "full-time", part_time: "part-time", unsure: "unsure" };
+    const VOL: Record<string, string> = { lt_50k: "<50k words/yr", "50k_150k": "50–150k words/yr", "150k_500k": "150–500k words/yr", gt_500k: ">500k words/yr", unsure: "unsure volume" };
+    const period = eng.relationshipOngoing ? "still working together" : (eng.endYear ? `until ${eng.endYear}` : "end year not given");
+    const indep = eng.refereeIndependent === false
+      ? "referee NOT independent (relative/financial stake) — RED FLAG"
+      : eng.refereeIndependent === true ? "referee attests independent" : "independence not stated";
+    engagementLine = `Engagement: referee role "${eng.roleTitle ?? "—"}" / ${eng.relationshipType ?? "relationship not stated"}; applicant worked ${EMP[eng.employmentType ?? ""] ?? "employment not stated"}${eng.annualVolume ? `, ${VOL[eng.annualVolume] ?? eng.annualVolume}` : ""}; ${period}; ${indep}.`;
+  }
+
   const userMessage = `Applicant: ${args.applicantName}
 Reference: ${args.referenceName} (${args.referenceCompany ?? "company unspecified"} — ${args.referenceRelationship ?? "relationship unspecified"})
 Reference's overall rating: ${args.feedbackRating ?? "not given"} / 5
 Would work with applicant again: ${wwa}
 ${yearVerificationLine}
 ${domainVerificationLine}
+${engagementLine}
 
 ${mcqBlock}
 
@@ -424,6 +491,16 @@ serve(async (req: Request) => {
     confirmedOtherDomainText?: string | null;
     /** True when reference picked "I can't recall the domains". */
     domainsCantRecall?: boolean;
+    /** Engagement details (2026-06-23 referee-form enhancement). */
+    refereeEmploymentType?: string | null;
+    refereeAnnualVolume?: string | null;
+    confirmedEndYear?: number | string | null;
+    relationshipOngoing?: boolean;
+    refereeIndependent?: boolean | null;
+    refereeIndependenceNote?: string | null;
+    refereeRelationshipType?: string | null;
+    refereeRoleTitle?: string | null;
+    refereeRelationshipOther?: string | null;
   };
   try {
     body = await req.json();
@@ -453,7 +530,7 @@ serve(async (req: Request) => {
 
   const { data: app } = await supabase
     .from("cvp_applications")
-    .select("id, full_name, application_number")
+    .select("id, full_name, application_number, domains_offered")
     .eq("id", refRow.application_id)
     .single();
   if (!app) return json({ success: false, error: "application_not_found" }, 404);
@@ -479,6 +556,12 @@ serve(async (req: Request) => {
         applicantStatedDomains: (refRow.applicant_stated_domains as string[] | null) ?? null,
         applicantOtherDomainText: (refRow.applicant_other_domain_text as string | null) ?? null,
         applicantDomainsUnknown: refRow.applicant_domains_unknown as boolean,
+        // Claimed approval domains (cvp_applications.domains_offered) — the new
+        // referee domain-confirmation checklist renders THESE. Falls back to the
+        // legacy applicant_stated_domains flow when empty.
+        applicationDomainsOffered: ((app.domains_offered as string[] | null) ?? [])
+          .filter((c): c is string => typeof c === "string" && c.length > 0)
+          .map((code) => ({ code, label: APPLICATION_DOMAIN_LABEL[code] ?? code })),
       },
     });
   }
@@ -586,10 +669,16 @@ serve(async (req: Request) => {
 
   // Domain verification (2026-05-19). Computes matches/partial/disjoint
   // from the applicant's declared domains and the reference's confirmation.
+  // Anchor domain verification on the applicant's CLAIMED approval domains
+  // (domains_offered) per the 2026-06-23 enhancement — the referee confirms the
+  // domains the vendor actually wants approval for. Falls back to "no anchor"
+  // (accept any confirmed code) when the application declares none.
+  const claimedDomains = ((app.domains_offered as string[] | null) ?? [])
+    .filter((c): c is string => typeof c === "string" && c.length > 0);
   const dv = computeDomainVerification(
-    (refRow.applicant_stated_domains as string[] | null) ?? null,
-    (refRow.applicant_other_domain_text as string | null) ?? null,
-    (refRow.applicant_domains_unknown as boolean) ?? false,
+    claimedDomains.length > 0 ? claimedDomains : null,
+    null,
+    false,
     body.confirmedDomains ?? null,
     body.confirmedOtherDomainText ?? null,
     body.domainsCantRecall === true,
@@ -600,6 +689,42 @@ serve(async (req: Request) => {
       400,
     );
   }
+
+  // Engagement details (2026-06-23). Optional server-side (the form enforces the
+  // required ones) — validate enums + year range, trim free text.
+  const employmentType = body.refereeEmploymentType && EMPLOYMENT_TYPES.has(body.refereeEmploymentType)
+    ? body.refereeEmploymentType : null;
+  if (body.refereeEmploymentType && !employmentType) {
+    return json({ success: false, error: "invalid_employment_type" }, 400);
+  }
+  const annualVolume = body.refereeAnnualVolume && ANNUAL_VOLUMES.has(body.refereeAnnualVolume)
+    ? body.refereeAnnualVolume : null;
+  if (body.refereeAnnualVolume && !annualVolume) {
+    return json({ success: false, error: "invalid_annual_volume" }, 400);
+  }
+  const relationshipType = body.refereeRelationshipType && RELATIONSHIP_TYPES.has(body.refereeRelationshipType)
+    ? body.refereeRelationshipType : null;
+  if (body.refereeRelationshipType && !relationshipType) {
+    return json({ success: false, error: "invalid_relationship_type" }, 400);
+  }
+  const relationshipOngoing = body.relationshipOngoing === true;
+  let endYear: number | null = null;
+  if (!relationshipOngoing && body.confirmedEndYear != null && body.confirmedEndYear !== "") {
+    const n = typeof body.confirmedEndYear === "number"
+      ? body.confirmedEndYear : Number.parseInt(String(body.confirmedEndYear), 10);
+    const maxYear = new Date().getUTCFullYear() + 1;
+    if (!Number.isInteger(n) || n < 1980 || n > maxYear) {
+      return json({ success: false, error: "invalid_confirmed_end_year", detail: `1980..${maxYear}` }, 400);
+    }
+    endYear = n;
+  }
+  const refereeIndependent = typeof body.refereeIndependent === "boolean" ? body.refereeIndependent : null;
+  const independenceNote = typeof body.refereeIndependenceNote === "string"
+    ? (body.refereeIndependenceNote.trim().slice(0, 500) || null) : null;
+  const roleTitle = typeof body.refereeRoleTitle === "string"
+    ? (body.refereeRoleTitle.trim().slice(0, 200) || null) : null;
+  const relationshipOther = relationshipType === "other" && typeof body.refereeRelationshipOther === "string"
+    ? (body.refereeRelationshipOther.trim().slice(0, 200) || null) : null;
 
   // Persist immediately; AI runs after so a slow / failing AI doesn't
   // make the reference think their submission failed.
@@ -617,6 +742,15 @@ serve(async (req: Request) => {
         : null,
       reference_other_domain_text: dv.ctx.referenceOtherDomainText,
       domain_verification: dv.ctx.verification,
+      referee_employment_type: employmentType,
+      referee_annual_volume: annualVolume,
+      reference_confirmed_end_year: endYear,
+      reference_relationship_ongoing: relationshipOngoing,
+      referee_independent: refereeIndependent,
+      referee_independence_note: independenceNote,
+      referee_relationship_type: relationshipType,
+      referee_role_title: roleTitle,
+      referee_relationship_other: relationshipOther,
       feedback_received_at: new Date().toISOString(),
     })
     .eq("id", refRow.id);
@@ -651,6 +785,15 @@ serve(async (req: Request) => {
     yearVerification: yv.ctx,
     domainVerification: dv.ctx,
     competenceResponses: competence.data,
+    engagement: {
+      employmentType,
+      annualVolume,
+      relationshipOngoing,
+      endYear,
+      refereeIndependent,
+      relationshipType,
+      roleTitle,
+    },
   });
   if (analysis.ok && analysis.data) {
     await supabase

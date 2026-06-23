@@ -44,6 +44,10 @@ interface Props {
   applicantStatedDomains: DomainCode[] | null;
   applicantOtherDomainText: string | null;
   applicantDomainsUnknown: boolean;
+  /** Applicant's CLAIMED approval domains (cvp_applications.domains_offered),
+   *  resolved via validateOnly. When present, the referee confirms against
+   *  THESE; falls back to applicantStatedDomains / the legacy 8 options. */
+  claimedDomains?: { code: string; label: string }[];
   domainAnswer: ReferenceDomainAnswer;
   onDomainAnswerChange: (next: ReferenceDomainAnswer) => void;
   /** Per-domain MCQ mode (PR #188). When false (default), the 6-MCQ block
@@ -67,6 +71,7 @@ export function CompetenceMcqSection({
   applicantStatedDomains,
   applicantOtherDomainText,
   applicantDomainsUnknown,
+  claimedDomains,
   domainAnswer,
   onDomainAnswerChange,
   answeredPerDomain,
@@ -95,11 +100,20 @@ export function CompetenceMcqSection({
   // Domain block now ALWAYS shows (PR #188): anchored to applicant's
   // declared list when present, free pick of all 8 options when applicant
   // skipped/didn't declare.
-  const hasApplicantDomainAnchor =
+  const hasClaimedDomains = (claimedDomains?.length ?? 0) > 0;
+  const claimedLabelMap: Record<string, string> = Object.fromEntries(
+    (claimedDomains ?? []).map((d) => [d.code, d.label]),
+  );
+  const hasApplicantDeclared =
     !applicantDomainsUnknown && applicantStatedDomains != null && applicantStatedDomains.length > 0;
-  const domainCheckboxCodes: DomainCode[] = hasApplicantDomainAnchor
-    ? applicantStatedDomains!
-    : DOMAIN_OPTIONS.map((o) => o.code);
+  // Prefer the applicant's CLAIMED approval domains (2026-06-23); fall back to the
+  // per-referee declared list, then the legacy 8 options.
+  const hasApplicantDomainAnchor = hasClaimedDomains || hasApplicantDeclared;
+  const domainCheckboxCodes: DomainCode[] = hasClaimedDomains
+    ? claimedDomains!.map((d) => d.code)
+    : hasApplicantDeclared
+      ? applicantStatedDomains!
+      : DOMAIN_OPTIONS.map((o) => o.code);
 
   const toggleConfirmDomain = (code: DomainCode) => {
     const has = domainAnswer.confirmedDomains.includes(code);
@@ -117,6 +131,7 @@ export function CompetenceMcqSection({
   };
 
   const labelForCode = (code: DomainCode): string => {
+    if (claimedLabelMap[code]) return claimedLabelMap[code];
     if (code === "other" && applicantOtherDomainText) return `Other (${applicantOtherDomainText})`;
     return DOMAIN_LABEL[code] ?? code;
   };
@@ -210,9 +225,11 @@ export function CompetenceMcqSection({
 
       <fieldset className="border border-gray-200 rounded-lg p-4 bg-amber-50/40">
         <legend className="px-1 text-sm font-medium text-gray-900">
-          {hasApplicantDomainAnchor
-            ? `${vendorFirstName} said you worked together on the domain(s) below. Tick the ones that match what you actually did together.`
-            : `Which domain(s) did you work with ${vendorFirstName} in?`}
+          {hasClaimedDomains
+            ? `${vendorFirstName} is applying to translate in the domain(s) below. Tick the ones you can personally vouch for — where you saw their work.`
+            : hasApplicantDeclared
+              ? `${vendorFirstName} said you worked together on the domain(s) below. Tick the ones that match what you actually did together.`
+              : `Which domain(s) did you work with ${vendorFirstName} in?`}
         </legend>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
           {domainCheckboxCodes.map((code) => {

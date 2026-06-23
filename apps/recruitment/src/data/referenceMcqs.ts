@@ -188,15 +188,12 @@ export function referenceYearAnswerToPayload(
 // Server (cvp-submit-reference-feedback) classifies the overlap into
 // matches/partial/disjoint/cant_recall.
 
-export type DomainCode =
-  | "legal"
-  | "medical_pharma"
-  | "marketing_transcreation"
-  | "technical_it"
-  | "financial_banking"
-  | "literary_publishing"
-  | "government_ngo"
-  | "other";
+// Domain codes are now dynamic — the referee confirms the applicant's CLAIMED
+// approval domains (cvp_applications.domains_offered, 23-code set), passed into
+// the form via the validateOnly resolve. Kept as a string alias so the
+// confirmed-domains flow accepts any claimed code. The legacy 8-entry
+// DOMAIN_OPTIONS below remains as a fallback when an application declares none.
+export type DomainCode = string;
 
 export const DOMAIN_OPTIONS: { code: DomainCode; label: string }[] = [
   { code: "legal", label: "Legal" },
@@ -342,4 +339,79 @@ export function validateCompetenceResponses(
       would_work_again: obj.would_work_again as WouldWorkAgain,
     },
   };
+}
+
+// --- Engagement details (2026-06-23) -------------------------------------
+// Richer §3.1.4 context the referee attests to: full-time/part-time, annual
+// volume, period end / still-ongoing, independence, and the referee's own
+// role + how they worked with the applicant.
+
+export type EmploymentType = "full_time" | "part_time" | "unsure";
+export const EMPLOYMENT_TYPE_OPTIONS: { value: EmploymentType; label: string }[] = [
+  { value: "full_time", label: "Full-time translator" },
+  { value: "part_time", label: "Part-time / occasional" },
+  { value: "unsure", label: "Not sure" },
+];
+
+export type AnnualVolume = "lt_50k" | "50k_150k" | "150k_500k" | "gt_500k" | "unsure";
+export const ANNUAL_VOLUME_OPTIONS: { value: AnnualVolume; label: string }[] = [
+  { value: "lt_50k", label: "Under 50,000 words / year" },
+  { value: "50k_150k", label: "50,000–150,000 words / year" },
+  { value: "150k_500k", label: "150,000–500,000 words / year" },
+  { value: "gt_500k", label: "Over 500,000 words / year" },
+  { value: "unsure", label: "Not sure" },
+];
+
+export type RelationshipType =
+  | "client" | "employer" | "project_manager" | "reviser_editor" | "peer_translator" | "other";
+export const RELATIONSHIP_TYPE_OPTIONS: { value: RelationshipType; label: string }[] = [
+  { value: "client", label: "I was their client" },
+  { value: "employer", label: "I was their employer / manager" },
+  { value: "project_manager", label: "I was their project manager" },
+  { value: "reviser_editor", label: "I revised / edited their translations" },
+  { value: "peer_translator", label: "Peer / fellow translator" },
+  { value: "other", label: "Other" },
+];
+
+/** Reference-side state for the engagement-details block. */
+export interface EngagementAnswer {
+  employmentType: EmploymentType | null;
+  annualVolume: AnnualVolume | null;
+  relationshipOngoing: boolean;
+  endYear: number | null;
+  /** Independence attestation. true = not a relative / no financial stake. */
+  independent: boolean | null;
+  independenceNote: string;
+  relationshipType: RelationshipType | null;
+  roleTitle: string;
+  relationshipOther: string;
+}
+
+export function emptyEngagementAnswer(): EngagementAnswer {
+  return {
+    employmentType: null,
+    annualVolume: null,
+    relationshipOngoing: false,
+    endYear: null,
+    independent: null,
+    independenceNote: "",
+    relationshipType: null,
+    roleTitle: "",
+    relationshipOther: "",
+  };
+}
+
+/** Required: employment type, relationship type, independence answer. Other
+ *  fields optional; end year (when not ongoing) must be in range if given. */
+export function isEngagementAnswerValid(a: EngagementAnswer): boolean {
+  if (!a.employmentType) return false;
+  if (!a.relationshipType) return false;
+  if (a.relationshipType === "other" && a.relationshipOther.trim().length === 0) return false;
+  if (a.independent == null) return false;
+  if (!a.relationshipOngoing && a.endYear != null) {
+    if (!Number.isInteger(a.endYear) || a.endYear < REFERENCE_YEAR_MIN || a.endYear > referenceYearMax()) {
+      return false;
+    }
+  }
+  return true;
 }

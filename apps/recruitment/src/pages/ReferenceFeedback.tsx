@@ -3,8 +3,12 @@ import { useParams } from "react-router-dom";
 import { Layout } from "../components/Layout";
 import { CheckCircle, Loader2, AlertTriangle, X } from "lucide-react";
 import { CompetenceMcqSection } from "../components/references/CompetenceMcqSection";
+import { EngagementDetailsSection } from "../components/references/EngagementDetailsSection";
 import {
   REFERENCE_MCQS,
+  emptyEngagementAnswer,
+  isEngagementAnswerValid,
+  type EngagementAnswer,
   validateCompetenceResponses,
   isReferenceYearAnswerValid,
   referenceYearAnswerToPayload,
@@ -35,6 +39,7 @@ interface Preview {
   applicantStatedDomains: DomainCode[] | null;
   applicantOtherDomainText: string | null;
   applicantDomainsUnknown: boolean;
+  applicationDomainsOffered?: { code: string; label: string }[];
 }
 
 export function ReferenceFeedback() {
@@ -55,6 +60,7 @@ export function ReferenceFeedback() {
   );
   const [answeredPerDomain, setAnsweredPerDomain] = useState(false);
   const [mcqByDomain, setMcqByDomain] = useState<Partial<Record<DomainCode, McqSet>>>({});
+  const [engagement, setEngagement] = useState<EngagementAnswer>(emptyEngagementAnswer());
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<"submitted" | "declined" | null>(null);
   const [showDecline, setShowDecline] = useState(false);
@@ -163,6 +169,12 @@ export function ReferenceFeedback() {
       );
       return;
     }
+    if (!isEngagementAnswerValid(engagement)) {
+      setError(
+        "Please answer the engagement questions: how you worked together, full-time vs part-time, and whether you're independent of the applicant.",
+      );
+      return;
+    }
     const yearPayload = referenceYearAnswerToPayload(applicantYear, applicantYearUnknown, yearAnswer);
     const domainPayload = referenceDomainAnswerToPayload(
       applicantDomains,
@@ -190,6 +202,15 @@ export function ReferenceFeedback() {
           confirmedDomains: domainPayload?.confirmedDomains ?? null,
           confirmedOtherDomainText: domainPayload?.confirmedOtherDomainText ?? null,
           domainsCantRecall: domainPayload?.domainsCantRecall ?? false,
+          refereeEmploymentType: engagement.employmentType,
+          refereeAnnualVolume: engagement.annualVolume,
+          confirmedEndYear: engagement.relationshipOngoing ? null : engagement.endYear,
+          relationshipOngoing: engagement.relationshipOngoing,
+          refereeIndependent: engagement.independent,
+          refereeIndependenceNote: engagement.independenceNote.trim() || null,
+          refereeRelationshipType: engagement.relationshipType,
+          refereeRoleTitle: engagement.roleTitle.trim() || null,
+          refereeRelationshipOther: engagement.relationshipOther.trim() || null,
         }),
       });
       const data = await resp.json();
@@ -333,12 +354,19 @@ export function ReferenceFeedback() {
             applicantStatedDomains={preview?.applicantStatedDomains ?? null}
             applicantOtherDomainText={preview?.applicantOtherDomainText ?? null}
             applicantDomainsUnknown={preview?.applicantDomainsUnknown ?? false}
+            claimedDomains={preview?.applicationDomainsOffered}
             domainAnswer={domainAnswer}
             onDomainAnswerChange={setDomainAnswer}
             answeredPerDomain={answeredPerDomain}
             onAnsweredPerDomainChange={setAnsweredPerDomain}
             mcqByDomain={mcqByDomain}
             onMcqByDomainChange={setMcqByDomain}
+          />
+
+          <EngagementDetailsSection
+            vendorFirstName={preview?.applicantName?.split(" ")[0] || "this applicant"}
+            value={engagement}
+            onChange={setEngagement}
           />
 
           <div>
