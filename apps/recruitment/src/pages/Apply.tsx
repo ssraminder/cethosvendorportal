@@ -773,6 +773,20 @@ export function Apply() {
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="checkbox"
+                    {...translatorForm.register('declarationTrue')}
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
+                  />
+                  <span className="text-sm text-cethos-navy">
+                    I declare that all information I have provided in this application is true, accurate, and complete to the best of my knowledge <span className="text-red-500">*</span>
+                  </span>
+                </label>
+                {translatorForm.formState.errors.declarationTrue && (
+                  <p className="text-sm text-red-600 ml-6">{translatorForm.formState.errors.declarationTrue.message}</p>
+                )}
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
                     {...translatorForm.register('consentTest')}
                     className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
                   />
@@ -1338,6 +1352,20 @@ export function Apply() {
                 </label>
                 {cogForm.formState.errors.privacyPolicy && (
                   <p className="text-sm text-red-600 ml-6">{cogForm.formState.errors.privacyPolicy.message}</p>
+                )}
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    {...cogForm.register('declarationTrue')}
+                    className="mt-0.5 text-cethos-teal focus:ring-cethos-teal"
+                  />
+                  <span className="text-sm text-cethos-navy">
+                    I declare that all information I have provided in this application is true, accurate, and complete to the best of my knowledge <span className="text-red-500">*</span>
+                  </span>
+                </label>
+                {cogForm.formState.errors.declarationTrue && (
+                  <p className="text-sm text-red-600 ml-6">{cogForm.formState.errors.declarationTrue.message}</p>
                 )}
 
                 <label className="flex items-start gap-2 cursor-pointer">
