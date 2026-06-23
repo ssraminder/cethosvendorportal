@@ -462,25 +462,28 @@ export function QuizSubmission() {
             <ChevronLeft className="w-4 h-4" /> Previous
           </button>
 
-          {!isLast ? (
-            <button
-              type="button"
-              onClick={() => setCurrentIndex(Math.min(flatItems.length - 1, safeIndex + 1))}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white bg-cethos-teal rounded-lg hover:bg-cethos-teal-light"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <div className="flex items-center gap-3">
-              {!allAnswered && firstUnansweredIndex >= 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCurrentIndex(firstUnansweredIndex)}
-                  className="text-xs text-amber-700 underline whitespace-nowrap"
-                >
-                  {combinedTotal - combinedAnswered} unanswered — go to it
-                </button>
-              )}
+          <div className="flex items-center gap-3">
+            {/* Jump to the first gap — available from any card, not just the last */}
+            {!allAnswered && firstUnansweredIndex >= 0 && (
+              <button
+                type="button"
+                onClick={() => setCurrentIndex(firstUnansweredIndex)}
+                className="text-xs text-amber-700 underline whitespace-nowrap"
+              >
+                {combinedTotal - combinedAnswered} unanswered — go to it
+              </button>
+            )}
+            {!isLast && (
+              <button
+                type="button"
+                onClick={() => setCurrentIndex(Math.min(flatItems.length - 1, safeIndex + 1))}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white bg-cethos-teal rounded-lg hover:bg-cethos-teal-light"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            {/* Submit appears as soon as everything's answered (or on the last card) */}
+            {(allAnswered || isLast) && (
               <button
                 type="button"
                 onClick={() => setShowConfirmDialog(true)}
@@ -499,8 +502,8 @@ export function QuizSubmission() {
                   </>
                 )}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
