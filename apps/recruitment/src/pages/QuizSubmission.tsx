@@ -42,6 +42,7 @@ interface QuizData {
   remainingMinutes: number
   status: string
   isCoa?: boolean
+  isCogDebrief?: boolean
   questions: QuizQuestion[]
   translationItems?: TranslationItem[]
 }
@@ -298,7 +299,11 @@ export function QuizSubmission() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-xl font-bold text-cethos-navy">
-                ISO Competence Quiz
+                {data.isCoa
+                  ? 'COA Linguistic Validation Assessment'
+                  : data.isCogDebrief
+                    ? 'Cognitive Debriefing Assessment'
+                    : 'Translation Competence Assessment'}
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 {data.applicationNumber} &middot; Target: {data.targetLanguageName} &middot; {totalCount} questions
