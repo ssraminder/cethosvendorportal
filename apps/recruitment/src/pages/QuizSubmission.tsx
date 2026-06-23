@@ -269,8 +269,8 @@ export function QuizSubmission() {
           </div>
           <h1 className="text-2xl font-bold text-cethos-navy">Quiz Submitted</h1>
           <p className="text-gray-600">
-            Your quiz has been submitted and graded. We will follow up by
-            email within 1–2 business days with the next step.
+            Your quiz has been submitted. Our team will review it and follow up
+            by email within 1–2 business days with the next step.
           </p>
           <div className="bg-cethos-bg-blue rounded-lg border border-cethos-teal p-4 text-sm text-cethos-teal">
             You'll receive a confirmation email shortly.
