@@ -132,6 +132,13 @@ export function AgencyForm() {
     }
   }
 
+  // Safety net so a blocked submit is never silent (see Apply.tsx handleInvalid).
+  const handleInvalid = () => {
+    setSubmitError(
+      "Some required fields still need your attention — they're highlighted in red. Please complete them and submit again.",
+    )
+  }
+
   const errors = form.formState.errors as Record<string, { message?: string } | undefined>
 
   if (languagesLoading) {
@@ -151,7 +158,7 @@ export function AgencyForm() {
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={form.handleSubmit(onSubmit, handleInvalid)} className="space-y-6">
       {/* Services Offered */}
       <FormSection title="Services Offered" description="Select every service your agency provides. You can pick more than one.">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

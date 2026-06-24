@@ -403,6 +403,17 @@ export function Apply() {
     }
   }
 
+  // Safety net: if client-side validation blocks submission, ALWAYS surface a
+  // visible message. react-hook-form auto-focuses the first invalid field, but a
+  // REQUIRED field without a rendered control fails silently (the cause of the
+  // Jun-23 "Submit does nothing" outage) — passing this as handleSubmit's
+  // onInvalid arg guarantees the applicant always gets feedback.
+  const handleInvalid = () => {
+    setSubmitError(
+      "Some required fields still need your attention — they're highlighted in red. Please complete them and submit again.",
+    )
+  }
+
   if (languagesLoading) {
     return (
       <Layout>
@@ -504,7 +515,7 @@ export function Apply() {
 
         {/* ===== TRANSLATOR FORM (individual) ===== */}
         {roleType === 'translator' && (
-          <form onSubmit={translatorForm.handleSubmit(onTranslatorSubmit)} className="space-y-6">
+          <form onSubmit={translatorForm.handleSubmit(onTranslatorSubmit, handleInvalid)} className="space-y-6">
             {/* Section 1: Personal Information */}
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -834,7 +845,7 @@ export function Apply() {
 
         {/* ===== COGNITIVE DEBRIEFING FORM ===== */}
         {roleType === 'cognitive_debriefing' && (
-          <form onSubmit={cogForm.handleSubmit(onCogSubmit)} className="space-y-6">
+          <form onSubmit={cogForm.handleSubmit(onCogSubmit, handleInvalid)} className="space-y-6">
             {/* Section 1: Personal Information */}
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1418,7 +1429,7 @@ export function Apply() {
 
         {/* ===== INTERPRETER FORM (individual) ===== */}
         {roleType === 'interpreter' && (
-          <form onSubmit={interpreterForm.handleSubmit(onInterpreterSubmit)} className="space-y-6">
+          <form onSubmit={interpreterForm.handleSubmit(onInterpreterSubmit, handleInvalid)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Full name" required error={interpreterForm.formState.errors.fullName?.message}>
@@ -1572,7 +1583,7 @@ export function Apply() {
 
         {/* ===== TRANSCRIBER FORM (individual) ===== */}
         {roleType === 'transcriber' && (
-          <form onSubmit={transcriberForm.handleSubmit(onTranscriberSubmit)} className="space-y-6">
+          <form onSubmit={transcriberForm.handleSubmit(onTranscriberSubmit, handleInvalid)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Full name" required error={transcriberForm.formState.errors.fullName?.message}>
@@ -1695,7 +1706,7 @@ export function Apply() {
 
         {/* ===== CLINICIAN REVIEWER FORM ===== */}
         {roleType === 'clinician_reviewer' && (
-          <form onSubmit={clinicianForm.handleSubmit(onClinicianSubmit)} className="space-y-6">
+          <form onSubmit={clinicianForm.handleSubmit(onClinicianSubmit, handleInvalid)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Full name" required error={clinicianForm.formState.errors.fullName?.message}>
@@ -1816,7 +1827,7 @@ export function Apply() {
         )}
 
         {roleType === 'cd_clinician_consultant' && (
-          <form onSubmit={consultantForm.handleSubmit(onConsultantSubmit)} className="space-y-6">
+          <form onSubmit={consultantForm.handleSubmit(onConsultantSubmit, handleInvalid)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Full name" required error={consultantForm.formState.errors.fullName?.message}>
