@@ -129,7 +129,7 @@ function EditableField({ icon: Icon, label, value, type = "text", placeholder, o
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
         title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -220,7 +220,7 @@ function EditableSelectField({ icon: Icon, label, value, options, placeholder, o
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
         title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -438,7 +438,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
         title={value ? "Change phone" : "Add phone"}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -548,7 +548,7 @@ function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCur
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
         title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
