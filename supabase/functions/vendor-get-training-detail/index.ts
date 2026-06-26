@@ -41,7 +41,7 @@ serve(async (req: Request) => {
       .eq("id", body.training_id).maybeSingle();
     const { data: lessons, error: lErr } = await supabase
       .from("cvp_training_lessons")
-      .select("id, order_index, slug, title, body_markdown, key_rules, estimated_minutes")
+      .select("id, order_index, slug, title, body_markdown, key_rules, estimated_minutes, content_blocks")
       .eq("training_id", body.training_id)
       .order("order_index", { ascending: true });
     if (lErr) return json({ success: false, error: "load_failed", detail: lErr.message }, 500);
