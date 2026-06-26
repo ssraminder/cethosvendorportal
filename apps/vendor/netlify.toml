@@ -218,6 +218,33 @@
   status = 200
   force = true
 
+# Onboarding & Compliance Package — login-gated signing page + emailed token
+# (clickwrap) signing link. Without these the /sb/* calls fall through to the
+# SPA catch-all below.
+[[redirects]]
+  from = "/sb/get-onboarding-package"
+  to = "/.netlify/functions/get-onboarding-package"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/sign-onboarding-package"
+  to = "/.netlify/functions/sign-onboarding-package"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/get-onboarding-by-token"
+  to = "/.netlify/functions/get-onboarding-by-token"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/sign-onboarding-by-token"
+  to = "/.netlify/functions/sign-onboarding-by-token"
+  status = 200
+  force = true
+
 # SPA catch-all.
 [[redirects]]
   from = "/*"
