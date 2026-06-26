@@ -18,6 +18,13 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 
 ## Decisions
 
+### 2026-06-26 — Vendor Trainings page must call FUNCTIONS_BASE directly, NOT the /sb proxy
+- **Decision:** `apps/vendor/src/api/vendorTrainings.ts` now calls `${FUNCTIONS_BASE}/vendor-get-trainings` (+ `-training-detail`, `-mark-training-complete`) directly, like every other vendor data module. Removed its bespoke `/sb` override.
+- **Rationale:** The `/sb/*` proxy only maps the handful of endpoints reimplemented as Netlify lambdas (auth, jobs, profile, CV…). The training endpoints have NO lambda + no redirect in `apps/vendor/netlify.toml`, so `/sb/vendor-get-trainings` fell through to the SPA catch-all and returned HTML → the Trainings page died with "Unexpected token '<'… is not valid JSON" for ALL vendors in prod. Caught via admin "View as vendor" impersonation. The Supabase edge fns exist & work (verified through api.cethos.com with CORS `*` + a live impersonation session token → HTTP 200, correct trainings incl. `required:true`).
+- **Alternatives considered:** (a) add Netlify lambdas + `/sb` redirects for the 3 endpoints — rejected as needless reimplementation; trainings isn't in the geo-block-critical set, and peers (guides/roster/quiz/iso-evidence) already hit FUNCTIONS_BASE directly. (b) toml redirect-proxy `/sb/*`→Supabase URL — rejected (can't inject the apikey/headers cleanly, inconsistent with peers).
+- **Status:** active
+- **Affects:** vendor portal Trainings list + detail + mark-complete. Pairs with the admin-side assignment email (`vendor-send-training-assignment`).
+
 ### 2026-06-19 — Agency roster Phase 1 (A3 + start of A5/A6/A7) — blinded roster, deterministic gate
 - **Decision:** Built the deferred blinded agency roster. Agencies maintain `public.vendor_roster_linguists` (+ child tables for language pairs, domains→`qms.subject_matters`, roles→`qms.role_types`) under their account. Each linguist has an opaque `handle`, optional private `real_name`, a blinded `cv_path` (private bucket `vendor-roster-cvs`), `competence_basis_code` (→`qms.competence_bases`), and a per-linguist `iso_attested` checkbox.
 - **Eligibility is DETERMINISTIC (no AI):** `public.roster_linguist_is_eligible()` = active + iso_attested + CV uploaded + competence basis + ≥1 pair + ≥1 role + ≥1 domain. Chosen over AI CV vetting because a reproducible checklist + agency attestation is far more ISO-audit-defensible than a black-box score (and faster to ship). `cvp-vet-roster-cv` deferred, advisory-only when added.

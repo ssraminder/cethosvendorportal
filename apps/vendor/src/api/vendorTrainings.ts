@@ -1,10 +1,15 @@
 import { FUNCTIONS_BASE, safePost } from "./functionsBase";
 
-// Prod routes through the same-origin /sb proxy (regional-CORS resilient);
-// localhost hits the functions base directly.
-const SB = typeof window !== "undefined" && window.location.hostname !== "localhost" ? "/sb" : null;
+// Call the Supabase edge functions directly via FUNCTIONS_BASE (api.cethos.com
+// custom domain) — the same path every other vendor data module uses
+// (vendorGuides, vendorRoster, isoQuiz, isoEvidence…). Do NOT route these
+// through the `/sb` proxy: that proxy only maps the handful of endpoints
+// reimplemented as Netlify lambdas (auth, jobs, profile…). The training
+// endpoints have no lambda there, so `/sb/vendor-get-trainings` fell through to
+// the SPA catch-all and returned HTML → "Unexpected token '<'… is not valid
+// JSON", breaking the whole Trainings page in prod.
 function fnUrl(name: string): string {
-  return SB ? `${SB}/${name}` : `${FUNCTIONS_BASE}/${name}`;
+  return `${FUNCTIONS_BASE}/${name}`;
 }
 
 export interface TrainingSummary {
