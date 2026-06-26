@@ -18,6 +18,7 @@ export interface TrainingSummary {
   completed: boolean;
   completed_at: string | null;
   method: string | null;
+  required: boolean;
 }
 
 export interface TrainingLesson {

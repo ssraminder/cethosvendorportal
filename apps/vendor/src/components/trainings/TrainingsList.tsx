@@ -64,6 +64,9 @@ export function TrainingsList() {
                     ) : (
                       <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">To do</span>
                     )}
+                    {t.required && !t.completed && (
+                      <span className="text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">Required</span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1 line-clamp-2">{t.description}</p>
                   <p className="text-xs text-gray-400 mt-2">{t.lesson_count} lesson{t.lesson_count === 1 ? "" : "s"}</p>
