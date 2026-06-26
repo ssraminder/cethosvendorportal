@@ -23,7 +23,7 @@ import { FileSignature, ShieldCheck, AlertTriangle, ChevronRight, X } from "luci
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { fetchAgreementStatus, type AgreementStatusItem } from "../../hooks/useOnboardingGate";
 
-const HIDDEN_PATHS = ["/nda", "/gvsa", "/onboarding", "/profile"];
+const HIDDEN_PATHS = ["/nda", "/gvsa", "/onboarding", "/onboarding-package", "/profile"];
 const DISMISS_KEY = "cethos-agreements-dismissed";
 
 const DOC_LABEL: Record<string, { title: string; route: string }> = {

@@ -25,6 +25,7 @@ import { TrainingsList } from "./components/trainings/TrainingsList";
 import { TrainingDetail } from "./components/trainings/TrainingDetail";
 import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
+import { OnboardingPackagePage } from "./components/onboarding/OnboardingPackagePage";
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
             {/* Routes the vendor needs in order to complete onboarding —
                 accessible regardless of gate state. */}
             <Route path="onboarding" element={<OnboardingPage />} />
+            <Route path="onboarding-package" element={<OnboardingPackagePage />} />
             <Route path="profile" element={<VendorProfile />} />
             <Route path="nda" element={<NDAPage />} />
             <Route path="gvsa" element={<GVSAPage />} />
