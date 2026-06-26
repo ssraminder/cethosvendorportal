@@ -26,6 +26,7 @@ import { TrainingDetail } from "./components/trainings/TrainingDetail";
 import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
 import { OnboardingPackagePage } from "./components/onboarding/OnboardingPackagePage";
+import { OnboardingSignTokenPage } from "./components/onboarding/OnboardingSignTokenPage";
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
           <Route path="/vendor-references/:token" element={<VendorReferencesEntry />} />
           <Route path="/vendor-reference-feedback/:token" element={<VendorReferenceFeedback />} />
           <Route path="/iso-evidence/:token" element={<IsoEvidencePage />} />
+          <Route path="/onboarding-sign/:token" element={<OnboardingSignTokenPage />} />
           <Route path="/" element={<VendorShell />}>
             {/* Routes the vendor needs in order to complete onboarding —
                 accessible regardless of gate state. */}
