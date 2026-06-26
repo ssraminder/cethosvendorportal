@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getTrainingDetail, markTrainingComplete, type TrainingLesson } from "../../api/vendorTrainings";
+import { LessonBlocks, type Block } from "./LessonBlocks";
 
 // Lightweight markdown → HTML (mirrors the portal's TermsModal renderer).
 function renderMarkdown(md: string): string {
@@ -83,10 +84,14 @@ export function TrainingDetail() {
             {lessons.map((l, i) => (
               <div key={l.id} className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
                 <h2 className="font-semibold text-gray-900 mb-2">{i + 1}. {l.title}</h2>
-                <div
-                  className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(l.body_markdown) }}
-                />
+                {Array.isArray(l.content_blocks) && l.content_blocks.length > 0 ? (
+                  <LessonBlocks blocks={l.content_blocks as Block[]} />
+                ) : (
+                  <div
+                    className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(l.body_markdown) }}
+                  />
+                )}
                 {Array.isArray(l.key_rules) && l.key_rules.length > 0 && (
                   <div className="mt-3 rounded-lg bg-teal-50 border border-teal-100 p-3">
                     <div className="text-xs font-semibold text-teal-800 uppercase tracking-wide mb-1">Key rules</div>

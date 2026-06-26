@@ -28,6 +28,7 @@ export interface TrainingLesson {
   body_markdown: string;
   key_rules: string[] | null;
   estimated_minutes: number | null;
+  content_blocks: unknown[] | null;
 }
 
 export async function getTrainings(token: string): Promise<{ success: boolean; trainings?: TrainingSummary[]; error?: string }> {
