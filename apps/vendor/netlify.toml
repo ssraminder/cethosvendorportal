@@ -205,6 +205,12 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/sb/get-invoices"
+  to = "/.netlify/functions/get-invoices"
+  status = 200
+  force = true
+
 # Job-assigned email (test endpoint + future production trigger).
 [[redirects]]
   from = "/sb/accept-direct-assign"
