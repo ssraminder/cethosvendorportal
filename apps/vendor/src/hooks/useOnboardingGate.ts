@@ -15,9 +15,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useVendorAuth } from "../context/VendorAuthContext";
-import { FUNCTIONS_BASE } from "../api/functionsBase";
 
 const SB_BASE = "/sb";
+
+// The gate blocks rendering until both fetches settle. Any request that
+// goes through a geo-filtered host can hang without ever rejecting (a
+// dropped connection isn't a network error), which would leave the portal
+// stuck on a spinner. Bound every gate fetch so loading always clears.
+const GATE_FETCH_TIMEOUT_MS = 12_000;
 
 export interface AgreementTemplateInfo {
   id: string;
@@ -83,17 +88,30 @@ export interface OnboardingGateState {
   refresh: () => Promise<void>;
 }
 
-export async function fetchAgreementStatus(sessionToken: string): Promise<AgreementStatusResponse | null> {
+// POST a /sb gate endpoint with a hard timeout. session_token rides in the
+// body and Content-Type is text/plain so the request stays a CORS simple
+// request (no OPTIONS preflight) and is served same-origin via the Netlify
+// proxy — the path that survives regions where api.cethos.com is blocked.
+async function postGate<T>(sbPath: string, sessionToken: string): Promise<T | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GATE_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${SB_BASE}/get-agreement-status`, {
+    const res = await fetch(`${SB_BASE}/${sbPath}`, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ session_token: sessionToken }),
+      signal: controller.signal,
     });
-    return (await res.json()) as AgreementStatusResponse;
+    return (await res.json()) as T;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+export async function fetchAgreementStatus(sessionToken: string): Promise<AgreementStatusResponse | null> {
+  return postGate<AgreementStatusResponse>("get-agreement-status", sessionToken);
 }
 
 export function useOnboardingGate(): OnboardingGateState {
@@ -115,21 +133,16 @@ export function useOnboardingGate(): OnboardingGateState {
     }
     setLoading(true);
     try {
+      // Both gate fetches route through the same-origin /sb proxy. The CV
+      // list previously hit api.cethos.com directly with no timeout, which
+      // hung the gate (loading never cleared → blank portal) for vendors on
+      // networks that filter that host. See list-cvs Netlify function.
       const [cvRes, agrRes] = await Promise.all([
-        fetch(`${FUNCTIONS_BASE}/vendor-list-cvs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sessionToken}`,
-          },
-          body: JSON.stringify({}),
-        })
-          .then((r) => r.json())
-          .catch(() => null),
+        postGate<CvListResponse>("list-cvs", sessionToken),
         fetchAgreementStatus(sessionToken),
       ]);
 
-      const cv = (cvRes as CvListResponse | null) ?? null;
+      const cv = cvRes ?? null;
       const cvs = Array.isArray(cv?.cvs) ? cv!.cvs : [];
       setCvCount(cvs.length);
       setHasCv(cvs.length > 0);
