@@ -2,6 +2,17 @@ import { FUNCTIONS_BASE } from "./functionsBase";
 
 const BASE = FUNCTIONS_BASE;
 
+// Prod routes through the same-origin /sb/* Netlify proxy; local dev hits
+// the Supabase edge function directly. The proxy carries the session token
+// in the body (text/plain → CORS simple request) so it survives regions
+// that drop the OPTIONS preflight an Authorization header would trigger.
+const SB_BASE =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "/sb"
+    : null;
+
+const FETCH_TIMEOUT_MS = 15_000;
+
 // --- Types ---
 
 export interface VendorInvoice {
@@ -63,6 +74,38 @@ export async function getInvoices(
   token: string,
   filter?: { status?: string; page?: number; limit?: number }
 ): Promise<InvoicesResponse> {
+  // Prod: same-origin /sb proxy, session token in the body, hard timeout
+  // so the Invoices page can never hang on a dropped connection.
+  if (SB_BASE) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${SB_BASE}/get-invoices`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          session_token: token,
+          status: filter?.status,
+          page: filter?.page,
+          limit: filter?.limit,
+        }),
+        signal: controller.signal,
+      });
+      return (await res.json()) as InvoicesResponse;
+    } catch (e) {
+      return {
+        success: false,
+        error:
+          e instanceof DOMException && e.name === "AbortError"
+            ? "The request timed out. Please check your connection and try again."
+            : "Couldn't reach the server. This is usually a network or VPN issue — please try again.",
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // Local dev: hit the Supabase edge function directly.
   const params = new URLSearchParams();
   if (filter?.status) params.set("status", filter.status);
   if (filter?.page) params.set("page", filter.page.toString());
