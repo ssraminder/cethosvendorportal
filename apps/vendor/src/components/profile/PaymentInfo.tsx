@@ -46,6 +46,7 @@ export function PaymentInfo() {
   const [bankInstitution, setBankInstitution] = useState("");
   const [bankSwiftCode, setBankSwiftCode] = useState("");
   const [bankAddress, setBankAddress] = useState("");
+  const [bankRoutingNumber, setBankRoutingNumber] = useState("");
   const [chequeAddress, setChequeAddress] = useState("");
 
   // Snapshot of original values so we can detect "did payout-routing fields
@@ -85,12 +86,18 @@ export function PaymentInfo() {
       case "paypal":
         return { paypal_email: paypalEmail };
       case "bank_transfer":
-        return {
-          bank_name: bankName,
-          account_number: bankAccountNumber,
-          transit_number: bankTransitNumber,
-          institution_number: bankInstitution,
-        };
+        return currency === "CAD"
+          ? {
+              bank_name: bankName,
+              account_number: bankAccountNumber,
+              transit_number: bankTransitNumber,
+              institution_number: bankInstitution,
+            }
+          : {
+              bank_name: bankName,
+              account_number: bankAccountNumber,
+              routing_number: bankRoutingNumber,
+            };
       case "wire_transfer":
         return {
           bank_name: bankName,
@@ -119,7 +126,7 @@ export function PaymentInfo() {
     // Server re-checks on submit, so this is just for showing the warning.
     const details = buildPaymentDetails();
     return Object.values(details).some((v) => typeof v === "string" && v.length > 0);
-  }, [paymentInfo, originalSnapshot, method, currency, paypalEmail, bankName, bankAccountNumber, bankTransitNumber, bankInstitution, bankSwiftCode, bankAddress, chequeAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentInfo, originalSnapshot, method, currency, paypalEmail, bankName, bankAccountNumber, bankTransitNumber, bankInstitution, bankSwiftCode, bankAddress, bankRoutingNumber, chequeAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needsAcknowledgement = isPayoutChange;
   const saveDisabled = saving || (needsAcknowledgement && !changeAcknowledged);
@@ -238,41 +245,70 @@ export function PaymentInfo() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Institution #
-                </label>
-                <input
-                  type="text"
-                  value={bankInstitution}
-                  onChange={(e) => setBankInstitution(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                />
+            {currency === "CAD" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Institution #
+                  </label>
+                  <input
+                    type="text"
+                    value={bankInstitution}
+                    onChange={(e) => setBankInstitution(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Transit #
+                  </label>
+                  <input
+                    type="text"
+                    value={bankTransitNumber}
+                    onChange={(e) => setBankTransitNumber(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Account #
+                  </label>
+                  <input
+                    type="text"
+                    value={bankAccountNumber}
+                    onChange={(e) => setBankAccountNumber(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Transit #
-                </label>
-                <input
-                  type="text"
-                  value={bankTransitNumber}
-                  onChange={(e) => setBankTransitNumber(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Routing Number (ABA)
+                  </label>
+                  <input
+                    type="text"
+                    value={bankRoutingNumber}
+                    onChange={(e) => setBankRoutingNumber(e.target.value)}
+                    placeholder="9-digit ABA routing number"
+                    maxLength={9}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Account #
+                  </label>
+                  <input
+                    type="text"
+                    value={bankAccountNumber}
+                    onChange={(e) => setBankAccountNumber(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Account #
-                </label>
-                <input
-                  type="text"
-                  value={bankAccountNumber}
-                  onChange={(e) => setBankAccountNumber(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                />
-              </div>
-            </div>
+            )}
           </div>
         )}
 
