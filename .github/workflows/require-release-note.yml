@@ -1,0 +1,52 @@
+name: require-release-note
+
+# Enforces the change-control rule: any PR that changes an app's source
+# (apps/<app>/src/**, excluding tests) MUST also update that app's
+# releaseNotes.ts — i.e. add a release entry and bump the version (CalVer).
+# Checked per app (vendor + recruitment). Docs, tests, CI config, and
+# config-only changes are exempt.
+#
+# Mark this job a REQUIRED status check in branch protection for `main` so it
+# blocks merges, not just warns.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  release-note:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a release note when app code changes
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -e
+          git fetch origin "$BASE"
+          changed=$(git diff --name-only "origin/$BASE...HEAD")
+          echo "Changed files in this PR:"
+          echo "$changed"
+          echo "----"
+
+          fail=0
+          check_app () {
+            app="$1"
+            src=$(echo "$changed" | grep -E "^apps/$app/src/" | grep -vE '(\.test\.|\.spec\.|__tests__/)' || true)
+            if [ -z "$src" ]; then
+              echo "✓ apps/$app: no app source changed — release note not required."
+              return
+            fi
+            if echo "$changed" | grep -qx "apps/$app/src/lib/releaseNotes.ts"; then
+              echo "✓ apps/$app: source changed and releaseNotes.ts was updated."
+            else
+              echo "::error::apps/$app source changed but apps/$app/src/lib/releaseNotes.ts was not updated. Prepend a new RELEASE_NOTES entry (bump the CalVer version)."
+              fail=1
+            fi
+          }
+
+          check_app vendor
+          check_app recruitment
+          exit $fail

@@ -35,6 +35,7 @@ You MUST read these documents first:
 - All edge functions must be prefixed `cvp-`
 - After completing your task, update `/docs/CVP-PROGRESS-LOG.md` with what was done
 - If anything in the task conflicts with the plan documents, flag it before proceeding
+- **Release note + version bump per PR (REQUIRED).** Any PR that changes app source MUST prepend a new entry to the affected app's `releaseNotes.ts` (bumps the CalVer `YEAR.MONTH.PATCH`): `apps/vendor/src/lib/releaseNotes.ts` for the vendor portal, `apps/recruitment/src/lib/releaseNotes.ts` for the recruitment site. When either bumps, ALSO update its maintained entry in the admin repo's `client/lib/portalRegistry.ts` ("All Cethos systems" overview). A CI required check (`require-release-note`) fails the PR if `apps/*/src/**` changed without the matching `releaseNotes.ts`. Docs/tests/CI/config-only changes are exempt.
 
 ## Code Standards
 
