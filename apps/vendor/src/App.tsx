@@ -14,6 +14,7 @@ import { JobBoard } from "./components/jobs/JobBoard";
 import { JobDetail } from "./components/jobs/JobDetail";
 import { InvoiceList } from "./components/invoices/InvoiceList";
 import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
+import { PurchaseOrderList } from "./components/purchase-orders/PurchaseOrderList";
 import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
 import { NDAPage, GVSAPage } from "./components/nda/NDAPage";
 import { VendorReferencesEntry } from "./components/references/VendorReferencesEntry";
@@ -63,6 +64,7 @@ function App() {
               <Route path="request-test" element={<RequestTest />} />
               <Route path="jobs" element={<JobBoard />} />
               <Route path="jobs/:id" element={<JobDetail />} />
+              <Route path="purchase-orders" element={<PurchaseOrderList />} />
               <Route path="invoices" element={<InvoiceList />} />
               <Route path="invoices/:id" element={<InvoiceDetail />} />
               <Route path="trainings" element={<TrainingsList />} />
