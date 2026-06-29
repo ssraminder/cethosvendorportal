@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.2",
+    date: "2026-06-29",
+    summary:
+      "Raise an invoice against each purchase order, with a required invoice document and GST.",
+    changes: [
+      "Added a 'Purchase Orders' page listing the purchase orders Cethos has sent you.",
+      "You can raise one invoice per purchase order, attaching your own invoice document (now required) and adding GST/HST at your registered rate.",
+      "Once raised, each purchase order shows its invoice status so you can see what has been received.",
+    ],
+  },
+  {
     version: "2026.6.1",
     date: "2026-06-29",
     summary:

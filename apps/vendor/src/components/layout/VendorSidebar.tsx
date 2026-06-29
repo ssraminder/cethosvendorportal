@@ -8,6 +8,7 @@ import {
   CreditCard,
   Briefcase,
   FileText,
+  ClipboardList,
   X,
   GraduationCap,
   BookOpen,
@@ -59,6 +60,7 @@ function buildNavItems(isAgency: boolean): NavItem[] {
     { to: "/request-test", label: "Competence tests", icon: GraduationCap },
     { to: "/trainings", label: "Trainings", icon: BookOpen },
     { to: "/jobs", label: "Jobs", icon: Briefcase },
+    { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
     { to: "/invoices", label: "Invoices", icon: FileText },
   );
   return items;
