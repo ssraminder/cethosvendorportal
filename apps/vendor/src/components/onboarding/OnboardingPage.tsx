@@ -27,6 +27,14 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [uploadingCv, setUploadingCv] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
+  // Once the upload itself confirms success we mark the CV step done
+  // immediately. The gate's refresh re-reads list-cvs, but that fetch can
+  // transiently fail/time out (geo-filtered networks) and return no CVs,
+  // which previously left the page stuck on "Upload your CV" even though the
+  // upload succeeded (bug a1ed4e6c: "after uploading, the page does not
+  // update"). This optimistic flag is the source of truth for the card.
+  const [cvJustUploaded, setCvJustUploaded] = useState(false);
+  const cvDone = hasCv || cvJustUploaded;
 
   async function handleCvUpload(file: File) {
     if (!sessionToken) return;
@@ -35,6 +43,7 @@ export function OnboardingPage() {
     try {
       const res = await uploadCv(sessionToken, file, "Onboarding upload");
       if (!res.success) throw new Error(res.error ?? "Upload failed");
+      setCvJustUploaded(true);
       await refresh();
     } catch (e) {
       setCvError(e instanceof Error ? e.message : "Upload failed");
@@ -94,9 +103,9 @@ export function OnboardingPage() {
         )}
 
         {cvRequired && (
-          <div className={`bg-white rounded-xl border p-5 ${hasCv ? "border-emerald-200" : "border-gray-200"}`}>
+          <div className={`bg-white rounded-xl border p-5 ${cvDone ? "border-emerald-200" : "border-gray-200"}`}>
             <div className="flex items-start gap-3">
-              {hasCv ? (
+              {cvDone ? (
                 <CheckCircle2 className="w-6 h-6 text-emerald-500 mt-0.5 shrink-0" />
               ) : (
                 <FileText className="w-6 h-6 text-teal-600 mt-0.5 shrink-0" />
@@ -106,8 +115,8 @@ export function OnboardingPage() {
                 <p className="text-sm text-gray-600 mt-0.5">
                   A current CV / résumé is required for ISO 17100 compliance. PDF or Word (.docx), up to 10 MB. Word files are converted to PDF automatically.
                 </p>
-                {hasCv ? (
-                  <p className="mt-2 text-xs text-emerald-700">CV on file (v{cvCount}).</p>
+                {cvDone ? (
+                  <p className="mt-2 text-xs text-emerald-700">CV on file{cvCount > 0 ? ` (v${cvCount})` : ""}.</p>
                 ) : (
                   <div className="mt-3">
                     <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium cursor-pointer ${uploadingCv ? "bg-gray-100 text-gray-400" : "bg-teal-600 text-white hover:bg-teal-700"}`}>

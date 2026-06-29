@@ -21,6 +21,16 @@ const PAYMENT_METHODS = [
   { value: "paypal", label: "PayPal" },
 ] as const;
 
+/** Canonical signature of payout-detail fields so we can detect real edits
+ *  regardless of key order. Empty/blank values are dropped. */
+function detailsSig(details: Record<string, unknown>): string {
+  const entries = Object.entries(details)
+    .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+    .map(([k, v]) => [k, (v as string).trim()] as const)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+}
+
 export function PaymentInfo() {
   const { sessionToken } = useVendorAuth();
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfoType | null>(null);
@@ -53,6 +63,7 @@ export function PaymentInfo() {
   const [originalSnapshot, setOriginalSnapshot] = useState<{
     method: string;
     currency: string;
+    detailsSig: string;
   } | null>(null);
 
   const loadPaymentInfo = useCallback(async () => {
@@ -64,9 +75,24 @@ export function PaymentInfo() {
         setMethod(result.payment_info.payment_method || "");
         setCurrency(result.payment_info.payment_currency || "CAD");
         setInvoiceNotes(result.payment_info.invoice_notes || "");
+        // Hydrate the method-specific fields from the stored payout details so
+        // the form shows what's actually on file. Without this, a saved PayPal
+        // email / bank details came back blank on reload, looking unsaved
+        // (bug 1f1de2d2 / b4167fbf).
+        const details = (result.payment_info.payment_details ?? {}) as Record<string, unknown>;
+        const str = (k: string) => (typeof details[k] === "string" ? (details[k] as string) : "");
+        setPaypalEmail(str("paypal_email"));
+        setBankName(str("bank_name"));
+        setBankAccountNumber(str("account_number"));
+        setBankTransitNumber(str("transit_number"));
+        setBankInstitution(str("institution_number"));
+        setBankSwiftCode(str("swift_code"));
+        setBankAddress(str("bank_address"));
+        setChequeAddress(str("mailing_address"));
         setOriginalSnapshot({
           method: result.payment_info.payment_method || "",
           currency: result.payment_info.payment_currency || "CAD",
+          detailsSig: detailsSig(details),
         });
       }
     } catch {
@@ -115,10 +141,10 @@ export function PaymentInfo() {
     if (!paymentInfo || !originalSnapshot) return false;
     if (method !== originalSnapshot.method) return true;
     if (currency !== originalSnapshot.currency) return true;
-    // For the active method, treat any value present as potentially changed.
-    // Server re-checks on submit, so this is just for showing the warning.
-    const details = buildPaymentDetails();
-    return Object.values(details).some((v) => typeof v === "string" && v.length > 0);
+    // Compare the active method's payout fields against what was loaded, so we
+    // only warn when something actually changed (not merely because fields are
+    // populated from the readback).
+    return detailsSig(buildPaymentDetails()) !== originalSnapshot.detailsSig;
   }, [paymentInfo, originalSnapshot, method, currency, paypalEmail, bankName, bankAccountNumber, bankTransitNumber, bankInstitution, bankSwiftCode, bankAddress, chequeAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needsAcknowledgement = isPayoutChange;
@@ -148,6 +174,7 @@ export function PaymentInfo() {
           setOriginalSnapshot({
             method: result.payment_info.payment_method || "",
             currency: result.payment_info.payment_currency || "CAD",
+            detailsSig: detailsSig(buildPaymentDetails()),
           });
         }
         setChangeAcknowledged(false);

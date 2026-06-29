@@ -125,9 +125,14 @@ export const handler = async (event: {
       id: string; payment_currency: string | null; payment_method: string | null;
       invoice_notes: string | null; updated_at: string;
       payment_terms_days: number; change_acknowledged_at: string | null;
+      payment_details: unknown;
     }>(
+      // payment_details holds the method-specific payout fields (e.g. PayPal
+      // email, bank account). It MUST be selected here — without it the Payment
+      // page reads back an empty form after a successful save (bug 1f1de2d2 /
+      // b4167fbf: "saved but the email field is empty on reload").
       `SELECT id, payment_currency, payment_method, invoice_notes,
-              payment_terms_days, change_acknowledged_at, updated_at
+              payment_terms_days, change_acknowledged_at, updated_at, payment_details
        FROM vendor_payment_info WHERE vendor_id = $1 LIMIT 1`,
       [vendor_id],
     );
@@ -157,7 +162,11 @@ export const handler = async (event: {
     const completedSteps: Record<string, boolean> = {
       // Profile photo removed — no uploader exists; was an unreachable
       // completeness step (bug 482f3dfa).
-      availability: !!vendor.availability_status && vendor.availability_status !== "available",
+      // Any explicit availability status satisfies this step. Previously this
+      // required status !== "available", which inverted the score: choosing
+      // "Available" marked the step INCOMPLETE while "Busy" marked it complete
+      // (bug 82bc8cfd / 09e1cfc0).
+      availability: !!vendor.availability_status,
       languages: languagePairs.some((lp) => lp.is_active),
       rates: rates.length > 0,
       payment: !!paymentInfo?.payment_method,

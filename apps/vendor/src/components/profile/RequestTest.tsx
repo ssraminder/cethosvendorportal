@@ -247,13 +247,20 @@ export function RequestTest() {
     setLastResult(null);
     try {
       const base = `${FUNCTIONS_BASE}/cvp-request-test`;
+      // Anon key in the Authorization header + vendor session UUID in the body
+      // — same envelope as cvp-get-my-domains. Sending the UUID as the Bearer
+      // token tripped the gateway's verify_jwt and every request failed with a
+      // red error (bug 2992e12e).
+      const anonKey = getSupabaseAnonKey();
       const resp = await fetch(base, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey,
         },
         body: JSON.stringify({
+          session_token: sessionToken,
           sourceLanguageId: pair.srcId,
           targetLanguageId: pair.tgtId,
           domain,

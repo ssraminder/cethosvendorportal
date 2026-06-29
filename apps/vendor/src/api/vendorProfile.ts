@@ -92,6 +92,8 @@ interface PaymentInfo {
   id: string;
   payment_currency: string;
   payment_method: string | null;
+  /** Method-specific payout fields (e.g. { paypal_email } or bank details). */
+  payment_details: Record<string, unknown> | null;
   invoice_notes: string | null;
   payment_terms_days: number;
   change_acknowledged_at: string | null;
@@ -391,6 +393,30 @@ export async function uploadCertification(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// --- Profile photo ---
+
+interface ProfilePhotoResponse extends SimpleResponse {
+  profile_photo_url?: string;
+}
+
+/** Upload a profile photo (PNG/JPEG/WebP, ≤5MB). Returns the new public URL.
+ *  Goes straight to the Supabase edge function (multipart, CORS-safelisted —
+ *  no preflight), same as certification uploads. */
+export async function uploadProfilePhoto(
+  token: string,
+  file: File,
+): Promise<ProfilePhotoResponse> {
+  const form = new FormData();
+  form.append("action", "upload");
+  form.append("file", file);
+  const res = await fetch(`${BASE}/vendor-upload-photo`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
   });
   return res.json();
 }

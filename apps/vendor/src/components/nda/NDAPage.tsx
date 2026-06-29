@@ -578,8 +578,21 @@ function AgreementPage({ agreementType }: { agreementType: "nda" | "gvsa" }) {
           <div className="pt-4 border-t border-gray-100 space-y-4">
             <h3 className="text-base font-semibold text-gray-900">Sign electronically</h3>
             <p className="text-xs text-gray-600">
-              By typing your full legal name below and clicking <strong>Agree &amp; sign</strong>, you electronically execute the agreement above. We record your name, timestamp, and IP address as proof of signing.
+              By typing your full legal name below and clicking <strong>Agree &amp; sign</strong>, you electronically execute the agreement above. Typing your name <em>is</em> your signature — there is nothing to draw or upload. We record your name, timestamp, and IP address as proof of signing.
             </p>
+            {/* Explains why the name field + checkbox are greyed out before an
+                OTP is verified. Without this, vendors reported "I can't type my
+                name" / "no way to add a signature" (bugs cbarche / gangalibermann
+                / estelleegnegue) — the fields looked broken rather than locked. */}
+            {!allVerified && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                <span>
+                  Verify your identity above first — enter the code we email or text you.
+                  The name box and signature button unlock as soon as a code is verified.
+                </span>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Type your full legal name *</label>
               <input
