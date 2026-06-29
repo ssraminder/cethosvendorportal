@@ -56,15 +56,8 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
 
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const sessionToken = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : null;
-  if (!sessionToken) {
-    return json({ success: false, error: "unauthenticated" }, 401);
-  }
-
   let body: {
+    session_token?: string;
     sourceLanguageId?: string;
     targetLanguageId?: string;
     domain?: string;
@@ -74,6 +67,20 @@ serve(async (req: Request) => {
   } catch {
     return json({ success: false, error: "invalid_json" }, 400);
   }
+
+  // Prefer the session UUID from the body; fall back to the Authorization
+  // header. The client sends the Supabase anon key in the header (so the
+  // gateway's verify_jwt accepts the request regardless of how this function
+  // was last deployed) and the real vendor session UUID in the body. Reading
+  // the header alone rejected the UUID at the gateway and every "Request"
+  // button click failed (bug 2992e12e). Mirrors cvp-get-my-domains.
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const headerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const sessionToken = body.session_token || headerToken;
+  if (!sessionToken) {
+    return json({ success: false, error: "unauthenticated" }, 401);
+  }
+
   const { sourceLanguageId, targetLanguageId, domain } = body;
   if (!sourceLanguageId || !targetLanguageId || !domain) {
     return json({ success: false, error: "missing_fields" }, 400);

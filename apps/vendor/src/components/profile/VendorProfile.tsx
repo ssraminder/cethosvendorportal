@@ -10,11 +10,13 @@ import {
   lookupProvinces,
   lookupTaxRate,
   requestContractorUpgrade,
+  uploadProfilePhoto,
   type Province,
   type ContractorUpgradeRequest,
   type CertificationEntry,
 } from "../../api/vendorProfile";
 import { SearchableSelect, type SelectOption } from "../shared/SearchableSelect";
+import { SpecializationsPicker } from "../shared/SpecializationsPicker";
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { CvSection } from "./CvSection";
 import { SupportingDocsSection } from "./SupportingDocsSection";
@@ -39,6 +41,8 @@ import {
   Briefcase,
   ShieldCheck,
   ChevronRight,
+  Tags,
+  Camera,
 } from "lucide-react";
 
 // --- Editable text field ---
@@ -129,7 +133,7 @@ function EditableField({ icon: Icon, label, value, type = "text", placeholder, o
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-100"
         title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -220,7 +224,7 @@ function EditableSelectField({ icon: Icon, label, value, options, placeholder, o
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-100"
         title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -438,7 +442,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-100"
         title={value ? "Change phone" : "Add phone"}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -548,7 +552,7 @@ function EditableCurrencyField({ icon: Icon, label, value, onSave }: EditableCur
       </div>
       <button
         onClick={startEdit}
-        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-60 hover:opacity-100 transition-opacity"
+        className="p-1.5 text-gray-400 hover:text-[#0F9DA0] hover:bg-[#0F9DA0]/5 rounded-md opacity-100"
         title={`Edit ${label.toLowerCase()}`}
       >
         <Pencil className="w-3.5 h-3.5" />
@@ -651,6 +655,50 @@ function NativeLanguagesField({ value, onSave }: NativeLanguagesFieldProps) {
               Maximum of {MAX_NATIVE_LANGUAGES} languages reached. Remove one to add another.
             </p>
           )}
+          {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Subject specializations (ISO 17100 §3.1.4 domain competence) ---
+interface SpecializationsFieldProps {
+  value: string[];
+  onSave: (values: string[]) => Promise<string | null>;
+}
+
+function SpecializationsField({ value, onSave }: SpecializationsFieldProps) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  // SpecializationsPicker edits the full list locally; persist on every change.
+  async function handleChange(next: string[]) {
+    setSaving(true);
+    setError("");
+    const err = await onSave(next);
+    setSaving(false);
+    if (err) setError(err);
+  }
+
+  return (
+    <div className="px-6 py-4">
+      <div className="flex items-start gap-4">
+        <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+          <Tags className="w-4 h-4 text-gray-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between mb-1.5">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Subject Specializations
+            </p>
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
+          </div>
+          <p className="text-xs text-gray-500 mb-2">
+            The subject areas you're qualified to translate (ISO 17100). Counts toward
+            your profile completeness.
+          </p>
+          <SpecializationsPicker value={value} onChange={handleChange} disabled={saving} />
           {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
         </div>
       </div>
@@ -845,6 +893,10 @@ export function VendorProfile() {
   const [provinceState, setProvinceState] = useState("");
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
+  const [specializations, setSpecializations] = useState<string[]>([]);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState("");
   const [certifications, setCertifications] = useState<CertificationEntry[]>([]);
   const [contractorType, setContractorType] = useState<"individual" | "business">("individual");
   const [upgradeRequest, setUpgradeRequest] = useState<ContractorUpgradeRequest | null>(null);
@@ -880,6 +932,12 @@ export function VendorProfile() {
         setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
         setProvinceState(result.vendor.province_state || "");
         setNativeLanguages(result.vendor.native_languages || []);
+        setSpecializations(
+          Array.isArray(result.vendor.specializations)
+            ? (result.vendor.specializations as unknown[]).map((s) => String(s))
+            : [],
+        );
+        setPhotoUrl(result.translator_profile?.profile_photo_url ?? null);
         setCertifications(result.vendor.certifications || []);
         setContractorType(result.vendor.contractor_type === "business" ? "business" : "individual");
         setUpgradeRequest(result.contractor_upgrade_request ?? null);
@@ -991,6 +1049,40 @@ export function VendorProfile() {
     return null;
   }
 
+  async function saveSpecializations(values: string[]): Promise<string | null> {
+    const result = await updateProfile(sessionToken!, { specializations: values });
+    if (result.error) return result.error;
+    if (result.vendor) setVendor(result.vendor);
+    setSpecializations(values);
+    return null;
+  }
+
+  async function handlePhotoSelected(file: File) {
+    if (!sessionToken) return;
+    setPhotoError("");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setPhotoError("Use a PNG, JPEG, or WebP image.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Image must be 5 MB or smaller.");
+      return;
+    }
+    setPhotoUploading(true);
+    try {
+      const res = await uploadProfilePhoto(sessionToken, file);
+      if (res.success && res.profile_photo_url) {
+        setPhotoUrl(res.profile_photo_url);
+      } else {
+        setPhotoError(res.error || "Failed to upload photo.");
+      }
+    } catch {
+      setPhotoError("Failed to upload photo.");
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   async function savePreferredRateCurrency(value: string): Promise<string | null> {
     const err = await saveField("preferred_rate_currency", value);
     if (!err) setPreferredRateCurrency(value);
@@ -1018,15 +1110,45 @@ export function VendorProfile() {
       {/* Profile header */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-teal-600 flex items-center justify-center">
-            <span className="text-xl font-bold text-white">{initials}</span>
-          </div>
+          <label
+            className="relative w-16 h-16 rounded-full overflow-hidden shrink-0 cursor-pointer group"
+            title="Upload a profile photo"
+          >
+            {photoUrl ? (
+              <img src={photoUrl} alt={vendor.full_name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="w-full h-full bg-teal-600 flex items-center justify-center text-xl font-bold text-white">
+                {initials}
+              </span>
+            )}
+            {/* Hover/upload overlay — the camera affordance makes the photo
+                slot discoverable (bug 482f3dfa: "no option to upload"). */}
+            <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+              {photoUploading ? (
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              ) : (
+                <Camera className="w-5 h-5 text-white" />
+              )}
+            </span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={photoUploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handlePhotoSelected(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-semibold text-gray-900 truncate">{vendor.full_name}</h1>
             <div className="flex items-center gap-2 mt-1">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
               <span className="text-sm text-gray-500">{vendor.status.charAt(0).toUpperCase() + vendor.status.slice(1)}</span>
             </div>
+            {photoError && <p className="text-xs text-red-600 mt-1">{photoError}</p>}
           </div>
           <a
             href="/profile"
@@ -1096,6 +1218,12 @@ export function VendorProfile() {
             <NativeLanguagesField
               value={nativeLanguages}
               onSave={saveNativeLanguages}
+            />
+          )}
+          {profileLoaded && (
+            <SpecializationsField
+              value={specializations}
+              onSave={saveSpecializations}
             />
           )}
           {profileLoaded && (

@@ -23,6 +23,22 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.1",
+    date: "2026-06-29",
+    summary:
+      "Fixes a batch of vendor-reported issues across the profile, payment, NDA, onboarding, and test-request screens.",
+    changes: [
+      "Profile completeness now counts your availability correctly — setting yourself to 'Available' no longer lowered your completion score.",
+      "Added a Subject Specializations editor to your profile so you can complete that ISO 17100 step directly (previously there was nowhere to set it).",
+      "Re-added profile photo upload — click your avatar on the profile page to add or change your picture.",
+      "Payment details (PayPal email, bank details) now load back correctly when you return to the Payment page instead of appearing blank after saving.",
+      "Fixed the 'Request test' buttons, which were failing with an error for every domain.",
+      "Made the 'Edit' control on profile fields (including preferred currency) clearly visible so it's easy to find and save.",
+      "Clarified the NDA signing screen: you verify an emailed or texted code first, which unlocks the name box, and typing your name is your signature.",
+      "Uploading your CV during onboarding now marks the step complete immediately, even on slower connections.",
+    ],
+  },
+  {
     version: "2026.6.0",
     date: "2026-06-29",
     summary:
