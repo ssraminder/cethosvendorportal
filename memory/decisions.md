@@ -203,3 +203,14 @@ If a decision is later reversed or refined, mark the old one **superseded** rath
 - **Status:** active — deployed to `lmzoyezvsjgsxveoakdr` 2026-05-05.
 - **Pending:** glossary / style guide file surfacing once portal-side asset upload exists. (Customer-name anonymization is explicitly not pursued — confirmed 2026-05-05; see `cethos_app_figma_design_v1/memory/decisions.md`.)
 - **Affects:** `vendor-get-job-detail` edge function, `apps/vendor/src/api/vendorJobs.ts`, `apps/vendor/src/components/jobs/JobDetailModal.tsx`.
+
+## 2026-06-29 — Portal version number + release notes (vendor + recruitment apps)
+
+Mirror of the admin/customer change (admin repo PR #1261) for the IQVIA software-description ask: bake a published version + build provenance + release notes into both apps in this repo. Branch `feat/portal-version-tracking`, off origin/main.
+
+Per app (`apps/vendor`, `apps/recruitment`), same pattern: `src/lib/releaseNotes.ts` is the single source of truth (CalVer `YEAR.MONTH.PATCH`, newest first; started **2026.6.0**); `src/version.ts` re-exports version + build SHA/date injected by `vite.config.ts` `define` (git short SHA via execSync, try/catch); global decls in `src/vite-env.d.ts`.
+
+- **apps/vendor (full):** `VersionBadge` in the `VendorShell` footer, public `/about` `AboutSoftware` page (plain-English description + version/build/env + release-notes timeline), one-time `WhatsNewModal` (localStorage `cethos_vendor_portal_seen_version`). Brand teal `#0F9DA0`.
+- **apps/recruitment (lite):** version bar in `Layout` + public `/about` page. No "What's new" popup (one-visit token funnel). Uses `cethos-*` tailwind tokens.
+
+Each app reports its OWN build SHA and keeps its OWN releaseNotes, but shares the CalVer scheme with the admin/customer portal. To bump: prepend a `RELEASE_NOTES` entry in that app's `releaseNotes.ts`. Verified both via preview (DOM-inspected; version/build/date/env render, no console errors).

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { VersionBadge } from './VersionBadge'
 
 interface LayoutProps {
   children: ReactNode
@@ -72,6 +73,9 @@ export function Layout({ children }: LayoutProps) {
       <cethos-footer>
         <FallbackFooter />
       </cethos-footer>
+      <div className="bg-white border-t border-cethos-border py-2 px-4 sm:px-6 flex justify-center">
+        <VersionBadge to="/about" />
+      </div>
     </div>
   )
 }

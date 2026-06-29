@@ -7,6 +7,8 @@ import { VendorHeader } from "./VendorHeader";
 import { ImpersonationBanner } from "./ImpersonationBanner";
 import { BugReportFab } from "../support/BugReportFab";
 import { AgreementGateModal } from "../agreements/AgreementGateModal";
+import { VersionBadge } from "../shared/VersionBadge";
+import { WhatsNewModal } from "../shared/WhatsNewModal";
 import { Loader2 } from "lucide-react";
 
 export function VendorShell() {
@@ -55,9 +57,14 @@ export function VendorShell() {
         <main className="flex-1 p-5 lg:p-8 overflow-auto">
           <Outlet context={{ setJobOfferedCount }} />
         </main>
+        <footer className="border-t border-gray-200 bg-white py-3 px-5 lg:px-8 flex items-center justify-between text-xs text-gray-400">
+          <span>&copy; {new Date().getFullYear()} Cethos Solutions Inc.</span>
+          <VersionBadge to="/about" />
+        </footer>
       </div>
       <BugReportFab />
       <AgreementGateModal />
+      <WhatsNewModal aboutTo="/about" />
     </div>
   );
 }
