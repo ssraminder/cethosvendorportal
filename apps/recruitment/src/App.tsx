@@ -9,6 +9,7 @@ import { PrivacyPolicy } from './pages/PrivacyPolicy'
 import { ReferencesEntry } from './pages/ReferencesEntry'
 import { ReferenceFeedback } from './pages/ReferenceFeedback'
 import { TestFeedback } from './pages/TestFeedback'
+import { AboutSoftware } from './components/AboutSoftware'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/test-feedback/:token" element={<TestFeedback />} />
         <Route path="/references/:token" element={<ReferencesEntry />} />
         <Route path="/reference-feedback/:token" element={<ReferenceFeedback />} />
+        <Route path="/about" element={<AboutSoftware />} />
         <Route path="/" element={<Navigate to="/apply" replace />} />
         <Route path="*" element={<Navigate to="/apply" replace />} />
       </Routes>
