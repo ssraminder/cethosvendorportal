@@ -214,3 +214,11 @@ Per app (`apps/vendor`, `apps/recruitment`), same pattern: `src/lib/releaseNotes
 - **apps/recruitment (lite):** version bar in `Layout` + public `/about` page. No "What's new" popup (one-visit token funnel). Uses `cethos-*` tailwind tokens.
 
 Each app reports its OWN build SHA and keeps its OWN releaseNotes, but shares the CalVer scheme with the admin/customer portal. To bump: prepend a `RELEASE_NOTES` entry in that app's `releaseNotes.ts`. Verified both via preview (DOM-inspected; version/build/date/env render, no console errors).
+
+## 2026-06-29 — Release note + version bump enforced per PR (CI gate)
+
+Change-control rule (IQVIA / ISO 17100): every PR that changes app source must bump the version + add a release-notes entry, so the running version always maps to a written change record. Enforced via CI, not just documented:
+
+- **CI gate (blocking):** `.github/workflows/require-release-note.yml` — on PRs to main, checks each app: if `apps/vendor/src/**` (or `apps/recruitment/src/**`) source changed (excluding tests) without the matching `releaseNotes.ts`, fails. Must be set as a REQUIRED status check in branch protection on `main`.
+- **Convention:** added to CLAUDE.md Absolute Rules.
+- When vendor/recruitment bump, also update the admin repo's `client/lib/portalRegistry.ts` ("All Cethos systems" overview). Mirror of admin repo PR #1265.
