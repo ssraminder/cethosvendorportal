@@ -15,6 +15,11 @@ const cors: Record<string, string> = {
 function json(b: Record<string, unknown>, s = 200): Response {
   return new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 }
+function clientIp(req: Request): string | null {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0].trim();
+  return req.headers.get("x-real-ip") || req.headers.get("cf-connecting-ip") || null;
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -36,8 +41,10 @@ serve(async (req: Request) => {
     const match = (visible ?? []).find((t: { training_id: string }) => t.training_id === body.training_id);
     if (!match) return json({ success: false, error: "not_available" }, 403);
 
+    // Capture the client IP + user-agent server-side for the ISO 17100 audit trail.
     const { data: id, error } = await supabase.rpc("cvp_record_training_completion", {
       p_vendor_id: session.vendor_id, p_training_id: body.training_id, p_method: "online",
+      p_ip: clientIp(req), p_user_agent: req.headers.get("user-agent"),
     });
     if (error) return json({ success: false, error: "record_failed", detail: error.message }, 500);
     return json({ success: true, completion_id: id });
