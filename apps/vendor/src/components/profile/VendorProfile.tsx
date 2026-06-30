@@ -20,7 +20,6 @@ import { SpecializationsPicker } from "../shared/SpecializationsPicker";
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { CvSection } from "./CvSection";
 import { SupportingDocsSection } from "./SupportingDocsSection";
-import { GuidesSection } from "./GuidesSection";
 import { COUNTRIES } from "../../data/countries";
 import { LANGUAGES } from "../../data/languages";
 import {
@@ -1290,11 +1289,6 @@ export function VendorProfile() {
           </div>
         </div>
       )}
-
-      {/* Guides & Manuals (Cethos reference documents for vendors) */}
-      <div className="mt-5">
-        <GuidesSection />
-      </div>
 
     </div>
   );

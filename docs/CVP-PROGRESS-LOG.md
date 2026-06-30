@@ -14,6 +14,29 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — June 30, 2026 (vendor portal: new "Guides" section — embeddable how-to videos + docs)
+
+Added a first-class **Guides** section to the vendor portal, managed from the admin panel. Guides are mostly **embedded how-to videos** (Guidde / YouTube iframes) and/or uploaded reference documents — title + category + optional description.
+
+### Why a new system (not the existing portal_documents)
+The pre-existing "Guides & Manuals" card (Profile page) read file-only `portal_documents` via `vendor-list-documents`. That table can't store an embed URL, and it's a shared CETHOS-portal table (no `cvp_` prefix). Per the user's requirement ("mostly embeds — Guidde/YouTube"), a purpose-built `cvp_guides` was the right home. The old Profile card was **removed** (replaced by the new section).
+
+### Database (migration `20260630_cvp_guides.sql`, applied to prod)
+`cvp_guides`: title, category (default 'General'), description, **embed_url** (iframe src), optional file (`file_path`/`file_name`/`file_size`/`mime_type` in new private bucket `cvp-guides`), sort_order, is_published, is_archived, created_by → staff_users, timestamps + updated_at trigger. CHECK `(embed_url IS NOT NULL OR file_path IS NOT NULL)`. RLS: staff-admin manage only (service-role edge fns bypass; vendors never touch the table directly).
+
+### Edge functions (deployed `--no-verify-jwt`)
+- **`vendor-list-guides`** (this repo) — vendor_sessions-token auth; returns published, non-archived guides ordered by category → sort_order → title, with a signed URL for any uploaded file. Verified: 401 with no session; returns the seeded guide for a live session.
+- **`cvp-manage-guides`** (admin repo) — staff CRUD (`staff_id` validated, mirrors `manage-portal-documents`): multipart create/update (optional file), json list/set_published/archive/delete/file_url. **Normalizes a pasted full `<iframe …src="…">` snippet down to the src URL** (verified with the live Guidde embed → stored the bare playbook URL).
+
+### Frontend
+- **Vendor** ([apps/vendor/src/components/guides/GuidesPage.tsx](apps/vendor/src/components/guides/GuidesPage.tsx)) at `/guides` (gated): guides grouped by category; renders a responsive sandboxed `<iframe>` for embeds and a View/Download row for files. New "Guides" sidebar item (icon `LibraryBig`). `vendorGuides.ts` now calls `vendor-list-guides`.
+- **Admin** (admin repo `client/pages/admin/AdminGuides.tsx`) at `/admin/guides` (QMS Hub tab next to Documents): list grouped by category + create/edit modal (Title, Category, Description, Embed link or `<iframe>` code, optional file upload, sort order) + publish/unpublish/archive/delete.
+
+### Status / verification
+Backend live + verified end-to-end via curl (admin create → vendor read). Both apps typecheck clean. Frontends pending branch-deploy + Chrome-MCP visual verification before merge. One real published test guide seeded ("Manage Purchase Orders & Submit Invoices"). The 2 old vendor-audience `portal_documents` guides are no longer surfaced — to be re-added as `cvp_guides` if still wanted.
+
+---
+
 ## Session — May 19, 2026 (incident: vendors reporting "I submitted, why am I still getting test emails?")
 
 Many translator-applicants reported receiving V4 "your CETHOS test expires in Xh" reminders after they'd already submitted their test in the TM-Cethos editor.
