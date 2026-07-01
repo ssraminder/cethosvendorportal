@@ -15,6 +15,7 @@ import { JobDetail } from "./components/jobs/JobDetail";
 import { InvoiceList } from "./components/invoices/InvoiceList";
 import { InvoiceDetail } from "./components/invoices/InvoiceDetail";
 import { PurchaseOrderList } from "./components/purchase-orders/PurchaseOrderList";
+import { QualityActionsList } from "./components/quality-actions/QualityActionsList";
 import { UnsubscribePage } from "./components/unsubscribe/UnsubscribePage";
 import { NDAPage, GVSAPage } from "./components/nda/NDAPage";
 import { VendorReferencesEntry } from "./components/references/VendorReferencesEntry";
@@ -71,6 +72,7 @@ function App() {
               <Route path="trainings" element={<TrainingsList />} />
               <Route path="trainings/:id" element={<TrainingDetail />} />
               <Route path="guides" element={<GuidesPage />} />
+              <Route path="quality-actions" element={<QualityActionsList />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" />} />

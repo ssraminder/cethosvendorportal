@@ -37,6 +37,33 @@ Backend live + verified end-to-end via curl (admin create → vendor read). Both
 
 ---
 
+## Session — June 30, 2026 (vendor side of the CAPA/NC escalation loop)
+
+Built the vendor-portal counterpart to admin PR #1291 (admin repo branch `feat/vendor-capa-escalation`, migration `20260630_qms_vendor_capa_escalations.sql`). Staff escalate a quality/delivery nonconformity to the assigned vendor; the vendor acknowledges and submits a root cause + corrective/preventive action (+ optional evidence). All the backend RPCs already existed on prod (`lmzoyezvsjgsxveoakdr`); this session added the vendor-facing surface.
+
+### Branch note
+This worktree was accidentally cut on top of the unmerged PR #283 (ABA routing field) instead of `main`, so it lacked the #284–#288 work (release notes/version gate, PurchaseOrderList, `vendor-raise-invoice`). Rebased onto `origin/main` (ABA commit preserved on its own PR #283 branch + a local backup tag).
+
+### What was added
+- **Edge fn `vendor-get-capa-actions`** — Bearer session_token → `vendor_sessions` → `vendor_id`; calls `public.qms_list_vendor_escalations(p_vendor_id)` (returns a jsonb array of open escalations: awaiting_ack/acknowledged/returned).
+- **Edge fn `vendor-capa-respond`** — `action=acknowledge` → `qms_vendor_ack_escalation`; `action=submit` (multipart) uploads optional evidence to the private `vendor-capa-evidence` bucket (10 MB cap) then calls `qms_vendor_submit_escalation(...p_evidence_path)`. RPC validation/authorisation messages are passed through to the UI.
+- **Edge fn `notify-vendor-capa-reminder`** — cron-secret gated (`requireCronSecret`); reads `public.qms_vendor_escalation_reminders(days)` and emails each vendor (grouped) via Brevo (`sendBrevoRawEmail`). Sibling of the admin `qms-capa-reminder-daily`.
+- **Migration `20260630_qms_vendor_escalation_reminder_cron.sql`** — schedules `qms-vendor-escalation-reminder-daily` at 14:30 UTC, calling the reminder fn with the vault `cron_shared_secret`. (The reminder READ RPC already exists in the admin migration.)
+- **Frontend** — `api/vendorCapaActions.ts`; `components/quality-actions/QualityActionsList.tsx` (list + per-card acknowledge + response form + evidence upload, mirrors PurchaseOrderList); `/quality-actions` route; "Quality Actions" sidebar entry; dashboard banner when pending escalations exist.
+- **Version** — `apps/vendor/src/lib/releaseNotes.ts` bumped to `2026.6.3` (satisfies the require-release-note CI gate).
+
+### Verified
+- `apps/vendor` `tsc -b` clean; `vite build` green.
+
+### Not yet done (needs the user's Supabase credentials)
+- Deploy the 3 edge functions with `supabase functions deploy <name> --no-verify-jwt --project-ref lmzoyezvsjgsxveoakdr` (MCP/Dashboard deploy would flip verify_jwt→true and break vendor session auth). `notify-vendor-capa-reminder` is cron-only but still deploy `--no-verify-jwt` (it authenticates via `x-cron-secret`, not a JWT).
+- Apply `20260630_qms_vendor_escalation_reminder_cron.sql` (`supabase db push`).
+- Dev-branch test with a seeded test vendor (bootstrap a minimal schema slice — a full-history replay dies on the missing shared `languages` table, as on the admin side). The admin branch ships `supabase/tests/vendor_capa_escalation.mjs` for the RPC layer.
+- Live-verify on vendor.cethos.com.
+- **Cross-repo:** bump the `vendor` entry in the admin repo's `client/lib/portalRegistry.ts` to `2026.6.3` when this ships (that file is a hand-maintained mirror, updated at release; admin working tree is shared — branch off `origin/main`).
+
+---
+
 ## Session — May 19, 2026 (incident: vendors reporting "I submitted, why am I still getting test emails?")
 
 Many translator-applicants reported receiving V4 "your CETHOS test expires in Xh" reminders after they'd already submitted their test in the TM-Cethos editor.
