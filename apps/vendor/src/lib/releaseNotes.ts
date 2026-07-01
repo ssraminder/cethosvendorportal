@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.4",
+    date: "2026-06-30",
+    summary:
+      "New Guides section — watch how-to walkthroughs and open reference documents from Cethos.",
+    changes: [
+      "Added a 'Guides' page in the sidebar with how-to videos and reference documents Cethos publishes for you.",
+      "Videos play inline on the page, grouped by category — no need to leave the portal.",
+    ],
+  },
+  {
     version: "2026.6.3",
     date: "2026-06-30",
     summary:
