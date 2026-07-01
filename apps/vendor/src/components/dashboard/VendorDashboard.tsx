@@ -4,6 +4,7 @@ import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getFullProfile, updateAvailability } from "../../api/vendorProfile";
 import { getSteps, type VendorStep } from "../../api/vendorJobs";
 import { getInvoices } from "../../api/vendorInvoices";
+import { getCapaActions } from "../../api/vendorCapaActions";
 import { LANGUAGES } from "../../data/languages";
 import {
   User,
@@ -25,6 +26,7 @@ import {
   Tag,
   BookOpen,
   ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
@@ -78,6 +80,7 @@ export function VendorDashboard() {
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [completedJobCount, setCompletedJobCount] = useState(0);
   const [pendingPayment, setPendingPayment] = useState(0);
+  const [pendingCapaCount, setPendingCapaCount] = useState(0);
   const [updatingAvailability, setUpdatingAvailability] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
@@ -107,6 +110,11 @@ export function VendorDashboard() {
       const invoiceResult = await getInvoices(sessionToken);
       if (invoiceResult.summary) {
         setPendingPayment(invoiceResult.summary.pending_amount);
+      }
+
+      const capaResult = await getCapaActions(sessionToken);
+      if (capaResult.success && capaResult.escalations) {
+        setPendingCapaCount(capaResult.escalations.length);
       }
     } catch {
       // Dashboard data is supplementary
@@ -166,6 +174,25 @@ export function VendorDashboard() {
         </div>
         {statusBadge(vendor.status)}
       </div>
+
+      {/* Quality actions (CAPA/NC escalations) awaiting the vendor's response —
+          a required ISO 17100 corrective-action step, so surfaced prominently. */}
+      {pendingCapaCount > 0 && (
+        <Link
+          to="/quality-actions"
+          className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors"
+        >
+          <ShieldAlert className="w-5 h-5 shrink-0 text-amber-600" />
+          <p className="text-sm flex-1 text-amber-900">
+            You have{" "}
+            <span className="font-semibold">
+              {pendingCapaCount} quality action{pendingCapaCount === 1 ? "" : "s"}
+            </span>{" "}
+            awaiting your response.
+          </p>
+          <span className="text-xs font-medium whitespace-nowrap text-amber-700">Respond &rarr;</span>
+        </Link>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
