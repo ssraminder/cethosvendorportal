@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.3",
+    date: "2026-06-30",
+    summary:
+      "Respond to quality actions (CAPA) Cethos raises to you, with a new Quality Actions page.",
+    changes: [
+      "Added a 'Quality Actions' page listing corrective actions Cethos has raised to you, with the request, severity, and response due date.",
+      "You can acknowledge each action and submit your root cause plus corrective and preventive action, optionally attaching supporting evidence.",
+      "If Cethos returns a response for revision, the reason is shown so you can update and resubmit.",
+      "Your dashboard now shows a banner when you have quality actions awaiting a response.",
+    ],
+  },
+  {
     version: "2026.6.2",
     date: "2026-06-29",
     summary:
