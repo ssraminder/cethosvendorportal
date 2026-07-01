@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.4",
+    date: "2026-07-01",
+    summary:
+      "More reliable sign-in codes for vendors whose email provider had been rejecting our messages.",
+    changes: [
+      "Login codes are now sent through a backup email provider automatically when the primary provider can't reach your mailbox, so codes stop silently going missing.",
+      "Vendors on email providers known to block our primary sender are routed to the backup provider first, so the very first code gets through.",
+    ],
+  },
+  {
     version: "2026.6.3",
     date: "2026-06-30",
     summary:
