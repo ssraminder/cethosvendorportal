@@ -14,6 +14,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.6.1',
+    date: '2026-07-02',
+    summary:
+      'Translator registration now captures native language(s).',
+    changes: [
+      'Translator registration now captures native language(s) (up to 3).',
+    ],
+  },
+  {
     version: '2026.6.0',
     date: '2026-06-29',
     summary:

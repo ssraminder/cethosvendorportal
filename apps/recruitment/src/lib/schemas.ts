@@ -191,6 +191,9 @@ export const translatorSchema = z.object({
   educationLevel: z.string().min(1, 'Education level is required'),
   certifications: z.array(certificationSchema).default([]),
   catTools: z.array(z.string()).default([]),
+  nativeLanguages: z.array(z.string().min(1))
+    .min(1, 'Select at least one native language')
+    .max(3, 'Select up to 3 native languages'),
   languagePairs: z.array(languagePairSchema).min(1, 'At least one language pair is required'),
   domainsOffered: z.array(z.enum(DOMAIN_VALUES)).min(1, 'Select at least one domain'),
   rateCurrency: z.string().min(3, 'Select a currency for your rates'),
