@@ -23,13 +23,23 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "2026.6.4",
-    date: "2026-07-01",
+    version: "2026.6.5",
+    date: "2026-07-02",
     summary:
-      "More reliable sign-in codes for vendors whose email provider had been rejecting our messages.",
+      "More reliable sign-in codes — login and NDA codes now go out through our most deliverable email provider first.",
     changes: [
-      "Login codes are now sent through a backup email provider automatically when the primary provider can't reach your mailbox, so codes stop silently going missing.",
-      "Vendors on email providers known to block our primary sender are routed to the backup provider first, so the very first code gets through.",
+      "Login and NDA verification codes are now sent through the email provider with the best deliverability first, with an automatic backup provider if it can't reach your mailbox — so codes stop silently going missing.",
+      "This fixes cases where sign-in codes were not arriving for some vendors depending on their email provider or region.",
+    ],
+  },
+  {
+    version: "2026.6.4",
+    date: "2026-06-30",
+    summary:
+      "New Guides section — watch how-to walkthroughs and open reference documents from Cethos.",
+    changes: [
+      "Added a 'Guides' page in the sidebar with how-to videos and reference documents Cethos publishes for you.",
+      "Videos play inline on the page, grouped by category — no need to leave the portal.",
     ],
   },
   {

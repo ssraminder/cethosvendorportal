@@ -35,6 +35,16 @@ export interface VendorEmailArgs {
   subject: string;
   html: string;
   tags?: string[];
+  /**
+   * Login-critical mail (sign-in / NDA verification codes). Forces Mailgun
+   * first for EVERY recipient, not just the blocked-domain list. Brevo
+   * accepts with HTTP 201 and then soft-bounces asynchronously at some
+   * recipient MTAs, so a code sent Brevo-first can silently vanish and the
+   * user is simply locked out. Mailgun (dedicated domain reply.cethos.com,
+   * different IP reputation) is our most deliverable path, so we lead with
+   * it for anything that gates access. Brevo stays as the fallback.
+   */
+  loginCritical?: boolean;
 }
 
 export interface VendorEmailResult {
@@ -107,6 +117,9 @@ async function loadBlockedDomains(): Promise<Set<string>> {
 /**
  * Send a vendor email with automatic provider failover.
  *
+ * - Login-critical mail (args.loginCritical) → Mailgun first for everyone,
+ *   Brevo fallback. Access-gating codes can't afford Brevo's silent async
+ *   soft-bounce, so we always lead with our most deliverable provider.
  * - Recipients on known Brevo-blocked domains → Mailgun first, Brevo fallback.
  * - Everyone else → Brevo first (portal's standard provider), Mailgun fallback
  *   on synchronous failure.
@@ -115,7 +128,7 @@ async function loadBlockedDomains(): Promise<Set<string>> {
  */
 export async function sendVendorEmail(args: VendorEmailArgs): Promise<VendorEmailResult> {
   const blocked = await loadBlockedDomains();
-  const mailgunFirst = blocked.has(domainOf(args.to.email));
+  const mailgunFirst = args.loginCritical === true || blocked.has(domainOf(args.to.email));
   const order: Array<"brevo" | "mailgun"> = mailgunFirst
     ? ["mailgun", "brevo"]
     : ["brevo", "mailgun"];

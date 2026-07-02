@@ -13,8 +13,7 @@
 
 import { query } from "./_lib/db";
 import { requireSession } from "./_lib/session";
-import { sendBrevo } from "./_lib/brevo";
-import { sendMailgun } from "./_lib/mailgun";
+import { sendVendorEmail } from "./_lib/email-send";
 import { sendTwilioSms, maskPhone } from "./_lib/twilio";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
 import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
@@ -102,22 +101,16 @@ export const handler = async (event: {
 </div>`;
       const subject = "Your CETHOS NDA verification code";
 
-      let result = await sendBrevo({
+      // NDA codes are login-critical too — Mailgun-first with Brevo
+      // fallback (see _lib/email-send.ts). Prevents the silent Brevo
+      // soft-bounce from blocking a vendor mid-NDA signing.
+      const result = await sendVendorEmail({
         to: { email: vendor.email, name: vendor.full_name },
         subject,
         html,
         tags: ["nda-otp"],
+        loginCritical: true,
       });
-      if (!result.sent) {
-        // Brevo not configured or hard-failed; fall back to Mailgun. Either
-        // provider gives us the same user-visible behaviour.
-        result = await sendMailgun({
-          to: { email: vendor.email, name: vendor.full_name },
-          subject,
-          html,
-          tags: ["nda-otp"],
-        });
-      }
       if (!result.sent) {
         return err("Failed to send verification email", 500, { detail: result.reason });
       }

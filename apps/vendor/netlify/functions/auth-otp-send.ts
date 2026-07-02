@@ -92,16 +92,17 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
   </div>
 </div>`;
 
-    // Send with automatic provider failover. Brevo is primary for most
-    // recipients; recipients on ISPs that blocklist Brevo's shared IPs are
-    // routed to Mailgun first (Brevo accepts with 201 then soft-bounces
-    // asynchronously, so a login-critical code would silently vanish). See
-    // _lib/email-send.ts for the blocked-domain routing rationale.
+    // Sign-in codes are login-critical: send Mailgun-first for every
+    // recipient (Brevo accepts with 201 then soft-bounces asynchronously at
+    // some MTAs, so a Brevo-first code can silently vanish and lock the
+    // vendor out). Brevo stays as the automatic fallback. Blocked-domain
+    // routing still applies on top. See _lib/email-send.ts.
     const sendResult = await sendVendorEmail({
       to: { email: vendor.email, name: vendor.full_name },
       subject: `${otpCode} is your CETHOS verification code`,
       html,
       tags: ["vendor-auth-otp"],
+      loginCritical: true,
     });
 
     if (!sendResult.sent) {

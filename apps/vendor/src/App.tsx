@@ -25,6 +25,7 @@ import { VendorDocuments } from "./components/documents/VendorDocuments";
 import { RosterManager } from "./components/roster/RosterManager";
 import { TrainingsList } from "./components/trainings/TrainingsList";
 import { TrainingDetail } from "./components/trainings/TrainingDetail";
+import { GuidesPage } from "./components/guides/GuidesPage";
 import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
 import { OnboardingPackagePage } from "./components/onboarding/OnboardingPackagePage";
@@ -70,6 +71,7 @@ function App() {
               <Route path="invoices/:id" element={<InvoiceDetail />} />
               <Route path="trainings" element={<TrainingsList />} />
               <Route path="trainings/:id" element={<TrainingDetail />} />
+              <Route path="guides" element={<GuidesPage />} />
               <Route path="quality-actions" element={<QualityActionsList />} />
             </Route>
           </Route>
