@@ -182,7 +182,10 @@ export function TrainingDetail() {
                 )}
               </div>
 
-              {isLast && quizEnabled && !completed && showQuiz && id && (
+              {/* Keep the quiz mounted through a pass (don't gate on !completed) so the
+                  "Passed — NN%" result stays on screen; on a later revisit showQuiz
+                  starts false, so a completed training just shows its lessons. */}
+              {isLast && quizEnabled && showQuiz && id && (
                 <div className="mt-6">
                   <TrainingQuiz trainingId={id} onPassed={() => setCompleted(true)} />
                 </div>

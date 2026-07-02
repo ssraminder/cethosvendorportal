@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.7",
+    date: "2026-07-02",
+    summary:
+      "The knowledge-check result (your score) now stays on screen after you pass.",
+    changes: [
+      "After you pass a training's knowledge check, your score and the reviewed answers remain visible instead of disappearing right away.",
+    ],
+  },
+  {
     version: "2026.6.6",
     date: "2026-07-02",
     summary:
