@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getTrainingDetail, markTrainingComplete, type TrainingLesson } from "../../api/vendorTrainings";
 import { LessonBlocks, type Block } from "./LessonBlocks";
+import { TrainingQuiz } from "./TrainingQuiz";
 
 // Lightweight markdown → HTML fallback for lessons without content_blocks.
 function renderMarkdown(md: string): string {
@@ -24,6 +25,8 @@ export function TrainingDetail() {
   const [training, setTraining] = useState<{ title: string; description: string } | null>(null);
   const [lessons, setLessons] = useState<TrainingLesson[]>([]);
   const [completed, setCompleted] = useState(false);
+  const [quizEnabled, setQuizEnabled] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,7 @@ export function TrainingDetail() {
       setTraining(res.training ? { title: res.training.title, description: res.training.description } : null);
       setLessons(res.lessons ?? []);
       setCompleted(res.completed === true);
+      setQuizEnabled(res.training?.quiz_enabled === true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load training");
     }
@@ -155,6 +159,16 @@ export function TrainingDetail() {
                   <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-700">
                     <CheckCircle2 className="w-4 h-4" /> Completed
                   </span>
+                ) : quizEnabled ? (
+                  !showQuiz && (
+                    <button
+                      type="button"
+                      onClick={() => setShowQuiz(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
+                    >
+                      Start knowledge check <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )
                 ) : (
                   <button
                     type="button"
@@ -167,6 +181,12 @@ export function TrainingDetail() {
                   </button>
                 )}
               </div>
+
+              {isLast && quizEnabled && !completed && showQuiz && id && (
+                <div className="mt-6">
+                  <TrainingQuiz trainingId={id} onPassed={() => setCompleted(true)} />
+                </div>
+              )}
             </>
           )}
         </>
