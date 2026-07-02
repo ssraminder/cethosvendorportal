@@ -9,8 +9,7 @@
  */
 
 import { query } from "./_lib/db";
-import { sendBrevo } from "./_lib/brevo";
-import { sendMailgun } from "./_lib/mailgun";
+import { sendVendorEmail } from "./_lib/email-send";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
 import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
 
@@ -93,27 +92,27 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
   </div>
 </div>`;
 
-    // Try Brevo first (vendor portal's standard provider). Fall back to
-    // Mailgun if Brevo isn't configured — covers either env-var setup.
-    const useBrevo = !!process.env.BREVO_API_KEY;
-    const sendResult = useBrevo
-      ? await sendBrevo({
-          to: { email: vendor.email, name: vendor.full_name },
-          subject: `${otpCode} is your CETHOS verification code`,
-          html,
-          tags: ["vendor-auth-otp"],
-        })
-      : await sendMailgun({
-          to: { email: vendor.email, name: vendor.full_name },
-          subject: `${otpCode} is your CETHOS verification code`,
-          html,
-          tags: ["vendor-auth-otp"],
-        });
+    // Sign-in codes are login-critical: send Mailgun-first for every
+    // recipient (Brevo accepts with 201 then soft-bounces asynchronously at
+    // some MTAs, so a Brevo-first code can silently vanish and lock the
+    // vendor out). Brevo stays as the automatic fallback. Blocked-domain
+    // routing still applies on top. See _lib/email-send.ts.
+    const sendResult = await sendVendorEmail({
+      to: { email: vendor.email, name: vendor.full_name },
+      subject: `${otpCode} is your CETHOS verification code`,
+      html,
+      tags: ["vendor-auth-otp"],
+      loginCritical: true,
+    });
 
     if (!sendResult.sent) {
-      console.error(`Email send failed via ${useBrevo ? "Brevo" : "Mailgun"}:`, sendResult.reason);
+      console.error("OTP email send failed (all providers):", sendResult.reason);
       return err("Failed to send email", 502, { detail: sendResult.reason });
     }
+
+    console.log(
+      `OTP sent to ${maskEmail(vendor.email)} via ${sendResult.provider}`,
+    );
 
     return json({
       success: true,

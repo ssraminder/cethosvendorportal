@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.5",
+    date: "2026-07-02",
+    summary:
+      "More reliable sign-in codes — login and NDA codes now go out through our most deliverable email provider first.",
+    changes: [
+      "Login and NDA verification codes are now sent through the email provider with the best deliverability first, with an automatic backup provider if it can't reach your mailbox — so codes stop silently going missing.",
+      "This fixes cases where sign-in codes were not arriving for some vendors depending on their email provider or region.",
+    ],
+  },
+  {
     version: "2026.6.4",
     date: "2026-06-30",
     summary:
