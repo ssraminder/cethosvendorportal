@@ -14,6 +14,34 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — July 2, 2026 (CD interviewer enrichment outreach + reply→profile pipeline)
+
+Kicked off a data-enrichment campaign to all cognitive-debriefing (CD) providers to capture what the application form never asked: **rate basis, participant-recruitment capability (patients vs general population), focus-group experience, capacity/turnaround.** Built the outreach sender, then the reply-parsing pipeline that turns free-text answers into structured profile data + a recommended next action.
+
+### Recipient scope (built off live data)
+40 real individual CD applicants (all pipeline stages, 2 QA-test rows excluded) + 14 CD-offering agencies (2 test + 1 rejected self-test excluded). Live dry-run confirmed **53 to send** (39 individuals + 14 agencies); Veronique Doggen auto-excluded (`do_not_contact` from a prior inbound opt-out).
+
+### Outbound — `cvp-request-vendor-info` (deployed, `verify_jwt=false`)
+- Mailgun transport with `trackContext` → logs to `cvp_outbound_messages` (`template_tag='vendor-info-request'`) so replies thread. From **CETHOS Vendor Management &lt;recruiting@vendors.cethos.com&gt;** (verified sending domain), Reply-To **vm@cethos.com** (existing vm triage — no new route). `do_not_contact`-gated, idempotent (skips already-sent), lightly personalized (first name + therapy areas + interview volume); individual + agency variants.
+- Modes: `{dryRun}` (default), `{testEmail}` (one sample), `{confirm:"SEND"}` (live batch). Smoke test to a personal address delivered; reply captured in `cvp_inbound_emails` (frontdesk_escalated) — full loop proven.
+- Added an optional per-send `from` override to [_shared/mailgun.ts](supabase/functions/_shared/mailgun.ts) (backward-compatible) so the send can use the Vendor Management identity instead of the default `noreply@`.
+
+### Reply → profile pipeline (deployed)
+- **Migration** [20260702190000_cvp_cd_capabilities.sql](supabase/migrations/20260702190000_cvp_cd_capabilities.sql): new `cvp_cd_capabilities` (one row per application, merged across replies; typed capability columns + provenance + `needs_review` + `recommended_next_action` + `capability_tags`; staff RLS, service-role insert). Also adds `cvp_inbound_emails.cd_enrichment_processed_at` as the sweep's idempotency marker. Applied via MCP + checked in (same timestamp).
+- **`cvp-extract-cd-capabilities`** (deployed, `verify_jwt=false`): sweep worker, **deliberately decoupled** from `cvp-inbound-email` (that function is prod-critical and currently ahead of the repo — a frontdesk_* flow the repo lacks — so we don't redeploy it for this feature). Finds unprocessed replies to `vendor-info-request` outbounds, runs a schema-constrained Opus extraction, merges into `cvp_cd_capabilities` (verified rows untouched), computes a deterministic next-action (`advance_to_cd_pool` / `prioritize_patient_recruiter` / `request_clarification` / `staff_review`) + tags (`patient_recruiter`, `focus_group`, …), and stamps the reply processed. Non-blocking: extraction failure → `staff_review`, never drops the reply.
+
+### Sent + scheduled (2026-07-02)
+- **Live batch SENT** — `{confirm:"SEND"}` dispatched **53/53** (0 suppressed, 0 failed); 53 outbound rows logged to `cvp_outbound_messages` (tag `vendor-info-request`, 53 distinct apps) → replies will thread.
+- **Cron scheduled** — `cron.job` `cvp-extract-cd-capabilities` at `*/15 * * * *` (job 1857, active), calls the extractor with the cron secret. Replies now get parsed into `cvp_cd_capabilities` automatically.
+- **Form-redundancy pass** — checked the live join.cethos.com CD form: it already collects languages (native + additional), the rate figure (labelled "Hourly rate" w/ ambiguous per-interview hint), availability, therapy areas, etc. Trimmed the individual email from 5→4 questions: dropped "interview languages", reframed "rate" → "rate basis"; extractor no longer flags languages as a gap. (v2 of both functions.)
+
+### Not done / follow-ups
+- **Admin surfacing** (a "CD Capabilities" panel + Verify button on the recruitment-detail page) lives in the **admin repo** (`cethos_app_figma_design_v1`) — not built here.
+- Clarifying follow-ups are **recommended, not auto-sent** (staff-approved via existing `cvp-staff-reply`), by design.
+- **First real replies** will validate extraction quality — watch `cvp_cd_capabilities` (esp. `needs_review=true`, `recommended_next_action`).
+
+---
+
 ## Session — June 30, 2026 (vendor portal: new "Guides" section — embeddable how-to videos + docs)
 
 Added a first-class **Guides** section to the vendor portal, managed from the admin panel. Guides are mostly **embedded how-to videos** (Guidde / YouTube iframes) and/or uploaded reference documents — title + category + optional description.
