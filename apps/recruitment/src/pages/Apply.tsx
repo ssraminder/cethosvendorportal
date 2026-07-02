@@ -99,6 +99,7 @@ export function Apply() {
       roleType: 'translator',
       certifications: [],
       catTools: [],
+      nativeLanguages: [],
       languagePairs: [{ sourceLanguageId: '', targetLanguageId: '', services: [] }],
       domainsOffered: [],
       rateCurrency: 'CAD',
@@ -697,6 +698,26 @@ export function Apply() {
               title="Language Pairs & Rates"
               description="Add each language pair you can work with. For each pair, list the services you offer and your rate."
             >
+              <div className="mb-4">
+                <FormField
+                  label="Native language(s) (up to 3)"
+                  required
+                  hint="Your strongest native language(s)."
+                  error={translatorForm.formState.errors.nativeLanguages?.message as string | undefined}
+                >
+                  <RankedMultiSelect
+                    options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                    value={(translatorForm.watch('nativeLanguages') ?? []) as string[]}
+                    onChange={(next) => translatorForm.setValue(
+                      'nativeLanguages',
+                      next,
+                      { shouldValidate: true, shouldDirty: true }
+                    )}
+                    maxSelections={3}
+                    placeholder="Select native language(s)…"
+                  />
+                </FormField>
+              </div>
               <div className="space-y-4">
                 {languagePairFields.map((field, index) => (
                   <LanguagePairRow
