@@ -36,6 +36,14 @@ export interface MailgunSendOptions {
   html: string;
   text?: string;
   /**
+   * Override the default From (MAILGUN_FROM_EMAIL / MAILGUN_FROM_NAME) for this
+   * send. The email MUST be on the Mailgun-verified sending domain
+   * (e.g. an address on vendors.cethos.com) so SPF/DKIM align and the message
+   * doesn't fail DMARC. Used when a send goes out under a team identity
+   * distinct from the default noreply (e.g. Vendor Management).
+   */
+  from?: { email: string; name?: string };
+  /**
    * Override the default Reply-To (MAILGUN_REPLY_TO). Rarely needed.
    */
   replyTo?: string;
@@ -120,8 +128,10 @@ export async function sendMailgunEmail(
     return { sent: false, suppressed: false, reason: "config_missing" };
   }
 
-  const fromEmail = Deno.env.get("MAILGUN_FROM_EMAIL") ?? `noreply@${domain}`;
-  const fromName = Deno.env.get("MAILGUN_FROM_NAME") ?? "CETHOS";
+  const fromEmail =
+    options.from?.email ?? Deno.env.get("MAILGUN_FROM_EMAIL") ?? `noreply@${domain}`;
+  const fromName =
+    options.from?.name ?? Deno.env.get("MAILGUN_FROM_NAME") ?? "CETHOS";
   const replyTo = options.replyTo ?? Deno.env.get("MAILGUN_REPLY_TO");
 
   // do_not_contact gate
