@@ -54,3 +54,48 @@ export async function markTrainingComplete(token: string, trainingId: string): P
   const r = await safePost(fnUrl("vendor-mark-training-complete"), { session_token: token, training_id: trainingId });
   return r.json();
 }
+
+// A knowledge-check question as served to the vendor — WITHOUT the answer. The
+// correct_option never leaves the DB; grading is server-side.
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  option_a: string | null;
+  option_b: string | null;
+  option_c: string | null;
+  option_d: string | null;
+  display_order: number;
+}
+
+export interface GradeResult {
+  passed: boolean;
+  score: number;
+  correct: number;
+  total: number;
+  threshold: number;
+  results: { id: string; correct_option: string; your: string | null; is_correct: boolean }[];
+}
+
+// Load the answer-free knowledge-check questions for a quiz-enabled training.
+export async function getTrainingQuiz(
+  token: string,
+  trainingId: string,
+): Promise<{ success: boolean; threshold?: number; questions?: QuizQuestion[]; error?: string }> {
+  const r = await safePost(fnUrl("vendor-get-training-quiz"), { session_token: token, training_id: trainingId });
+  return r.json();
+}
+
+// Submit answers ({questionId: "a"|"b"|"c"|"d"}); the server grades against the
+// hidden correct_option and, on a passing score, records completion + quiz_score.
+export async function gradeTraining(
+  token: string,
+  trainingId: string,
+  answers: Record<string, string>,
+): Promise<{ success: boolean; data?: GradeResult; error?: string }> {
+  const r = await safePost(fnUrl("vendor-grade-training"), {
+    session_token: token,
+    training_id: trainingId,
+    answers,
+  });
+  return r.json();
+}

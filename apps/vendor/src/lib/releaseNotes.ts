@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.6",
+    date: "2026-07-02",
+    summary:
+      "Trainings can now include a graded knowledge check — pass to complete, retake if needed.",
+    changes: [
+      "A training assigned to you may now end with a short multiple-choice knowledge check. Work through the lessons, then take the check.",
+      "You need to reach the pass mark shown on the check (for most, 80%) to complete the training. If you don't pass, you can review the questions marked as incorrect and retake it as many times as you need.",
+      "Your completion and score are recorded only once you pass.",
+      "New training added: \"Cognitive Debriefing: Post-CogDeb Analysis & QM Review\" — for linguists who analyse cognitive-debriefing feedback.",
+    ],
+  },
+  {
     version: "2026.6.5",
     date: "2026-07-02",
     summary:
