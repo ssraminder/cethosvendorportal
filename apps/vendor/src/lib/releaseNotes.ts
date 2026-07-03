@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.8",
+    date: "2026-07-03",
+    summary:
+      "More languages available when selecting your language pairs.",
+    changes: [
+      "Added languages that were missing from the language picker (including Sesotho, Scottish Gaelic, Tibetan, Yiddish, Hawaiian and others) so your profile and language pairs match the languages offered on the application form.",
+    ],
+  },
+  {
     version: "2026.6.7",
     date: "2026-07-02",
     summary:
