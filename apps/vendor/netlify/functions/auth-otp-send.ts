@@ -41,14 +41,28 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
       return err("Only email channel supported", 400);
     }
 
+    // Match the primary email OR any address on the vendor's `additional_emails`
+    // list, case-insensitively. Vendors with a second business email previously
+    // got no code because only the primary matched (silent lock-out).
     const vendors = await query<Vendor>(
-      "SELECT id, full_name, email, phone FROM vendors WHERE email = $1 LIMIT 1",
+      `SELECT id, full_name, email, phone FROM vendors
+       WHERE lower(email) = $1
+          OR EXISTS (
+            SELECT 1 FROM unnest(coalesce(additional_emails, ARRAY[]::text[])) ae
+            WHERE lower(ae) = $1
+          )
+       LIMIT 1`,
       [email],
     );
     const vendor = vendors[0];
     if (!vendor) {
       return err("No vendor account found for this email", 404);
     }
+
+    // Deliver the code to the exact address the vendor signed in with — it is
+    // verified to belong to this account (primary or an additional_email), so a
+    // vendor using their secondary email still receives the code in that inbox.
+    const targetEmail = email;
 
     // Rate limit: deny if a non-verified OTP was issued in the last 60s
     const recent = await query<{ id: string }>(
@@ -74,7 +88,7 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
       `INSERT INTO vendor_otp
          (vendor_id, email, phone, channel, otp_hash, salt, attempts, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
-      [vendor.id, vendor.email, vendor.phone, channel, otpHash, salt, expiresAt],
+      [vendor.id, targetEmail, vendor.phone, channel, otpHash, salt, expiresAt],
     );
 
     const html = `
@@ -98,7 +112,7 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     // vendor out). Brevo stays as the automatic fallback. Blocked-domain
     // routing still applies on top. See _lib/email-send.ts.
     const sendResult = await sendVendorEmail({
-      to: { email: vendor.email, name: vendor.full_name },
+      to: { email: targetEmail, name: vendor.full_name },
       subject: `${otpCode} is your CETHOS verification code`,
       html,
       tags: ["vendor-auth-otp"],
@@ -111,13 +125,13 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     }
 
     console.log(
-      `OTP sent to ${maskEmail(vendor.email)} via ${sendResult.provider}`,
+      `OTP sent to ${maskEmail(targetEmail)} via ${sendResult.provider}`,
     );
 
     return json({
       success: true,
       channel: "email",
-      masked_contact: maskEmail(vendor.email),
+      masked_contact: maskEmail(targetEmail),
     });
   } catch (e) {
     console.error("auth-otp-send error:", e);
