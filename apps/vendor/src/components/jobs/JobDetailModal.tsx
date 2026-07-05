@@ -16,6 +16,8 @@ import {
   X,
   Clock,
   Download,
+  Upload,
+  FolderOpen,
   FileText,
   AlertTriangle,
   Loader2,
@@ -531,6 +533,43 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                     </div>
                   </div>
                 </section>
+
+                {/* 3.5 VENDOR FILE PACKAGE (Dropbox) — files to work on + submission */}
+                {job.dropbox_download_link && (
+                  <section className="rounded-lg border border-teal-200 bg-teal-50 p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FolderOpen className="h-4 w-4 text-teal-600" />
+                      <span className="text-sm font-semibold text-teal-800">
+                        Your files{job.package_version ? ` (v${job.package_version})` : ""}
+                      </span>
+                    </div>
+                    <p className="text-xs text-teal-700 mb-3">
+                      Download the files to work on, then submit your completed work using the upload link.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={job.dropbox_download_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                      >
+                        <Download className="h-4 w-4" /> Download Files
+                      </a>
+                      {job.dropbox_upload_link ? (
+                        <a
+                          href={job.dropbox_upload_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-teal-700 bg-white border border-teal-300 rounded-lg hover:bg-teal-50"
+                        >
+                          <Upload className="h-4 w-4" /> Submit Files
+                        </a>
+                      ) : (
+                        <span className="self-center text-xs text-amber-600">Submission link coming soon.</span>
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 {/* 4. REVISION CONTEXT (prominent position when applicable) */}
                 {isRevision && status === "revision_requested" && (
