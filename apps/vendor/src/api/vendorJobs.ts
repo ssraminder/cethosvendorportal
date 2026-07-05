@@ -142,6 +142,14 @@ export interface JobDetailJob {
   dropbox_download_link?: string | null;
   dropbox_upload_link?: string | null;
   package_version?: number | null;
+  // Latest QA "Request Review" round — staff-sent files + comments to correct.
+  review_round?: {
+    version: number;
+    comments_md: string | null;
+    download_link: string | null;
+    upload_link: string | null;
+    created_at: string | null;
+  } | null;
 }
 
 export interface VolumeDocument {

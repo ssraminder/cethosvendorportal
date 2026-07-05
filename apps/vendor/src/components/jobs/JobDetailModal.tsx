@@ -28,11 +28,24 @@ import {
   ChevronDown,
   ChevronUp,
   Briefcase,
+  MessageSquareText,
 } from "lucide-react";
 
 function getLanguageName(code: string | null): string {
   if (!code) return "—";
   return LANGUAGES.find((l) => l.code === code)?.name ?? code;
+}
+
+// Lightweight markdown -> plain text for the in-portal review-comments preview
+// (the emailed version keeps the rich formatting). Strips bold/italic markers
+// and normalizes list markers; rendered with whitespace-pre-wrap.
+function stripMd(md: string): string {
+  return md
+    .replace(/\r\n/g, "\n")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1$2")
+    .replace(/^[ \t]*[-*]\s+/gm, "• ")
+    .trim();
 }
 
 const STATUS_BADGES: Record<string, { bg: string; text: string; label: string }> = {
@@ -566,6 +579,49 @@ export function JobDetailModal({ step, onClose, onAction }: JobDetailModalProps)
                         </a>
                       ) : (
                         <span className="self-center text-xs text-amber-600">Submission link coming soon.</span>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {/* 3.6 QA REVIEW ROUND — staff-sent files + comments to correct */}
+                {job.review_round && (
+                  <section className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <MessageSquareText className="h-4 w-4 text-amber-600" />
+                      <span className="text-sm font-semibold text-amber-800">
+                        Review requested{job.review_round.version ? ` (round v${job.review_round.version})` : ""}
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-700 mb-3">
+                      We've reviewed your work and need some corrections. Read the notes, download the files with our
+                      comments, make the changes, then submit them back below.
+                    </p>
+                    {job.review_round.comments_md && (
+                      <div className="text-sm text-amber-900 whitespace-pre-wrap bg-white/70 rounded p-3 border border-amber-200 mb-3">
+                        {stripMd(job.review_round.comments_md)}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {job.review_round.download_link && (
+                        <a
+                          href={job.review_round.download_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+                        >
+                          <Download className="h-4 w-4" /> Download files &amp; comments
+                        </a>
+                      )}
+                      {(job.review_round.upload_link || job.dropbox_upload_link) && (
+                        <a
+                          href={job.review_round.upload_link || job.dropbox_upload_link || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-lg hover:bg-amber-50"
+                        >
+                          <Upload className="h-4 w-4" /> Submit corrections
+                        </a>
                       )}
                     </div>
                   </section>

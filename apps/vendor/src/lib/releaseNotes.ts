@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.0",
+    date: "2026-07-05",
+    summary:
+      "When Cethos requests a review on your delivered work, the job now shows the review notes plus a link to download the marked-up files and submit your corrections.",
+    changes: [
+      "A new 'Review requested' section appears on a job when Cethos sends back a round of corrections: it shows the reviewer's notes, a 'Download files & comments' button for that round's files, and a 'Submit corrections' button to upload your fixes.",
+    ],
+  },
+  {
     version: "2026.6.9",
     date: "2026-07-04",
     summary:
