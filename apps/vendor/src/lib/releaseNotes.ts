@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.6.9",
+    date: "2026-07-04",
+    summary:
+      "Job details now show Download Files and Submit Files buttons when Cethos has prepared a file package for you.",
+    changes: [
+      "When a job's files are ready, the job detail view shows a 'Your files' section with a Download Files button (the files to work on) and a Submit Files button (upload your completed work). Your download link stays the same if the package is updated — just refresh.",
+    ],
+  },
+  {
     version: "2026.6.8",
     date: "2026-07-03",
     summary:

@@ -71,6 +71,26 @@ export const handler = async (event: {
     if (!step) return err("Step not found", 404);
 
     const isAssigned = step.vendor_id === vendor_id;
+
+    // Vendor file package (Dropbox) — only surfaced to the assigned vendor.
+    let dropboxPackage: {
+      dropbox_download_link: string | null;
+      dropbox_upload_link: string | null;
+      current_version: number | null;
+    } | null = null;
+    if (isAssigned) {
+      const pkgRows = await query<{
+        dropbox_download_link: string | null;
+        dropbox_upload_link: string | null;
+        current_version: number | null;
+      }>(
+        `SELECT dropbox_download_link, dropbox_upload_link, current_version
+         FROM vendor_step_packages WHERE step_id = $1 LIMIT 1`,
+        [stepId],
+      );
+      dropboxPackage = pkgRows[0] ?? null;
+    }
+
     let stepOffer: {
       id: string;
       status: string;
@@ -383,6 +403,10 @@ export const handler = async (event: {
         offer_id: stepOffer?.id ?? null,
         offer_status: stepOffer?.status ?? null,
         negotiation_allowed: stepOffer?.negotiation_allowed ?? false,
+        // Vendor file package (Dropbox) links — assigned vendor only.
+        dropbox_download_link: dropboxPackage?.dropbox_download_link ?? null,
+        dropbox_upload_link: dropboxPackage?.dropbox_upload_link ?? null,
+        package_version: dropboxPackage?.current_version ?? null,
       },
       project: projectInfo,
       volume: {

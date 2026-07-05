@@ -138,6 +138,10 @@ export interface JobDetailJob {
   negotiation_allowed: boolean;
   counter_status: string; // 'none' | 'proposed' | 'accepted' | 'rejected'
   use_cethos_tm?: boolean;
+  // Vendor file package (Dropbox) — assigned vendor only.
+  dropbox_download_link?: string | null;
+  dropbox_upload_link?: string | null;
+  package_version?: number | null;
 }
 
 export interface VolumeDocument {
