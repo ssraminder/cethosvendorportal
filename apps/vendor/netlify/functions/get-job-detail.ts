@@ -91,6 +91,31 @@ export const handler = async (event: {
       dropboxPackage = pkgRows[0] ?? null;
     }
 
+    // Latest QA "Request Review" round — staff-sent files + comments the vendor
+    // must correct. Assigned vendor only; the newest version wins.
+    let reviewRound: {
+      version: number;
+      comments_md: string | null;
+      dropbox_download_link: string | null;
+      dropbox_upload_link: string | null;
+      created_at: string | null;
+    } | null = null;
+    if (isAssigned) {
+      const roundRows = await query<{
+        version: number;
+        comments_md: string | null;
+        dropbox_download_link: string | null;
+        dropbox_upload_link: string | null;
+        created_at: string | null;
+      }>(
+        `SELECT version, comments_md, dropbox_download_link, dropbox_upload_link, created_at
+         FROM vendor_step_review_rounds WHERE step_id = $1
+         ORDER BY version DESC LIMIT 1`,
+        [stepId],
+      );
+      reviewRound = roundRows[0] ?? null;
+    }
+
     let stepOffer: {
       id: string;
       status: string;
@@ -407,6 +432,16 @@ export const handler = async (event: {
         dropbox_download_link: dropboxPackage?.dropbox_download_link ?? null,
         dropbox_upload_link: dropboxPackage?.dropbox_upload_link ?? null,
         package_version: dropboxPackage?.current_version ?? null,
+        // Latest QA review round (staff-sent files + comments to correct).
+        review_round: reviewRound
+          ? {
+              version: reviewRound.version,
+              comments_md: reviewRound.comments_md,
+              download_link: reviewRound.dropbox_download_link,
+              upload_link: reviewRound.dropbox_upload_link,
+              created_at: reviewRound.created_at,
+            }
+          : null,
       },
       project: projectInfo,
       volume: {
