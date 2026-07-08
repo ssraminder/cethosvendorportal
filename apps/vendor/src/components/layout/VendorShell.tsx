@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import { getSteps } from "../../api/vendorJobs";
+import { getMyInterviews } from "../../api/vendorInterviews";
 import { VendorSidebar } from "./VendorSidebar";
 import { VendorHeader } from "./VendorHeader";
 import { ImpersonationBanner } from "./ImpersonationBanner";
@@ -15,6 +16,9 @@ export function VendorShell() {
   const { vendor, sessionToken, isLoading } = useVendorAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [jobOfferedCount, setJobOfferedCount] = useState(0);
+  // Only moderators (vendors with an rp_interviewers record) get the Interviews
+  // nav item; most vendors aren't moderators, so gate it on having ≥1 session.
+  const [hasInterviews, setHasInterviews] = useState(false);
 
   const fetchOfferedCount = useCallback(async () => {
     if (!sessionToken) return;
@@ -23,6 +27,11 @@ export function VendorShell() {
       if (result.counts) {
         setJobOfferedCount(result.counts.offered);
       }
+    } catch {
+      // non-critical
+    }
+    try {
+      setHasInterviews((await getMyInterviews(sessionToken)).length > 0);
     } catch {
       // non-critical
     }
@@ -50,6 +59,7 @@ export function VendorShell() {
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         jobOfferedCount={jobOfferedCount}
+        hasInterviews={hasInterviews}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <ImpersonationBanner />
