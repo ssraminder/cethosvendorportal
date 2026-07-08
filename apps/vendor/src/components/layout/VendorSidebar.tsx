@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Folder,
   Users,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -27,6 +28,7 @@ interface VendorSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   jobOfferedCount?: number;
+  hasInterviews?: boolean;
 }
 
 interface NavLeaf {
@@ -39,7 +41,7 @@ interface NavBranch extends NavLeaf {
 }
 type NavItem = NavLeaf | NavBranch;
 
-function buildNavItems(isAgency: boolean): NavItem[] {
+function buildNavItems(isAgency: boolean, hasInterviews: boolean): NavItem[] {
   const items: NavItem[] = [
     { to: "/", label: "Dashboard", icon: LayoutGrid },
     { to: "/profile", label: "Profile", icon: User },
@@ -67,6 +69,8 @@ function buildNavItems(isAgency: boolean): NavItem[] {
     { to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
     { to: "/invoices", label: "Invoices", icon: FileText },
   );
+  // Moderators (vendors who run research-panel interviews) get their console.
+  if (hasInterviews) items.push({ to: "/interviews", label: "My Interviews", icon: CalendarClock });
   return items;
 }
 
@@ -74,11 +78,11 @@ function hasChildren(item: NavItem): item is NavBranch {
   return "children" in item && Array.isArray(item.children);
 }
 
-export function VendorSidebar({ isOpen, onClose, jobOfferedCount }: VendorSidebarProps) {
+export function VendorSidebar({ isOpen, onClose, jobOfferedCount, hasInterviews }: VendorSidebarProps) {
   const location = useLocation();
   const { vendor } = useVendorAuth();
   const isAgency = (vendor?.vendor_type ?? "").toLowerCase() === "agency";
-  const mainNavItems = buildNavItems(isAgency);
+  const mainNavItems = buildNavItems(isAgency, !!hasInterviews);
 
   // Auto-expand any branch whose own route or one of its children matches
   // the current path so vendors don't have to re-open it on every nav.

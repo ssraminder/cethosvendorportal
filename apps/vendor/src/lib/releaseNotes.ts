@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.1",
+    date: "2026-07-08",
+    summary:
+      "Interview moderators get a 'My Interviews' console to run their research-panel sessions, mark them complete, and rate each participant.",
+    changes: [
+      "New 'My Interviews' page (shown to vendors who moderate interviews) lists your assigned sessions.",
+      "Mark a session complete, ticking who attended and flagging any no-shows.",
+      "Rate each participant and add private notes; completing a session also releases the participants' payment step.",
+    ],
+  },
+  {
     version: "2026.7.0",
     date: "2026-07-05",
     summary:

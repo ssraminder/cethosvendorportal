@@ -1354,6 +1354,25 @@ CVP_SUPPORT_EMAIL=vm@cethos.com
 - Create the Mailgun Route.
 - Run Section 5 smoke tests from `MAILGUN-SETUP.md`.
 
+## 2026-07-08 — Interview moderator console (My Interviews)
+
+Vendors who moderate CETHOS research-panel interviews (linked via
+`rp_interviewers.vendor_id`) get a **My Interviews** console.
+
+- New edge function `vendor-interviews` (deployed, `--no-verify-jwt`, self-auth
+  via `vendor_sessions` bearer token). Actions: `list` (the vendor's sessions +
+  participants), `complete` (verifies slot ownership, calls the CETHOS
+  `rp_complete_session` RPC to set booking status + create pending payments, and
+  upserts `rp_moderator_feedback` per participant).
+- Frontend: `api/vendorInterviews.ts`, `components/interviews/MyInterviewsPage.tsx`,
+  route `/interviews`, and a gated "My Interviews" sidebar item (shown only when
+  the vendor has >=1 session).
+- Completing a session releases the participants' payment + feedback step on the
+  CETHOS side (interview-schedule cron sends the combined email).
+- Version bumped to 2026.7.1. The `rp_moderator_feedback` table + `rp_complete_session`
+  RPC live in the CETHOS admin repo (rp_ prefix); this repo only calls them via
+  the service-role edge function.
+
 ---
 
 *End of CVP-PROGRESS-LOG.md*
