@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.2",
+    date: "2026-07-08",
+    summary:
+      "Interview moderators can now message their booked participants before the session — Cethos relays the message by email so no contact details change hands — and the meeting link shows right on the session card.",
+    changes: [
+      "New 'Message participants' on each upcoming session: write once, pick recipients, and Cethos emails it from the Research Panel address in each participant's language. You never see their contact details; replies go to the Cethos team, who forward them.",
+      "Sent messages are listed on the session with delivery counts, and the Cethos team automatically receives a copy of everything relayed.",
+      "The session's meeting link now appears on the card with a Join meeting button (previously it only arrived by email).",
+    ],
+  },
+  {
     version: "2026.7.1",
     date: "2026-07-08",
     summary:

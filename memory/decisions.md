@@ -238,3 +238,9 @@ Change-control rule (IQVIA / ISO 17100): every PR that changes app source must b
 - **CI gate (blocking):** `.github/workflows/require-release-note.yml` — on PRs to main, checks each app: if `apps/vendor/src/**` (or `apps/recruitment/src/**`) source changed (excluding tests) without the matching `releaseNotes.ts`, fails. Must be set as a REQUIRED status check in branch protection on `main`.
 - **Convention:** added to CLAUDE.md Absolute Rules.
 - When vendor/recruitment bump, also update the admin repo's `client/lib/portalRegistry.ts` ("All Cethos systems" overview). Mirror of admin repo PR #1265.
+
+---
+
+## 2026-07-08 — My Interviews: blinded participant messaging + meeting link (Phase 6, v2026.7.2)
+
+`vendor-interviews` v2 adds a `message` action: the moderator messages some/all confirmed participants of their upcoming session; the fn relays per recipient via Brevo from participants@cethosresearch.com with reply-to that same staff mailbox — moderator never sees participant emails/phones (GDPR: signups carry health data), participant never sees the moderator's address, staff get a copy of every batch (rp_config staff_notify_emails). Audit: one `rp_moderator_messages` row per recipient (admin-repo migration 20260708210000), batch_id per compose, relayed_at/relay_error markers. `list` now returns meetingLink (first non-null among the slot's bookings — focus groups share one link), canMessage (confirmed>0 && end_at in future), and grouped message history. UI: MessageComposer panel with recipient checkboxes, blinding notice, 2000-char cap; Join meeting button. Localized chrome for en/de/fr/it/cs/pl/ja/th, fallback en. Guards: ownership, ≤20 batches/slot/day, session not ended.

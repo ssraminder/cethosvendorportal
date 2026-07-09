@@ -7,10 +7,22 @@
 // creates the pending payments; that in turn lets the interview-schedule cron
 // send participants the "confirm payment + feedback" email.
 //
+// v2 (2026-07-08, interview lifecycle Phase 6 — blinded respondent contact):
+//   - "message" action: the moderator writes to some or all booked participants
+//     of their session BEFORE it ends. Each recipient gets a localized email
+//     relayed via Brevo from participants@cethosresearch.com with reply-to the
+//     same staff mailbox — the moderator never sees participant contact info,
+//     the participant never sees the moderator's address, and replies land with
+//     Cethos staff who forward them. Every recipient is one row in
+//     rp_moderator_messages (audit + idempotency), one compose = one batch_id.
+//     Staff get a copy of every relayed batch (rp_config staff_notify_emails).
+//   - "list" now returns the session meeting link (moderators previously only
+//     got it in a one-shot email), canMessage, and the sent-message history.
+//
 // Auth: vendor_sessions bearer token (header) OR session_token in the body.
 // All rp_* access is via service_role — the sanctioned cross-system boundary.
 //
-// POST { action: "list" | "complete", session_token?, ... }
+// POST { action: "list" | "complete" | "message", session_token?, ... }
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -22,6 +34,9 @@ const CORS: Record<string, string> = {
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
+// Max message batches one moderator can send per slot per 24h (abuse guard).
+const MAX_BATCHES_PER_SLOT_PER_DAY = 20;
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -38,13 +53,15 @@ serve(async (req: Request) => {
     const vendorId = session.vendor_id as string;
 
     // This vendor's interviewer record(s).
-    const { data: ivs } = await sb.from("rp_interviewers").select("id").eq("vendor_id", vendorId);
-    const interviewerIds = (ivs || []).map((i: any) => i.id);
+    const { data: ivs } = await sb.from("rp_interviewers").select("id,name").eq("vendor_id", vendorId);
+    const interviewers = ivs || [];
+    const interviewerIds = interviewers.map((i: any) => i.id);
     if (!interviewerIds.length) return json({ success: true, sessions: [] });
 
     const action = String(body.action || "list");
     if (action === "list") return await listSessions(sb, interviewerIds);
     if (action === "complete") return await completeSession(sb, interviewerIds, vendorId, body);
+    if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
     return json({ success: false, error: "Unknown action" }, 400);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";
@@ -65,12 +82,30 @@ async function listSessions(sb: any, interviewerIds: string[]) {
 
   const slotIds = slotList.map((s: any) => s.id);
   const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean)));
-  const [bkRes, studyRes] = await Promise.all([
-    sb.from("rp_bookings").select("id,slot_id,invitation_id,status").in("slot_id", slotIds).in("status", ["confirmed", "completed", "no_show"]),
+  const [bkRes, studyRes, msgRes] = await Promise.all([
+    sb.from("rp_bookings").select("id,slot_id,invitation_id,status,meeting_link").in("slot_id", slotIds).in("status", ["confirmed", "completed", "no_show"]),
     studyIds.length ? sb.from("rp_studies").select("id,code,duration_minutes").in("id", studyIds) : Promise.resolve({ data: [] }),
+    // Sent-message history (one entry per batch). Tolerates the table not
+    // existing yet (pre-migration deploy) — history just comes back empty.
+    sb.from("rp_moderator_messages").select("batch_id,slot_id,body,created_at,relayed_at").in("slot_id", slotIds).order("created_at", { ascending: false }).limit(400),
   ]);
   const bookings = bkRes.data || [];
   const studyMap = new Map((studyRes.data || []).map((s: any) => [s.id, s]));
+
+  // Group message rows (one per recipient) into batches for display.
+  const msgBatches = new Map<string, { batchId: string; slotId: string; body: string; createdAt: string; recipients: number; relayed: number }>();
+  for (const m of msgRes?.data || []) {
+    const cur = msgBatches.get(m.batch_id) || { batchId: m.batch_id, slotId: m.slot_id, body: m.body, createdAt: m.created_at, recipients: 0, relayed: 0 };
+    cur.recipients++;
+    if (m.relayed_at) cur.relayed++;
+    msgBatches.set(m.batch_id, cur);
+  }
+  const msgsBySlot = new Map<string, any[]>();
+  for (const b of msgBatches.values()) {
+    const arr = msgsBySlot.get(b.slotId) || [];
+    arr.push({ batchId: b.batchId, body: b.body, createdAt: b.createdAt, recipients: b.recipients, relayed: b.relayed });
+    msgsBySlot.set(b.slotId, arr);
+  }
 
   const invIds = Array.from(new Set(bookings.map((b: any) => b.invitation_id)));
   const bookingIds = bookings.map((b: any) => b.id);
@@ -85,10 +120,12 @@ async function listSessions(sb: any, interviewerIds: string[]) {
   const fbMap = new Map((fbRes.data || []).map((f: any) => [f.booking_id, f]));
 
   const bySlot = new Map<string, any[]>();
+  const linkBySlot = new Map<string, string>();
   for (const b of bookings) {
     const inv: any = invMap.get(b.invitation_id);
     const sub: any = inv ? subMap.get(inv.submission_id) : null;
     const fb: any = fbMap.get(b.id);
+    if (b.meeting_link && !linkBySlot.has(b.slot_id)) linkBySlot.set(b.slot_id, b.meeting_link);
     const arr = bySlot.get(b.slot_id) || [];
     arr.push({
       invitationId: b.invitation_id, bookingId: b.id, status: b.status,
@@ -98,6 +135,7 @@ async function listSessions(sb: any, interviewerIds: string[]) {
     bySlot.set(b.slot_id, arr);
   }
 
+  const nowMs = Date.now();
   const sessions = slotList.map((s: any) => {
     const participants = bySlot.get(s.id) || [];
     const confirmed = participants.filter((p: any) => p.status === "confirmed").length;
@@ -105,8 +143,13 @@ async function listSessions(sb: any, interviewerIds: string[]) {
     return {
       slotId: s.id, studyCode: st?.code || "Session", durationMinutes: st?.duration_minutes ?? null,
       startAt: s.start_at, endAt: s.end_at,
+      meetingLink: linkBySlot.get(s.id) || null,
       isCompleted: confirmed === 0 && participants.length > 0,
       canComplete: confirmed > 0,
+      // Messaging is for the run-up to the session (and during it): confirmed
+      // participants exist and the session hasn't ended yet.
+      canMessage: confirmed > 0 && new Date(s.end_at || s.start_at).getTime() > nowMs,
+      messages: msgsBySlot.get(s.id) || [],
       participants,
     };
   }).filter((s: any) => s.participants.length > 0);
@@ -157,4 +200,211 @@ async function completeSession(sb: any, interviewerIds: string[], vendorId: stri
   }
 
   return json({ success: true, completed: row?.completed ?? 0, noShow: row?.no_show ?? 0, rated });
+}
+
+// ─────────────────────────── moderator → participant relay (v2) ───────────────────────────
+
+// Localized email chrome. The moderator's message itself is relayed verbatim
+// (they write in the session language); only the surrounding template is
+// localized, keyed by the participant's invitation locale. Mirrors the locale
+// set of interview-schedule/emailStrings.ts; falls back to English.
+interface RelayStrings { subject: string; hello: string; intro: string; replyNote: string; signoff: string }
+const RELAY_STRINGS: Record<string, RelayStrings> = {
+  en: {
+    subject: "A message from your interviewer — {code}",
+    hello: "Hello {name},",
+    intro: "Your interviewer, {interviewer}, sent you a message about your upcoming research session ({code}, {when}):",
+    replyNote: "You can reply directly to this email — the Cethos Research Panel team will pass your reply on to your interviewer.",
+    signoff: "Cethos Research Panel",
+  },
+  de: {
+    subject: "Eine Nachricht von Ihrer Interviewerin / Ihrem Interviewer — {code}",
+    hello: "Guten Tag {name},",
+    intro: "Ihre Interviewerin / Ihr Interviewer, {interviewer}, hat Ihnen eine Nachricht zu Ihrer bevorstehenden Studiensitzung ({code}, {when}) geschickt:",
+    replyNote: "Sie können direkt auf diese E-Mail antworten — das Cethos-Team leitet Ihre Antwort an Ihre Interviewerin / Ihren Interviewer weiter.",
+    signoff: "Cethos Research Panel",
+  },
+  fr: {
+    subject: "Un message de votre intervieweur — {code}",
+    hello: "Bonjour {name},",
+    intro: "Votre intervieweur, {interviewer}, vous a envoyé un message concernant votre prochaine session de recherche ({code}, {when}) :",
+    replyNote: "Vous pouvez répondre directement à cet e-mail — l'équipe du panel de recherche Cethos transmettra votre réponse à votre intervieweur.",
+    signoff: "Cethos Research Panel",
+  },
+  it: {
+    subject: "Un messaggio dal Suo intervistatore — {code}",
+    hello: "Gentile {name},",
+    intro: "Il Suo intervistatore, {interviewer}, Le ha inviato un messaggio riguardo alla Sua prossima sessione di ricerca ({code}, {when}):",
+    replyNote: "Può rispondere direttamente a questa e-mail — il team del panel di ricerca Cethos inoltrerà la Sua risposta all'intervistatore.",
+    signoff: "Cethos Research Panel",
+  },
+  cs: {
+    subject: "Zpráva od vašeho tazatele — {code}",
+    hello: "Dobrý den, {name},",
+    intro: "Váš tazatel {interviewer} vám poslal zprávu ohledně vaší nadcházející výzkumné schůzky ({code}, {when}):",
+    replyNote: "Na tento e-mail můžete přímo odpovědět — tým výzkumného panelu Cethos vaši odpověď předá tazateli.",
+    signoff: "Cethos Research Panel",
+  },
+  pl: {
+    subject: "Wiadomość od osoby prowadzącej wywiad — {code}",
+    hello: "Dzień dobry, {name},",
+    intro: "Osoba prowadząca Państwa wywiad, {interviewer}, przesłała wiadomość dotyczącą nadchodzącej sesji badawczej ({code}, {when}):",
+    replyNote: "Mogą Państwo odpowiedzieć bezpośrednio na tę wiadomość — zespół panelu badawczego Cethos przekaże odpowiedź osobie prowadzącej.",
+    signoff: "Cethos Research Panel",
+  },
+  ja: {
+    subject: "面接担当者からのメッセージ — {code}",
+    hello: "{name} 様",
+    intro: "ご担当のインタビュアー {interviewer} より、今後のリサーチセッション（{code}、{when}）についてメッセージが届いています。",
+    replyNote: "このメールにそのまま返信していただけます。Cethos リサーチパネル担当チームがインタビュアーにお伝えします。",
+    signoff: "Cethos Research Panel",
+  },
+  th: {
+    subject: "ข้อความจากผู้สัมภาษณ์ของคุณ — {code}",
+    hello: "เรียน คุณ{name}",
+    intro: "ผู้สัมภาษณ์ของคุณ {interviewer} ได้ส่งข้อความเกี่ยวกับเซสชันการวิจัยที่กำลังจะมาถึง ({code}, {when}):",
+    replyNote: "คุณสามารถตอบกลับอีเมลนี้ได้โดยตรง ทีมงาน Cethos Research Panel จะส่งต่อคำตอบของคุณไปยังผู้สัมภาษณ์",
+    signoff: "Cethos Research Panel",
+  },
+};
+
+const fill = (s: string, ctx: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? "");
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function formatWhen(startIso: string, locale: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale || "en", { dateStyle: "full", timeStyle: "short", timeZone: tz || "UTC" }).format(new Date(startIso));
+  } catch {
+    return new Intl.DateTimeFormat("en", { dateStyle: "full", timeStyle: "short", timeZone: "UTC" }).format(new Date(startIso)) + " (UTC)";
+  }
+}
+
+// Brevo send — same sender convention as interview-schedule/interview-admin:
+// ALL research-panel mail from participants@cethosresearch.com (RP_SENDER_EMAIL
+// override only). Reply-to is the staff mailbox, NOT the moderator: replies
+// land with Cethos staff, who forward — neither side sees the other's address.
+async function sendRelayEmail(i: { to: string; toName?: string; subject: string; html: string; tags?: string[] }): Promise<boolean> {
+  const key = Deno.env.get("BREVO_API_KEY");
+  if (!key) { console.log(`[vendor-interviews] (no BREVO_API_KEY) would send "${i.subject}" to ${i.to}`); return false; }
+  try {
+    const sender = Deno.env.get("RP_SENDER_EMAIL") || "participants@cethosresearch.com";
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST", headers: { "api-key": key, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        sender: { email: sender, name: Deno.env.get("BREVO_SENDER_NAME") || "Cethos Research Panel" },
+        replyTo: { email: Deno.env.get("RP_REPLY_TO") || sender },
+        to: [{ email: i.to, name: i.toName }], subject: i.subject, htmlContent: i.html, tags: i.tags,
+      }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: string, body: any) {
+  const slotId = String(body.slotId || "");
+  const message = String(body.message || "").trim();
+  const onlyInvitationIds: string[] | null = Array.isArray(body.invitationIds) && body.invitationIds.length
+    ? body.invitationIds.map(String) : null;
+  if (!slotId) return json({ success: false, error: "slotId required" }, 400);
+  if (!message) return json({ success: false, error: "Message is empty" }, 400);
+  if (message.length > 2000) return json({ success: false, error: "Message is too long (max 2000 characters)" }, 400);
+
+  const interviewerIds = interviewers.map((i: any) => i.id);
+  const { data: slot } = await sb.from("rp_availability_slots").select("id,interviewer_id,study_id,start_at,end_at,status").eq("id", slotId).maybeSingle();
+  if (!slot || !interviewerIds.includes(slot.interviewer_id)) return json({ success: false, error: "Not your session" }, 403);
+  if (slot.status === "cancelled") return json({ success: false, error: "Session is cancelled" }, 400);
+  if (new Date(slot.end_at || slot.start_at).getTime() <= Date.now()) {
+    return json({ success: false, error: "This session has already ended" }, 400);
+  }
+
+  // Abuse guard: cap compose batches per slot per 24h.
+  const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { data: recent } = await sb.from("rp_moderator_messages").select("batch_id").eq("slot_id", slotId).gte("created_at", dayAgo);
+  const recentBatches = new Set((recent || []).map((r: any) => r.batch_id)).size;
+  if (recentBatches >= MAX_BATCHES_PER_SLOT_PER_DAY) {
+    return json({ success: false, error: "Daily message limit reached for this session" }, 429);
+  }
+
+  // Recipients: confirmed bookings on this slot (optionally narrowed by the
+  // moderator's per-participant selection).
+  let bkQuery = sb.from("rp_bookings").select("id,invitation_id,participant_timezone").eq("slot_id", slotId).eq("status", "confirmed");
+  if (onlyInvitationIds) bkQuery = bkQuery.in("invitation_id", onlyInvitationIds);
+  const { data: bks } = await bkQuery;
+  const recipients = bks || [];
+  if (!recipients.length) return json({ success: false, error: "No confirmed participants to message" }, 400);
+
+  const invIds = recipients.map((b: any) => b.invitation_id);
+  const [invRes, studyRes] = await Promise.all([
+    sb.from("rp_invitations").select("id,submission_id,locale").in("id", invIds),
+    sb.from("rp_studies").select("id,code").eq("id", slot.study_id).maybeSingle(),
+  ]);
+  const invMap = new Map((invRes.data || []).map((i: any) => [i.id, i]));
+  const studyCode = studyRes.data?.code || "research session";
+  const subIds = Array.from(new Set((invRes.data || []).map((i: any) => i.submission_id).filter(Boolean)));
+  const { data: subs } = subIds.length ? await sb.from("research_panel_signups").select("id,full_name,email").in("id", subIds) : { data: [] };
+  const subMap = new Map((subs || []).map((s: any) => [s.id, s]));
+
+  const interviewerName = interviewers.find((i: any) => i.id === slot.interviewer_id)?.name || "your interviewer";
+  const batchId = crypto.randomUUID();
+  const bodyHtml = escapeHtml(message).replace(/\n/g, "<br>");
+
+  let sent = 0, failed = 0;
+  for (const bk of recipients) {
+    const inv: any = invMap.get(bk.invitation_id);
+    const sub: any = inv ? subMap.get(inv.submission_id) : null;
+
+    // Audit row first — a relay failure stays visible (relayed_at null + error).
+    const { data: row, error: insErr } = await sb.from("rp_moderator_messages").insert({
+      batch_id: batchId, slot_id: slotId, booking_id: bk.id,
+      interviewer_id: slot.interviewer_id, vendor_id: vendorId, body: message,
+    }).select("id").single();
+    if (insErr) { console.error("[vendor-interviews] message insert", insErr.message); failed++; continue; }
+
+    if (!sub?.email) {
+      await sb.from("rp_moderator_messages").update({ relay_error: "participant email missing" }).eq("id", row.id);
+      failed++; continue;
+    }
+
+    const locale = (inv?.locale || "en").toLowerCase();
+    const s = RELAY_STRINGS[locale] || RELAY_STRINGS.en;
+    const when = formatWhen(slot.start_at, locale, bk.participant_timezone || "UTC");
+    const ctx = { name: sub.full_name || "", interviewer: interviewerName, code: studyCode, when };
+    const html =
+      `<p>${escapeHtml(fill(s.hello, ctx))}</p>` +
+      `<p>${escapeHtml(fill(s.intro, ctx))}</p>` +
+      `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #0d9488;background:#f0fdfa;color:#111">${bodyHtml}</blockquote>` +
+      `<p>${escapeHtml(s.replyNote)}</p>` +
+      `<p>${escapeHtml(s.signoff)}</p>`;
+    const ok = await sendRelayEmail({
+      to: sub.email, toName: sub.full_name || undefined,
+      subject: fill(s.subject, ctx), html, tags: ["moderator-message"],
+    });
+    await sb.from("rp_moderator_messages").update(
+      ok ? { relayed_at: new Date().toISOString() } : { relay_error: "brevo send failed" },
+    ).eq("id", row.id);
+    ok ? sent++ : failed++;
+  }
+
+  // Staff oversight copy — every relayed batch lands in the ops mailbox
+  // (patient studies: staff must be able to see what moderators send).
+  try {
+    const { data: cfg } = await sb.from("rp_config").select("value").eq("key", "staff_notify_emails").maybeSingle();
+    const staff: string[] = Array.isArray(cfg?.value) ? cfg.value : [];
+    const whenUtc = formatWhen(slot.start_at, "en-GB", "UTC") + " (UTC)";
+    for (const to of staff) {
+      await sendRelayEmail({
+        to,
+        subject: `Moderator message relayed — ${studyCode}`,
+        html:
+          `<p>${escapeHtml(interviewerName)} messaged ${sent} participant(s) of ${escapeHtml(studyCode)} (session ${escapeHtml(whenUtc)}) via the vendor portal.${failed ? ` ${failed} relay(s) failed.` : ""}</p>` +
+          `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #6366f1;background:#eef2ff;color:#111">${bodyHtml}</blockquote>` +
+          `<p>Replies from participants arrive at the research-panel mailbox — forward them to the moderator as needed.</p>`,
+        tags: ["moderator-message-staff-copy"],
+      });
+    }
+  } catch (e) {
+    console.error("[vendor-interviews] staff copy failed", e instanceof Error ? e.message : e);
+  }
+
+  return json({ success: true, sent, failed, batchId });
 }
