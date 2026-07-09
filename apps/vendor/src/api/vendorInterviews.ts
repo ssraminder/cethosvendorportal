@@ -14,14 +14,24 @@ export interface InterviewParticipant {
   attended: boolean | null;
   comments: string | null;
 }
+export interface ModeratorMessageBatch {
+  batchId: string;
+  body: string;
+  createdAt: string;
+  recipients: number;
+  relayed: number;
+}
 export interface InterviewSession {
   slotId: string;
   studyCode: string;
   durationMinutes: number | null;
   startAt: string;
   endAt: string | null;
+  meetingLink: string | null;
   isCompleted: boolean;
   canComplete: boolean;
+  canMessage: boolean;
+  messages: ModeratorMessageBatch[];
   participants: InterviewParticipant[];
 }
 
@@ -44,5 +54,18 @@ export async function completeInterview(
   participants: ParticipantResult[],
 ): Promise<{ success: boolean; completed?: number; noShow?: number; rated?: number; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "complete", slotId, participants });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// Blinded relay: the message is emailed to the selected participants by Cethos
+// (participants@cethosresearch.com); the moderator never sees their addresses
+// and replies go to Cethos staff. invitationIds omitted = all confirmed.
+export async function messageParticipants(
+  token: string,
+  slotId: string,
+  message: string,
+  invitationIds?: string[],
+): Promise<{ success: boolean; sent?: number; failed?: number; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "message", slotId, message, invitationIds });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
