@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.3",
+    date: "2026-07-09",
+    summary:
+      "Interview documents on My Interviews: the translated files Cethos shares for a session now appear on the session card with always-fresh download links, and can be attached to participant messages.",
+    changes: [
+      "Each session card lists the interview's shared documents with download links that are re-issued on every visit (no more expired email links).",
+      "The message composer gains 'Attach interview documents' — selected files are delivered to each participant as fresh 7-day secure links alongside your message (a message text is optional when sending files).",
+      "Only documents Cethos has shared for the interview can be attached — translated study materials, never source or internal files.",
+    ],
+  },
+  {
     version: "2026.7.2",
     date: "2026-07-08",
     summary:

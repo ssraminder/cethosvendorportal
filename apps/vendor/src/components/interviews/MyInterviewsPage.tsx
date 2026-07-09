@@ -8,7 +8,7 @@
 // and replies go to Cethos staff), and sees the session's meeting link.
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video } from "lucide-react";
+import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video, FileText } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getMyInterviews,
@@ -66,8 +66,8 @@ export function MyInterviewsPage() {
                   if (r.success) await load();
                   return r.success;
                 }}
-                onMessage={async (message, invitationIds) => {
-                  const r = await messageParticipants(sessionToken!, s.slotId, message, invitationIds);
+                onMessage={async (message, invitationIds, attachPaths) => {
+                  const r = await messageParticipants(sessionToken!, s.slotId, message, invitationIds, attachPaths);
                   if (r.success) await load();
                   return r;
                 }} />
@@ -109,7 +109,7 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
   session: InterviewSession;
   busy: boolean;
   onComplete: (results: { invitationId: string; attended: boolean; rating?: number | null; comments?: string | null }[]) => Promise<boolean>;
-  onMessage: (message: string, invitationIds?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
+  onMessage: (message: string, invitationIds?: string[], attachPaths?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
 }) {
   const [panel, setPanel] = useState<null | "complete" | "message">(null);
   const confirmed = session.participants.filter((p) => p.status === "confirmed");
@@ -147,6 +147,16 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
           <span className="inline-flex items-center gap-1 text-xs text-gray-500"><Users className="w-4 h-4" /> {confirmed.length}</span>
         </div>
       </div>
+      {session.files.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" title="Interview documents shared by Cethos — links valid 7 days, refreshed on every visit">
+          {session.files.map((f) => (
+            <a key={f.path} href={f.url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-gray-700 border border-gray-200 rounded-lg px-2 py-1 hover:bg-gray-50">
+              <FileText className="w-3.5 h-3.5 text-teal-600" /> {f.name}
+            </a>
+          ))}
+        </div>
+      )}
       {panel === null ? (
         <div className="mt-3 flex items-center gap-2">
           <button onClick={() => setPanel("complete")} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700">
@@ -159,10 +169,10 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
           )}
         </div>
       ) : panel === "message" ? (
-        <MessageComposer participants={confirmed} messages={session.messages}
+        <MessageComposer participants={confirmed} messages={session.messages} files={session.files}
           onCancel={() => setPanel(null)}
-          onSend={async (message, invitationIds) => {
-            const r = await onMessage(message, invitationIds);
+          onSend={async (message, invitationIds, attachPaths) => {
+            const r = await onMessage(message, invitationIds, attachPaths);
             if (r.success) setPanel(null);
             return r;
           }} />
@@ -209,14 +219,16 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
 // Blinded compose panel: the message goes out as an email from the Cethos
 // Research Panel address — the moderator never sees participant contact info
 // and participant replies land with Cethos staff, who forward them.
-function MessageComposer({ participants, messages, onCancel, onSend }: {
+function MessageComposer({ participants, messages, files, onCancel, onSend }: {
   participants: InterviewParticipant[];
   messages: InterviewSession["messages"];
+  files: InterviewSession["files"];
   onCancel: () => void;
-  onSend: (message: string, invitationIds?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
+  onSend: (message: string, invitationIds?: string[], attachPaths?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
 }) {
   const [message, setMessage] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(participants.map((p) => p.invitationId)));
+  const [attached, setAttached] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -230,11 +242,11 @@ function MessageComposer({ participants, messages, onCancel, onSend }: {
   }
 
   async function send() {
-    if (!message.trim() || selected.size === 0) return;
+    if ((!message.trim() && attached.size === 0) || selected.size === 0) return;
     setSending(true);
     setError(null);
     const all = selected.size === participants.length;
-    const r = await onSend(message.trim(), all ? undefined : [...selected]);
+    const r = await onSend(message.trim(), all ? undefined : [...selected], attached.size ? [...attached] : undefined);
     setSending(false);
     if (!r.success) setError(r.error || "Failed to send");
   }
@@ -261,12 +273,31 @@ function MessageComposer({ participants, messages, onCancel, onSend }: {
         placeholder="Write your message to the participants (e.g. what to prepare, joining instructions)…"
         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
       />
+      {files.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Attach interview documents</div>
+          <div className="flex flex-wrap gap-2">
+            {files.map((f) => (
+              <label key={f.path} className="inline-flex items-center gap-1.5 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-gray-50">
+                <input type="checkbox" checked={attached.has(f.path)} onChange={() => setAttached((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(f.path)) next.delete(f.path);
+                  else next.add(f.path);
+                  return next;
+                })} />
+                <FileText className="w-3.5 h-3.5 text-teal-600" /> {f.name}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Documents shared by Cethos for this interview — each participant receives fresh 7-day download links.</p>
+        </div>
+      )}
       {error && <div className="text-sm text-red-600">{error}</div>}
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-400">{message.length}/2000</span>
         <div className="flex gap-2">
           <button onClick={onCancel} disabled={sending} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">Cancel</button>
-          <button onClick={send} disabled={sending || !message.trim() || selected.size === 0}
+          <button onClick={send} disabled={sending || (!message.trim() && attached.size === 0) || selected.size === 0}
             className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700 disabled:opacity-50">
             {sending && <Loader2 className="w-4 h-4 animate-spin" />} Send to {selected.size} participant{selected.size === 1 ? "" : "s"}
           </button>

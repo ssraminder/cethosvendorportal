@@ -21,6 +21,12 @@ export interface ModeratorMessageBatch {
   recipients: number;
   relayed: number;
 }
+export interface InterviewFile {
+  name: string;
+  path: string;
+  url: string;
+  sentAt: string;
+}
 export interface InterviewSession {
   slotId: string;
   studyCode: string;
@@ -28,6 +34,7 @@ export interface InterviewSession {
   startAt: string;
   endAt: string | null;
   meetingLink: string | null;
+  files: InterviewFile[];
   isCompleted: boolean;
   canComplete: boolean;
   canMessage: boolean;
@@ -65,7 +72,8 @@ export async function messageParticipants(
   slotId: string,
   message: string,
   invitationIds?: string[],
+  attachPaths?: string[],
 ): Promise<{ success: boolean; sent?: number; failed?: number; error?: string }> {
-  const res = await safePost(URL, { session_token: token, action: "message", slotId, message, invitationIds });
+  const res = await safePost(URL, { session_token: token, action: "message", slotId, message, invitationIds, attachPaths });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }

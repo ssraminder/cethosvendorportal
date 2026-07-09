@@ -19,6 +19,18 @@
 //   - "list" now returns the session meeting link (moderators previously only
 //     got it in a one-shot email), canMessage, and the sent-message history.
 //
+// v3 (2026-07-09, Phase 6b — interview files, "translated documents only"):
+//   - "list" also returns the interview's shared files (staff uploads to the
+//     private interview-shares bucket via the admin "Send files" modal —
+//     rp_interview_shares) with fresh 7-day signed URLs, so the moderator can
+//     always re-download the translated documents from the portal after the
+//     emailed links expire. Blinded: file names + dates only, never the
+//     share's recipients or message.
+//   - "message" accepts attachPaths (validated against the study's shares —
+//     moderators cannot upload or link arbitrary paths, only re-share what
+//     staff attached to this interview). Each participant email gets fresh
+//     7-day signed links; the audit rows record file_names/file_paths.
+//
 // Auth: vendor_sessions bearer token (header) OR session_token in the body.
 // All rp_* access is via service_role — the sanctioned cross-system boundary.
 //
@@ -70,6 +82,44 @@ serve(async (req: Request) => {
   }
 });
 
+// Shared files of a set of studies (staff uploads from the admin "Send files"
+// modal). Returns per-study file lists with FRESH 7-day signed URLs. Blinded:
+// no recipient emails, no share message — file name + sent date only.
+async function studyFiles(sb: any, studyIds: string[]): Promise<Map<string, any[]>> {
+  const filesByStudy = new Map<string, any[]>();
+  if (!studyIds.length) return filesByStudy;
+  const { data: shares } = await sb
+    .from("rp_interview_shares")
+    .select("study_id,file_names,file_paths,sent_at")
+    .in("study_id", studyIds)
+    .order("sent_at", { ascending: false })
+    .limit(50);
+  const entries: { studyId: string; name: string; path: string; sentAt: string }[] = [];
+  const seenPaths = new Set<string>();
+  for (const sh of shares || []) {
+    const names: string[] = Array.isArray(sh.file_names) ? sh.file_names : [];
+    const paths: string[] = Array.isArray(sh.file_paths) ? sh.file_paths : [];
+    for (let i = 0; i < paths.length; i++) {
+      if (seenPaths.has(paths[i])) continue;
+      seenPaths.add(paths[i]);
+      entries.push({ studyId: sh.study_id, name: names[i] || paths[i].split("/").pop() || "file", path: paths[i], sentAt: sh.sent_at });
+    }
+  }
+  // Cap the signing work; newest files first.
+  const capped = entries.slice(0, 30);
+  const signed = await Promise.all(capped.map(async (e) => {
+    const { data } = await sb.storage.from("interview-shares").createSignedUrl(e.path, 604800);
+    return { ...e, url: data?.signedUrl || null };
+  }));
+  for (const f of signed) {
+    if (!f.url) continue;
+    const arr = filesByStudy.get(f.studyId) || [];
+    arr.push({ name: f.name, path: f.path, url: f.url, sentAt: f.sentAt });
+    filesByStudy.set(f.studyId, arr);
+  }
+  return filesByStudy;
+}
+
 async function listSessions(sb: any, interviewerIds: string[]) {
   const { data: slots } = await sb
     .from("rp_availability_slots")
@@ -81,13 +131,14 @@ async function listSessions(sb: any, interviewerIds: string[]) {
   if (!slotList.length) return json({ success: true, sessions: [] });
 
   const slotIds = slotList.map((s: any) => s.id);
-  const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean)));
-  const [bkRes, studyRes, msgRes] = await Promise.all([
+  const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean))) as string[];
+  const [bkRes, studyRes, msgRes, filesByStudy] = await Promise.all([
     sb.from("rp_bookings").select("id,slot_id,invitation_id,status,meeting_link").in("slot_id", slotIds).in("status", ["confirmed", "completed", "no_show"]),
     studyIds.length ? sb.from("rp_studies").select("id,code,duration_minutes").in("id", studyIds) : Promise.resolve({ data: [] }),
     // Sent-message history (one entry per batch). Tolerates the table not
     // existing yet (pre-migration deploy) — history just comes back empty.
     sb.from("rp_moderator_messages").select("batch_id,slot_id,body,created_at,relayed_at").in("slot_id", slotIds).order("created_at", { ascending: false }).limit(400),
+    studyFiles(sb, studyIds),
   ]);
   const bookings = bkRes.data || [];
   const studyMap = new Map((studyRes.data || []).map((s: any) => [s.id, s]));
@@ -144,6 +195,7 @@ async function listSessions(sb: any, interviewerIds: string[]) {
       slotId: s.id, studyCode: st?.code || "Session", durationMinutes: st?.duration_minutes ?? null,
       startAt: s.start_at, endAt: s.end_at,
       meetingLink: linkBySlot.get(s.id) || null,
+      files: filesByStudy.get(s.study_id) || [],
       isCompleted: confirmed === 0 && participants.length > 0,
       canComplete: confirmed > 0,
       // Messaging is for the run-up to the session (and during it): confirmed
@@ -208,12 +260,13 @@ async function completeSession(sb: any, interviewerIds: string[], vendorId: stri
 // (they write in the session language); only the surrounding template is
 // localized, keyed by the participant's invitation locale. Mirrors the locale
 // set of interview-schedule/emailStrings.ts; falls back to English.
-interface RelayStrings { subject: string; hello: string; intro: string; replyNote: string; signoff: string }
+interface RelayStrings { subject: string; hello: string; intro: string; filesLabel: string; replyNote: string; signoff: string }
 const RELAY_STRINGS: Record<string, RelayStrings> = {
   en: {
     subject: "A message from your interviewer — {code}",
     hello: "Hello {name},",
     intro: "Your interviewer, {interviewer}, sent you a message about your upcoming research session ({code}, {when}):",
+    filesLabel: "Files (links valid for 7 days):",
     replyNote: "You can reply directly to this email — the Cethos Research Panel team will pass your reply on to your interviewer.",
     signoff: "Cethos Research Panel",
   },
@@ -221,6 +274,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Eine Nachricht von Ihrer Interviewerin / Ihrem Interviewer — {code}",
     hello: "Guten Tag {name},",
     intro: "Ihre Interviewerin / Ihr Interviewer, {interviewer}, hat Ihnen eine Nachricht zu Ihrer bevorstehenden Studiensitzung ({code}, {when}) geschickt:",
+    filesLabel: "Dateien (Links 7 Tage gültig):",
     replyNote: "Sie können direkt auf diese E-Mail antworten — das Cethos-Team leitet Ihre Antwort an Ihre Interviewerin / Ihren Interviewer weiter.",
     signoff: "Cethos Research Panel",
   },
@@ -228,6 +282,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Un message de votre intervieweur — {code}",
     hello: "Bonjour {name},",
     intro: "Votre intervieweur, {interviewer}, vous a envoyé un message concernant votre prochaine session de recherche ({code}, {when}) :",
+    filesLabel: "Fichiers (liens valables 7 jours) :",
     replyNote: "Vous pouvez répondre directement à cet e-mail — l'équipe du panel de recherche Cethos transmettra votre réponse à votre intervieweur.",
     signoff: "Cethos Research Panel",
   },
@@ -235,6 +290,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Un messaggio dal Suo intervistatore — {code}",
     hello: "Gentile {name},",
     intro: "Il Suo intervistatore, {interviewer}, Le ha inviato un messaggio riguardo alla Sua prossima sessione di ricerca ({code}, {when}):",
+    filesLabel: "File (link validi per 7 giorni):",
     replyNote: "Può rispondere direttamente a questa e-mail — il team del panel di ricerca Cethos inoltrerà la Sua risposta all'intervistatore.",
     signoff: "Cethos Research Panel",
   },
@@ -242,6 +298,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Zpráva od vašeho tazatele — {code}",
     hello: "Dobrý den, {name},",
     intro: "Váš tazatel {interviewer} vám poslal zprávu ohledně vaší nadcházející výzkumné schůzky ({code}, {when}):",
+    filesLabel: "Soubory (odkazy platné 7 dní):",
     replyNote: "Na tento e-mail můžete přímo odpovědět — tým výzkumného panelu Cethos vaši odpověď předá tazateli.",
     signoff: "Cethos Research Panel",
   },
@@ -249,6 +306,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Wiadomość od osoby prowadzącej wywiad — {code}",
     hello: "Dzień dobry, {name},",
     intro: "Osoba prowadząca Państwa wywiad, {interviewer}, przesłała wiadomość dotyczącą nadchodzącej sesji badawczej ({code}, {when}):",
+    filesLabel: "Pliki (linki ważne przez 7 dni):",
     replyNote: "Mogą Państwo odpowiedzieć bezpośrednio na tę wiadomość — zespół panelu badawczego Cethos przekaże odpowiedź osobie prowadzącej.",
     signoff: "Cethos Research Panel",
   },
@@ -256,6 +314,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "面接担当者からのメッセージ — {code}",
     hello: "{name} 様",
     intro: "ご担当のインタビュアー {interviewer} より、今後のリサーチセッション（{code}、{when}）についてメッセージが届いています。",
+    filesLabel: "ファイル（リンクの有効期間は7日間です）：",
     replyNote: "このメールにそのまま返信していただけます。Cethos リサーチパネル担当チームがインタビュアーにお伝えします。",
     signoff: "Cethos Research Panel",
   },
@@ -263,6 +322,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "ข้อความจากผู้สัมภาษณ์ของคุณ — {code}",
     hello: "เรียน คุณ{name}",
     intro: "ผู้สัมภาษณ์ของคุณ {interviewer} ได้ส่งข้อความเกี่ยวกับเซสชันการวิจัยที่กำลังจะมาถึง ({code}, {when}):",
+    filesLabel: "ไฟล์ (ลิงก์ใช้งานได้ 7 วัน):",
     replyNote: "คุณสามารถตอบกลับอีเมลนี้ได้โดยตรง ทีมงาน Cethos Research Panel จะส่งต่อคำตอบของคุณไปยังผู้สัมภาษณ์",
     signoff: "Cethos Research Panel",
   },
@@ -305,8 +365,9 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
   const message = String(body.message || "").trim();
   const onlyInvitationIds: string[] | null = Array.isArray(body.invitationIds) && body.invitationIds.length
     ? body.invitationIds.map(String) : null;
+  const attachPaths: string[] = Array.isArray(body.attachPaths) ? body.attachPaths.map(String).slice(0, 10) : [];
   if (!slotId) return json({ success: false, error: "slotId required" }, 400);
-  if (!message) return json({ success: false, error: "Message is empty" }, 400);
+  if (!message && !attachPaths.length) return json({ success: false, error: "Message is empty" }, 400);
   if (message.length > 2000) return json({ success: false, error: "Message is too long (max 2000 characters)" }, 400);
 
   const interviewerIds = interviewers.map((i: any) => i.id);
@@ -344,9 +405,25 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
   const { data: subs } = subIds.length ? await sb.from("research_panel_signups").select("id,full_name,email").in("id", subIds) : { data: [] };
   const subMap = new Map((subs || []).map((s: any) => [s.id, s]));
 
+  // Attached interview files: only paths that staff actually shared for this
+  // study are allowed (the moderator can re-share staff-approved translated
+  // documents, never upload or reference arbitrary storage paths). Fresh
+  // 7-day signed links, one set shared by every recipient of the batch.
+  let attachedFiles: { name: string; url: string; path: string }[] = [];
+  if (attachPaths.length) {
+    const studyFileMap = await studyFiles(sb, [slot.study_id]);
+    const allowed = new Map((studyFileMap.get(slot.study_id) || []).map((f: any) => [f.path, f]));
+    const bad = attachPaths.filter((p) => !allowed.has(p));
+    if (bad.length) return json({ success: false, error: "Attachment is not one of this interview's shared files" }, 400);
+    attachedFiles = attachPaths.map((p) => allowed.get(p)!);
+  }
+
   const interviewerName = interviewers.find((i: any) => i.id === slot.interviewer_id)?.name || "your interviewer";
   const batchId = crypto.randomUUID();
   const bodyHtml = escapeHtml(message).replace(/\n/g, "<br>");
+  const filesHtml = (label: string) => attachedFiles.length
+    ? `<p>${escapeHtml(label)}</p><ul>${attachedFiles.map((f) => `<li><a href="${escapeHtml(f.url)}">${escapeHtml(f.name)}</a></li>`).join("")}</ul>`
+    : "";
 
   let sent = 0, failed = 0;
   for (const bk of recipients) {
@@ -354,9 +431,16 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
     const sub: any = inv ? subMap.get(inv.submission_id) : null;
 
     // Audit row first — a relay failure stays visible (relayed_at null + error).
+    // file_* keys only included when files are attached, so a pre-migration
+    // deploy still handles plain text messages.
     const { data: row, error: insErr } = await sb.from("rp_moderator_messages").insert({
       batch_id: batchId, slot_id: slotId, booking_id: bk.id,
-      interviewer_id: slot.interviewer_id, vendor_id: vendorId, body: message,
+      interviewer_id: slot.interviewer_id, vendor_id: vendorId,
+      body: message || "(files only)",
+      ...(attachedFiles.length ? {
+        file_names: attachedFiles.map((f) => f.name),
+        file_paths: attachedFiles.map((f) => f.path),
+      } : {}),
     }).select("id").single();
     if (insErr) { console.error("[vendor-interviews] message insert", insErr.message); failed++; continue; }
 
@@ -372,7 +456,8 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
     const html =
       `<p>${escapeHtml(fill(s.hello, ctx))}</p>` +
       `<p>${escapeHtml(fill(s.intro, ctx))}</p>` +
-      `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #0d9488;background:#f0fdfa;color:#111">${bodyHtml}</blockquote>` +
+      (message ? `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #0d9488;background:#f0fdfa;color:#111">${bodyHtml}</blockquote>` : "") +
+      filesHtml(s.filesLabel) +
       `<p>${escapeHtml(s.replyNote)}</p>` +
       `<p>${escapeHtml(s.signoff)}</p>`;
     const ok = await sendRelayEmail({
@@ -397,7 +482,8 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
         subject: `Moderator message relayed — ${studyCode}`,
         html:
           `<p>${escapeHtml(interviewerName)} messaged ${sent} participant(s) of ${escapeHtml(studyCode)} (session ${escapeHtml(whenUtc)}) via the vendor portal.${failed ? ` ${failed} relay(s) failed.` : ""}</p>` +
-          `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #6366f1;background:#eef2ff;color:#111">${bodyHtml}</blockquote>` +
+          (message ? `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #6366f1;background:#eef2ff;color:#111">${bodyHtml}</blockquote>` : "") +
+          filesHtml("Attached interview files (7-day links):") +
           `<p>Replies from participants arrive at the research-panel mailbox — forward them to the moderator as needed.</p>`,
         tags: ["moderator-message-staff-copy"],
       });
