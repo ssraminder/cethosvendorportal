@@ -23,6 +23,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.4",
+    date: "2026-07-09",
+    summary:
+      "Moderators can now propose their own session times: when Cethos requests availability for a study, it appears on My Interviews with a simple date/time picker in your timezone — approved times become your booked sessions.",
+    changes: [
+      "New 'Availability requested' section on My Interviews: studies Cethos offered you, with the session length, language, and any note from the team.",
+      "Propose up to 10 times per submission in your own timezone (each session's length is fixed by the study); times must be at least 24 hours out and can't overlap your existing sessions or proposals.",
+      "Each proposed time shows its review status — awaiting review, approved (session booked in), or not used (with Cethos's note) — and pending ones can be withdrawn.",
+      "'I can't take this study' lets you decline the request with an optional reason so Cethos can assign another moderator.",
+      "The My Interviews nav item now also appears when you have an open availability request (previously only with booked sessions).",
+    ],
+  },
+  {
     version: "2026.7.3",
     date: "2026-07-09",
     summary:

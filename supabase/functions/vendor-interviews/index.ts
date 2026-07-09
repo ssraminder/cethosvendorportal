@@ -49,6 +49,35 @@ const json = (body: unknown, status = 200) =>
 
 // Max message batches one moderator can send per slot per 24h (abuse guard).
 const MAX_BATCHES_PER_SLOT_PER_DAY = 20;
+// Availability proposals: per-call and per-study pending caps (abuse guard).
+const MAX_PROPOSALS_PER_CALL = 10;
+const MAX_PENDING_PROPOSALS_PER_STUDY = 20;
+// Moderators propose times at least this far out — staff still need to review
+// and participants need runway to book.
+const MIN_PROPOSAL_LEAD_MS = 24 * 3600 * 1000;
+
+// ─────────── timezone helpers (ported verbatim from interview-admin) ───────────
+function isValidTz(tz: unknown): boolean {
+  if (!tz || typeof tz !== "string") return false;
+  try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; }
+}
+// Offset (minutes) of `tz` at a given instant, via the two-format trick.
+function tzOffsetMinutes(date: Date, tz: string): number {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(date).reduce((a: Record<string, string>, x) => { a[x.type] = x.value; return a; }, {});
+  const asUTC = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), p.hour === "24" ? 0 : Number(p.hour), Number(p.minute), Number(p.second));
+  return (asUTC - date.getTime()) / 60000;
+}
+// Wall-clock "YYYY-MM-DD" + "HH:MM" entered in `tz` -> the UTC instant.
+function wallToUtc(dateStr: string, timeStr: string, tz: string): Date {
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const [h, mi] = timeStr.split(":").map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const off = tzOffsetMinutes(new Date(guess), tz);
+  return new Date(guess - off * 60000);
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -68,12 +97,15 @@ serve(async (req: Request) => {
     const { data: ivs } = await sb.from("rp_interviewers").select("id,name").eq("vendor_id", vendorId);
     const interviewers = ivs || [];
     const interviewerIds = interviewers.map((i: any) => i.id);
-    if (!interviewerIds.length) return json({ success: true, sessions: [] });
+    if (!interviewerIds.length) return json({ success: true, sessions: [], availabilityRequests: [] });
 
     const action = String(body.action || "list");
     if (action === "list") return await listSessions(sb, interviewerIds);
     if (action === "complete") return await completeSession(sb, interviewerIds, vendorId, body);
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
+    if (action === "propose_times") return await proposeTimes(sb, interviewers, body);
+    if (action === "withdraw_proposal") return await withdrawProposal(sb, interviewerIds, body);
+    if (action === "decline_availability") return await declineAvailability(sb, interviewers, body);
     return json({ success: false, error: "Unknown action" }, 400);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";
@@ -120,7 +152,46 @@ async function studyFiles(sb: any, studyIds: string[]): Promise<Map<string, any[
   return filesByStudy;
 }
 
+// Open availability requests for this moderator: studies where staff asked for
+// timings (and the moderator hasn't declined), with the moderator's own
+// proposals + review outcomes. A request stays visible after proposals are
+// approved so the moderator can add more times if staff re-request.
+async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
+  const { data: studies } = await sb.from("rp_studies")
+    .select("id,code,duration_minutes,target_locale,meeting_platform,availability_requested_at,availability_request_note,interviewer_id")
+    .in("interviewer_id", interviewerIds)
+    .eq("active", true)
+    .not("availability_requested_at", "is", null)
+    .is("moderator_declined_at", null)
+    .order("availability_requested_at", { ascending: false });
+  const list = studies || [];
+  if (!list.length) return [];
+  const { data: props } = await sb.from("rp_moderator_slot_proposals")
+    .select("id,study_id,start_at,end_at,timezone,note,status,review_note,created_at")
+    .in("study_id", list.map((s: any) => s.id))
+    .in("interviewer_id", interviewerIds)
+    .order("start_at");
+  const byStudy = new Map<string, any[]>();
+  for (const p of props || []) {
+    const arr = byStudy.get(p.study_id) || [];
+    arr.push({
+      id: p.id, startAt: p.start_at, endAt: p.end_at, timezone: p.timezone,
+      note: p.note, status: p.status, reviewNote: p.review_note, createdAt: p.created_at,
+    });
+    byStudy.set(p.study_id, arr);
+  }
+  return list.map((s: any) => ({
+    studyId: s.id, studyCode: s.code, durationMinutes: s.duration_minutes,
+    targetLocale: s.target_locale, meetingPlatform: s.meeting_platform,
+    requestedAt: s.availability_requested_at, requestNote: s.availability_request_note,
+    proposals: byStudy.get(s.id) || [],
+  }));
+}
+
 async function listSessions(sb: any, interviewerIds: string[]) {
+  // Availability requests are independent of slots — a fresh request has ZERO
+  // slots by definition, so they're fetched before the slot early-return.
+  const availabilityRequests = await availabilityRequestsFor(sb, interviewerIds);
   const { data: slots } = await sb
     .from("rp_availability_slots")
     .select("id,study_id,start_at,end_at,status")
@@ -128,7 +199,7 @@ async function listSessions(sb: any, interviewerIds: string[]) {
     .neq("status", "cancelled")
     .order("start_at", { ascending: false });
   const slotList = slots || [];
-  if (!slotList.length) return json({ success: true, sessions: [] });
+  if (!slotList.length) return json({ success: true, sessions: [], availabilityRequests });
 
   const slotIds = slotList.map((s: any) => s.id);
   const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean))) as string[];
@@ -206,7 +277,149 @@ async function listSessions(sb: any, interviewerIds: string[]) {
     };
   }).filter((s: any) => s.participants.length > 0);
 
-  return json({ success: true, sessions });
+  return json({ success: true, sessions, availabilityRequests });
+}
+
+// ─────────────────────── moderator availability proposals ───────────────────────
+
+// Staff notification for proposal activity — reuses the relay sender + the
+// rp_config staff_notify_emails list (same oversight channel as message copies).
+async function notifyStaff(sb: any, subject: string, html: string, tag: string) {
+  try {
+    const { data: cfg } = await sb.from("rp_config").select("value").eq("key", "staff_notify_emails").maybeSingle();
+    const staff: string[] = Array.isArray(cfg?.value) ? cfg.value : [];
+    for (const to of staff) await sendRelayEmail({ to, subject, html, tags: [tag] });
+  } catch (e) {
+    console.error("[vendor-interviews] staff notify failed", e instanceof Error ? e.message : e);
+  }
+}
+const ADMIN_INTERVIEWS_URL = `${Deno.env.get("ADMIN_PORTAL_URL") || "https://portal.cethos.com"}/admin/research-panel/interviews`;
+
+// The moderator proposes session timings for a study staff offered them.
+// Times arrive as wall-clock date+time in the moderator's chosen IANA timezone;
+// each proposal spans study.duration_minutes. Guards: lead time, overlap with
+// their own pending/approved proposals AND their existing sessions (any study),
+// per-call + per-study caps.
+async function proposeTimes(sb: any, interviewers: any[], body: any) {
+  const studyId = String(body.studyId || "");
+  const tz = String(body.timezone || "");
+  const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
+  const slots: any[] = Array.isArray(body.slots) ? body.slots : [];
+  if (!studyId || !slots.length) return json({ success: false, error: "studyId and slots required" }, 400);
+  if (slots.length > MAX_PROPOSALS_PER_CALL) return json({ success: false, error: `Max ${MAX_PROPOSALS_PER_CALL} times per submission` }, 400);
+  if (!isValidTz(tz)) return json({ success: false, error: "Invalid timezone" }, 400);
+
+  const interviewerIds = interviewers.map((i: any) => i.id);
+  const { data: study } = await sb.from("rp_studies")
+    .select("id,code,duration_minutes,interviewer_id,availability_requested_at,moderator_declined_at,active")
+    .eq("id", studyId).maybeSingle();
+  if (!study || !interviewerIds.includes(study.interviewer_id)) return json({ success: false, error: "Not your study" }, 403);
+  if (!study.active) return json({ success: false, error: "This study is no longer active" }, 409);
+  if (!study.availability_requested_at) return json({ success: false, error: "Availability was not requested for this study" }, 400);
+  const ivId = study.interviewer_id as string;
+  const dur = Number(study.duration_minutes) || 45;
+
+  // Validate + convert to UTC instants.
+  const minStart = Date.now() + MIN_PROPOSAL_LEAD_MS;
+  const candidates: { start: Date; end: Date; raw: any }[] = [];
+  for (const s of slots) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s.date)) || !/^\d{2}:\d{2}$/.test(String(s.time))) {
+      return json({ success: false, error: "Bad date/time format (expected YYYY-MM-DD and HH:MM)" }, 400);
+    }
+    const start = wallToUtc(String(s.date), String(s.time), tz);
+    if (start.getTime() < minStart) return json({ success: false, error: `Times must be at least 24 hours from now (${s.date} ${s.time})` }, 400);
+    candidates.push({ start, end: new Date(start.getTime() + dur * 60000), raw: s });
+  }
+  // The submitted set must not overlap itself.
+  const sorted = [...candidates].sort((a, b) => a.start.getTime() - b.start.getTime());
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].start < sorted[i - 1].end) return json({ success: false, error: "Submitted times overlap each other" }, 400);
+  }
+
+  const { count: pendingCount } = await sb.from("rp_moderator_slot_proposals")
+    .select("id", { count: "exact", head: true })
+    .eq("study_id", studyId).eq("interviewer_id", ivId).eq("status", "pending");
+  if ((pendingCount || 0) + candidates.length > MAX_PENDING_PROPOSALS_PER_STUDY) {
+    return json({ success: false, error: `Too many pending proposals for this study (max ${MAX_PENDING_PROPOSALS_PER_STUDY})` }, 400);
+  }
+
+  // No double-booking: check against their own live proposals for this study
+  // AND their real sessions across ALL studies.
+  const [{ data: exProps }, { data: exSlots }] = await Promise.all([
+    sb.from("rp_moderator_slot_proposals").select("start_at,end_at")
+      .eq("study_id", studyId).eq("interviewer_id", ivId).in("status", ["pending", "approved"]),
+    sb.from("rp_availability_slots").select("start_at,end_at")
+      .in("interviewer_id", interviewerIds).neq("status", "cancelled"),
+  ]);
+  const busy = [...(exProps || []), ...(exSlots || [])].map((r: any) => ({ start: new Date(r.start_at), end: new Date(r.end_at) }));
+  for (const c of candidates) {
+    if (busy.some((b) => b.start < c.end && b.end > c.start)) {
+      return json({ success: false, error: "A proposed time overlaps one of your existing sessions or proposals" }, 409);
+    }
+  }
+
+  const rows = candidates.map((c) => ({
+    study_id: studyId, interviewer_id: ivId,
+    start_at: c.start.toISOString(), end_at: c.end.toISOString(),
+    timezone: tz, note, status: "pending",
+  }));
+  const { data: inserted, error } = await sb.from("rp_moderator_slot_proposals").insert(rows).select("id");
+  if (error) {
+    // Unique pending index = double-submit backstop.
+    if (/uniq_rp_pending_proposal|duplicate/i.test(String(error.message || ""))) {
+      return json({ success: false, error: "You already proposed one of these times" }, 409);
+    }
+    console.error("[vendor-interviews] propose insert", error.message);
+    return json({ success: false, error: "Failed to save proposals" }, 500);
+  }
+  const moderatorName = interviewers.find((i: any) => i.id === ivId)?.name || "A moderator";
+  await notifyStaff(sb,
+    `Moderator proposed ${rows.length} time(s) — ${study.code}`,
+    `<p>${escapeHtml(moderatorName)} proposed ${rows.length} session time(s) for <strong>${escapeHtml(study.code)}</strong> via the vendor portal${note ? ` with a note: “${escapeHtml(note)}”` : ""}.</p>`
+      + `<ul>${candidates.map((c) => `<li>${escapeHtml(c.raw.date)} ${escapeHtml(c.raw.time)} (${escapeHtml(tz)})</li>`).join("")}</ul>`
+      + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review and approve in the admin portal</a>.</p>`,
+    "moderator-availability-proposed");
+  return json({ success: true, proposed: (inserted || []).length });
+}
+
+async function withdrawProposal(sb: any, interviewerIds: string[], body: any) {
+  const proposalId = String(body.proposalId || "");
+  if (!proposalId) return json({ success: false, error: "proposalId required" }, 400);
+  const { data: p } = await sb.from("rp_moderator_slot_proposals")
+    .select("id,interviewer_id,status").eq("id", proposalId).maybeSingle();
+  if (!p || !interviewerIds.includes(p.interviewer_id)) return json({ success: false, error: "Not your proposal" }, 403);
+  if (p.status !== "pending") return json({ success: false, error: "Only pending proposals can be withdrawn" }, 409);
+  const { error } = await sb.from("rp_moderator_slot_proposals")
+    .update({ status: "withdrawn" }).eq("id", proposalId).eq("status", "pending");
+  if (error) { console.error("[vendor-interviews] withdraw", error.message); return json({ success: false, error: "Failed to withdraw" }, 500); }
+  return json({ success: true });
+}
+
+// "I can't take this study" — flags the request for staff (who reassign the
+// interviewer) and withdraws the moderator's own pending proposals.
+async function declineAvailability(sb: any, interviewers: any[], body: any) {
+  const studyId = String(body.studyId || "");
+  const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
+  if (!studyId) return json({ success: false, error: "studyId required" }, 400);
+  const interviewerIds = interviewers.map((i: any) => i.id);
+  const { data: study } = await sb.from("rp_studies")
+    .select("id,code,interviewer_id,availability_requested_at").eq("id", studyId).maybeSingle();
+  if (!study || !interviewerIds.includes(study.interviewer_id)) return json({ success: false, error: "Not your study" }, 403);
+  if (!study.availability_requested_at) return json({ success: false, error: "Availability was not requested for this study" }, 400);
+  const { error } = await sb.from("rp_studies")
+    .update({ moderator_declined_at: new Date().toISOString(), moderator_decline_note: note })
+    .eq("id", studyId);
+  if (error) { console.error("[vendor-interviews] decline", error.message); return json({ success: false, error: "Failed to decline" }, 500); }
+  await sb.from("rp_moderator_slot_proposals")
+    .update({ status: "withdrawn" })
+    .eq("study_id", studyId).eq("interviewer_id", study.interviewer_id).eq("status", "pending");
+  const moderatorName = interviewers.find((i: any) => i.id === study.interviewer_id)?.name || "The moderator";
+  await notifyStaff(sb,
+    `Moderator declined availability — ${study.code}`,
+    `<p>${escapeHtml(moderatorName)} can't take study <strong>${escapeHtml(study.code)}</strong>${note ? `: “${escapeHtml(note)}”` : "."}</p>`
+      + `<p>Assign a different interviewer and re-request availability: <a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">admin portal</a>.</p>`,
+    "moderator-availability-declined");
+  return json({ success: true });
 }
 
 async function completeSession(sb: any, interviewerIds: string[], vendorId: string, body: any) {
