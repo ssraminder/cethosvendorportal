@@ -92,6 +92,7 @@ serve(async (req: Request) => {
       .gt("expires_at", new Date().toISOString()).maybeSingle();
     if (!session) return json({ success: false, error: "Invalid or expired session" }, 401);
     const vendorId = session.vendor_id as string;
+    await loadMonitorBcc(sb);
 
     // This vendor's interviewer record(s).
     const { data: ivs } = await sb.from("rp_interviewers").select("id,name").eq("vendor_id", vendorId);
@@ -583,6 +584,20 @@ function formatWhen(startIso: string, locale: string, tz: string): string {
 // ALL research-panel mail from participants@cethosresearch.com (RP_SENDER_EMAIL
 // override only). Reply-to is the staff mailbox, NOT the moderator: replies
 // land with Cethos staff, who forward — neither side sees the other's address.
+// Rollout monitor: rp_config key 'monitor_bcc_emails' (jsonb array) BCCs every
+// relayed email for tracking. BCC (not CC) so it's never exposed to
+// participants/moderators. Loaded once per request; delete the row to stop.
+let MONITOR_BCC: { email: string }[] = [];
+async function loadMonitorBcc(sb: any) {
+  try {
+    const { data } = await sb.from("rp_config").select("value").eq("key", "monitor_bcc_emails").maybeSingle();
+    const arr = Array.isArray(data?.value) ? data.value : [];
+    MONITOR_BCC = arr.filter((e: unknown) => typeof e === "string" && (e as string).includes("@")).map((email: string) => ({ email }));
+  } catch { MONITOR_BCC = []; }
+}
+function bccFromEnv(): { bcc?: { email: string }[] } {
+  return MONITOR_BCC.length ? { bcc: MONITOR_BCC } : {};
+}
 async function sendRelayEmail(i: { to: string; toName?: string; subject: string; html: string; tags?: string[] }): Promise<boolean> {
   const key = Deno.env.get("BREVO_API_KEY");
   if (!key) { console.log(`[vendor-interviews] (no BREVO_API_KEY) would send "${i.subject}" to ${i.to}`); return false; }
@@ -594,6 +609,7 @@ async function sendRelayEmail(i: { to: string; toName?: string; subject: string;
         sender: { email: sender, name: Deno.env.get("BREVO_SENDER_NAME") || "Cethos Research Panel" },
         replyTo: { email: Deno.env.get("RP_REPLY_TO") || sender },
         to: [{ email: i.to, name: i.toName }], subject: i.subject, htmlContent: i.html, tags: i.tags,
+        ...bccFromEnv(),
       }),
     });
     return res.ok;
