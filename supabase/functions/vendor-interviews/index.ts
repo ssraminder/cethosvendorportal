@@ -104,7 +104,7 @@ serve(async (req: Request) => {
     if (action === "list") return await listSessions(sb, interviewerIds);
     if (action === "complete") return await completeSession(sb, interviewerIds, vendorId, body);
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
-    if (action === "propose_times") return await proposeTimes(sb, interviewers, body);
+    if (action === "propose_times") return await proposeTimes(sb, interviewers, vendorId, body);
     if (action === "withdraw_proposal") return await withdrawProposal(sb, interviewerIds, body);
     if (action === "decline_offer" || action === "decline_availability") return await declineOffer(sb, interviewers, body);
     return json({ success: false, error: "Unknown action" }, 400);
@@ -315,7 +315,9 @@ const ADMIN_INTERVIEWS_URL = `${Deno.env.get("ADMIN_PORTAL_URL") || "https://por
 // each proposal spans study.duration_minutes. Guards: lead time, overlap with
 // their own pending/approved proposals AND their existing sessions (any study),
 // per-call + per-study caps.
-async function proposeTimes(sb: any, interviewers: any[], body: any) {
+const CD_SERVICE_ID = "568599b9-e6b4-4be6-9fa9-805df929dcd2"; // cognitive_debriefing
+
+async function proposeTimes(sb: any, interviewers: any[], vendorId: string, body: any) {
   const studyId = String(body.studyId || "");
   const tz = String(body.timezone || "");
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
@@ -324,18 +326,15 @@ async function proposeTimes(sb: any, interviewers: any[], body: any) {
   if (slots.length > MAX_PROPOSALS_PER_CALL) return json({ success: false, error: `Max ${MAX_PROPOSALS_PER_CALL} times per submission` }, 400);
   if (!isValidTz(tz)) return json({ success: false, error: "Invalid timezone" }, 400);
 
-  // Optional hourly-rate ask (one rate for the job, not per slot). Kept when the
-  // moderator omits it on a later submission.
-  let proposedRate: number | null = null;
-  let proposedRateCurrency: string | null = null;
-  if (body.hourlyRate !== undefined && body.hourlyRate !== null && body.hourlyRate !== "") {
-    const n = Number(body.hourlyRate);
-    if (!Number.isFinite(n) || n < 0 || n > 1_000_000) return json({ success: false, error: "Enter a valid hourly rate" }, 400);
-    proposedRate = Math.round(n * 100) / 100;
-    const cur = String(body.rateCurrency || "").toUpperCase();
-    if (!/^[A-Z]{3}$/.test(cur)) return json({ success: false, error: "Choose a currency for your rate" }, 400);
-    proposedRateCurrency = cur;
+  // Hourly rate is REQUIRED — it's the moderator's rate for cognitive-debriefing
+  // interviews, persisted to their vendor profile below.
+  const n = Number(body.hourlyRate);
+  if (body.hourlyRate === undefined || body.hourlyRate === null || body.hourlyRate === "" || !Number.isFinite(n) || n <= 0 || n > 1_000_000) {
+    return json({ success: false, error: "Enter your hourly rate" }, 400);
   }
+  const proposedRate = Math.round(n * 100) / 100;
+  const proposedRateCurrency = String(body.rateCurrency || "").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(proposedRateCurrency)) return json({ success: false, error: "Choose a currency for your rate" }, 400);
 
   const interviewerIds = interviewers.map((i: any) => i.id);
   const { data: study } = await sb.from("rp_studies")
@@ -404,17 +403,47 @@ async function proposeTimes(sb: any, interviewers: any[], body: any) {
     console.error("[vendor-interviews] propose insert", error.message);
     return json({ success: false, error: "Failed to save proposals" }, 500);
   }
-  // Proposing = accepting the offer: flip offered→accepted (first time only).
-  // Persist the rate ask when supplied (kept if omitted on a later submission).
-  const ratePatch = proposedRate != null ? { proposed_rate: proposedRate, proposed_rate_currency: proposedRateCurrency } : {};
+  // Proposing = applying for the offer: flip offered→accepted (first time only).
+  // The rate is recorded on the offer AND on the vendor's profile (below).
+  const ratePatch = { proposed_rate: proposedRate, proposed_rate_currency: proposedRateCurrency };
   let justAccepted = false;
   if (offer.status === "offered") {
     const { error: aErr } = await sb.from("rp_study_moderator_offers")
       .update({ status: "accepted", responded_at: new Date().toISOString(), ...ratePatch })
       .eq("id", offer.id).eq("status", "offered");
     if (!aErr) justAccepted = true;
-  } else if (proposedRate != null) {
+  } else {
     await sb.from("rp_study_moderator_offers").update(ratePatch).eq("id", offer.id);
+  }
+
+  // Persist the rate to the vendor's profile as their cognitive-debriefing
+  // interview rate (per-hour). Idempotent: update the moderator-set CD rate row
+  // if one exists, else insert. Also strengthens their CD-qualified/"CD-rated"
+  // signal in staff assignment. Best-effort — never fails the submission.
+  // `notes` marks the moderator-set CD interview rate so we update it in place
+  // rather than piling up rows. source/added_by must satisfy the table's CHECK
+  // constraints (self_reported / vendor).
+  const MOD_RATE_NOTE = "Moderator interview rate (set when proposing interview times)";
+  try {
+    const { data: existing } = await sb.from("vendor_rates")
+      .select("id").eq("vendor_id", vendorId).eq("service_id", CD_SERVICE_ID)
+      .eq("notes", MOD_RATE_NOTE).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (existing?.id) {
+      const { error: uErr } = await sb.from("vendor_rates").update({
+        rate: proposedRate, currency: proposedRateCurrency, calculation_unit: "per_hour",
+        is_active: true, updated_at: new Date().toISOString(),
+      }).eq("id", existing.id);
+      if (uErr) throw uErr;
+    } else {
+      const { error: iErr } = await sb.from("vendor_rates").insert({
+        vendor_id: vendorId, service_id: CD_SERVICE_ID, calculation_unit: "per_hour",
+        rate: proposedRate, currency: proposedRateCurrency, source: "self_reported",
+        is_active: true, added_by: "vendor", notes: MOD_RATE_NOTE,
+      });
+      if (iErr) throw iErr;
+    }
+  } catch (e) {
+    console.error("[vendor-interviews] CD rate upsert failed", e instanceof Error ? e.message : e);
   }
   const moderatorName = interviewers.find((i: any) => i.id === ivId)?.name || "A moderator";
   await notifyStaff(sb,

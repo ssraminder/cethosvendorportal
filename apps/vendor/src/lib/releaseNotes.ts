@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.7",
+    date: "2026-07-10",
+    summary:
+      "Your hourly rate is now required when you apply for an interview offer, and it's saved to your profile as your cognitive-debriefing interview rate.",
+    changes: [
+      "The 'Interview offers' form now requires your hourly rate (with currency) to submit — it's saved to your profile as your cognitive-debriefing interview rate and reused next time.",
+      "Wording updated: the submit button now reads 'Apply and Submit times', and accepting an offer is shown as 'Applied'.",
+    ],
+  },
+  {
     version: "2026.7.6",
     date: "2026-07-10",
     summary:
