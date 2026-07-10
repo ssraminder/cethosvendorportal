@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.6",
+    date: "2026-07-10",
+    summary:
+      "When you accept an interview offer and propose your times, you can now include your hourly rate and currency so Cethos sees it alongside your availability.",
+    changes: [
+      "The 'Interview offers' form has a new optional 'Your hourly rate' field with a currency selector, next to the timezone picker. Enter it once and it's remembered if you add more times later.",
+      "Your rate is sent to the Cethos team with your proposed times — it isn't shared with participants.",
+    ],
+  },
+  {
     version: "2026.7.5",
     date: "2026-07-10",
     summary:

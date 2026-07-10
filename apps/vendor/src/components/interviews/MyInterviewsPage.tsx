@@ -345,6 +345,9 @@ function MessageComposer({ participants, messages, files, onCancel, onSend }: {
 // date+time rows in their own timezone (session length is fixed by the study);
 // Cethos approves, which opens the sessions for participant booking.
 
+// Common payout currencies for the moderator's rate ask.
+const CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "INR", "PLN", "BRL", "MXN", "CHF", "SEK", "NOK", "DKK", "ZAR", "SGD", "AED", "CNY"];
+
 const durLabel = (min: number | null) => {
   const m = Math.max(0, Math.round(Number(min) || 0));
   const h = Math.floor(m / 60), r = m % 60;
@@ -363,6 +366,8 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
   const browserTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
   const [tz, setTz] = useState(browserTz);
   const [rows, setRows] = useState<{ date: string; time: string }[]>([{ date: "", time: "10:00" }]);
+  const [rate, setRate] = useState(request.proposedRate != null ? String(request.proposedRate) : "");
+  const [currency, setCurrency] = useState(request.proposedRateCurrency || "USD");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -386,8 +391,13 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
   async function submit() {
     const filled = rows.filter((r) => r.date && r.time);
     if (!filled.length) { setError("Add at least one date and time"); return; }
+    let rateNum: number | undefined;
+    if (rate.trim()) {
+      rateNum = Number(rate);
+      if (!Number.isFinite(rateNum) || rateNum < 0) { setError("Enter a valid hourly rate, or leave it blank"); return; }
+    }
     setBusy("submit"); setError(null);
-    const r = await proposeTimes(token, request.studyId, tz, filled, note.trim() || undefined);
+    const r = await proposeTimes(token, request.studyId, tz, filled, note.trim() || undefined, rateNum, rateNum != null ? currency : undefined);
     setBusy(null);
     if (!r.success) { setError(r.error || "Failed to submit"); return; }
     setRows([{ date: "", time: "10:00" }]); setNote("");
@@ -469,6 +479,19 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
           <select value={tz} onChange={(e) => setTz(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm flex-1">
             {[...new Set([tz, browserTz, ...tzOptions])].map((z) => <option key={z}>{z}</option>)}
           </select>
+        </div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">Your hourly rate:</span>
+          <input
+            type="number" min={0} step="1" inputMode="decimal"
+            value={rate} onChange={(e) => setRate(e.target.value)}
+            placeholder="optional"
+            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28"
+          />
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+            {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <span className="text-xs text-gray-400">per hour</span>
         </div>
         <div className="space-y-1.5">
           {rows.map((r, i) => (

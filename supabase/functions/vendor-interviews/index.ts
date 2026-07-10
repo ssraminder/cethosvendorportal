@@ -162,7 +162,7 @@ async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
   // to any of this vendor's interviewer identities. Tolerates the offers table
   // not existing yet (pre-migration deploy).
   const { data: offers } = await sb.from("rp_study_moderator_offers")
-    .select("id,study_id,interviewer_id,status,offered_at,expires_at,responded_at")
+    .select("id,study_id,interviewer_id,status,offered_at,expires_at,responded_at,proposed_rate,proposed_rate_currency")
     .in("interviewer_id", interviewerIds)
     .in("status", ["offered", "accepted"])
     .order("offered_at", { ascending: false });
@@ -195,6 +195,8 @@ async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
       requestNote: s.availability_request_note,
       offerStatus: o.status, offeredAt: o.offered_at, expiresAt: o.expires_at,
       requestedAt: o.offered_at,
+      proposedRate: o.proposed_rate != null ? Number(o.proposed_rate) : null,
+      proposedRateCurrency: o.proposed_rate_currency || null,
       proposals: propsByStudyIv.get(`${o.study_id}|${o.interviewer_id}`) || [],
     });
   }
@@ -322,6 +324,19 @@ async function proposeTimes(sb: any, interviewers: any[], body: any) {
   if (slots.length > MAX_PROPOSALS_PER_CALL) return json({ success: false, error: `Max ${MAX_PROPOSALS_PER_CALL} times per submission` }, 400);
   if (!isValidTz(tz)) return json({ success: false, error: "Invalid timezone" }, 400);
 
+  // Optional hourly-rate ask (one rate for the job, not per slot). Kept when the
+  // moderator omits it on a later submission.
+  let proposedRate: number | null = null;
+  let proposedRateCurrency: string | null = null;
+  if (body.hourlyRate !== undefined && body.hourlyRate !== null && body.hourlyRate !== "") {
+    const n = Number(body.hourlyRate);
+    if (!Number.isFinite(n) || n < 0 || n > 1_000_000) return json({ success: false, error: "Enter a valid hourly rate" }, 400);
+    proposedRate = Math.round(n * 100) / 100;
+    const cur = String(body.rateCurrency || "").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(cur)) return json({ success: false, error: "Choose a currency for your rate" }, 400);
+    proposedRateCurrency = cur;
+  }
+
   const interviewerIds = interviewers.map((i: any) => i.id);
   const { data: study } = await sb.from("rp_studies")
     .select("id,code,duration_minutes,active").eq("id", studyId).maybeSingle();
@@ -390,17 +405,22 @@ async function proposeTimes(sb: any, interviewers: any[], body: any) {
     return json({ success: false, error: "Failed to save proposals" }, 500);
   }
   // Proposing = accepting the offer: flip offered→accepted (first time only).
+  // Persist the rate ask when supplied (kept if omitted on a later submission).
+  const ratePatch = proposedRate != null ? { proposed_rate: proposedRate, proposed_rate_currency: proposedRateCurrency } : {};
   let justAccepted = false;
   if (offer.status === "offered") {
     const { error: aErr } = await sb.from("rp_study_moderator_offers")
-      .update({ status: "accepted", responded_at: new Date().toISOString() })
+      .update({ status: "accepted", responded_at: new Date().toISOString(), ...ratePatch })
       .eq("id", offer.id).eq("status", "offered");
     if (!aErr) justAccepted = true;
+  } else if (proposedRate != null) {
+    await sb.from("rp_study_moderator_offers").update(ratePatch).eq("id", offer.id);
   }
   const moderatorName = interviewers.find((i: any) => i.id === ivId)?.name || "A moderator";
   await notifyStaff(sb,
     `Moderator ${justAccepted ? "accepted + proposed" : "proposed"} ${rows.length} time(s) — ${study.code}`,
     `<p>${escapeHtml(moderatorName)} ${justAccepted ? "accepted the offer and proposed" : "proposed"} ${rows.length} session time(s) for <strong>${escapeHtml(study.code)}</strong> via the vendor portal${note ? ` with a note: “${escapeHtml(note)}”` : ""}.</p>`
+      + (proposedRate != null ? `<p><strong>Hourly rate ask:</strong> ${proposedRate} ${escapeHtml(proposedRateCurrency || "")}</p>` : "")
       + `<ul>${candidates.map((c) => `<li>${escapeHtml(c.raw.date)} ${escapeHtml(c.raw.time)} (${escapeHtml(tz)})</li>`).join("")}</ul>`
       + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review responses and assign in the admin portal</a>.</p>`,
     "moderator-offer-proposed");
