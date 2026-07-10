@@ -169,11 +169,18 @@ const AUTH_BASE = typeof window !== "undefined" && window.location.hostname !== 
   ? "/sb"
   : BASE; // local dev still hits Supabase directly
 
+// The /sb proxy exposes short names (auth-check); the Supabase edge functions
+// carry the vendor- prefix (vendor-auth-check). Local dev hits Supabase
+// directly, so it must use the prefixed names — without this every localhost
+// login failed with a phantom "No vendor account found" (functions/v1/auth-check
+// is a 404).
+const authPath = (path: string) => (AUTH_BASE === "/sb" ? path : `vendor-${path}`);
+
 async function postAuth<T>(path: string, body: unknown): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${AUTH_BASE}/${path}`, {
+    const res = await fetch(`${AUTH_BASE}/${authPath(path)}`, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(body),

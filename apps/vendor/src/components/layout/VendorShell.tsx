@@ -31,7 +31,10 @@ export function VendorShell() {
       // non-critical
     }
     try {
-      setHasInterviews((await getMyInterviews(sessionToken)).length > 0);
+      // Sessions OR an open availability request both warrant the nav item —
+      // a moderator asked for timings has zero sessions yet.
+      const mine = await getMyInterviews(sessionToken);
+      setHasInterviews(mine.sessions.length > 0 || mine.availabilityRequests.length > 0);
     } catch {
       // non-critical
     }

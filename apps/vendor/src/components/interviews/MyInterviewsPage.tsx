@@ -7,15 +7,19 @@
 // session (blinded relay — Cethos emails them; no contact info is shown here
 // and replies go to Cethos staff), and sees the session's meeting link.
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video, FileText } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getMyInterviews,
   completeInterview,
   messageParticipants,
+  proposeTimes,
+  withdrawProposal,
+  declineOffer,
   type InterviewSession,
   type InterviewParticipant,
+  type AvailabilityRequest,
 } from "../../api/vendorInterviews";
 
 const fmt = (iso: string | null) =>
@@ -24,13 +28,16 @@ const fmt = (iso: string | null) =>
 export function MyInterviewsPage() {
   const { sessionToken } = useVendorAuth();
   const [sessions, setSessions] = useState<InterviewSession[]>([]);
+  const [availabilityRequests, setAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!sessionToken) return;
     setLoading(true);
-    setSessions(await getMyInterviews(sessionToken));
+    const data = await getMyInterviews(sessionToken);
+    setSessions(data.sessions);
+    setAvailabilityRequests(data.availabilityRequests);
     setLoading(false);
   }, [sessionToken]);
 
@@ -46,10 +53,21 @@ export function MyInterviewsPage() {
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><CalendarClock className="w-6 h-6 text-teal-600" /> My interviews</h1>
-        <p className="text-sm text-gray-500">Run your session, then mark it complete and rate each participant.</p>
+        <p className="text-sm text-gray-500">Accept interview offers and propose your times, run your sessions, then mark them complete and rate each participant.</p>
       </div>
 
-      {sessions.length === 0 && (
+      {availabilityRequests.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Interview offers</h2>
+          <div className="space-y-3">
+            {availabilityRequests.map((a) => (
+              <AvailabilityRequestCard key={a.studyId} request={a} token={sessionToken!} onChanged={load} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {sessions.length === 0 && availabilityRequests.length === 0 && (
         <div className="text-center py-16 text-gray-500 bg-white border border-gray-200 rounded-xl">You have no interview sessions assigned.</div>
       )}
 
@@ -318,6 +336,178 @@ function MessageComposer({ participants, messages, files, onCancel, onSend }: {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────── availability proposals (moderator side) ───────────────────
+// Cethos asked this moderator for the times that work for them. They propose
+// date+time rows in their own timezone (session length is fixed by the study);
+// Cethos approves, which opens the sessions for participant booking.
+
+const durLabel = (min: number | null) => {
+  const m = Math.max(0, Math.round(Number(min) || 0));
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h}h ${r}m` : `${h}h`) : `${r}m`;
+};
+const langName = (c: string | null) => {
+  if (!c) return "";
+  try { return new Intl.DisplayNames(["en"], { type: "language" }).of(c) || c; } catch { return c; }
+};
+
+function AvailabilityRequestCard({ request, token, onChanged }: {
+  request: AvailabilityRequest;
+  token: string;
+  onChanged: () => Promise<void>;
+}) {
+  const browserTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
+  const [tz, setTz] = useState(browserTz);
+  const [rows, setRows] = useState<{ date: string; time: string }[]>([{ date: "", time: "10:00" }]);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [declining, setDeclining] = useState(false);
+  const [declineNote, setDeclineNote] = useState("");
+
+  const tzOptions = useMemo(() => {
+    const zones = (Intl as any).supportedValuesOf ? ((Intl as any).supportedValuesOf("timeZone") as string[]) : [];
+    return zones.length ? zones : [browserTz, "UTC"];
+  }, [browserTz]);
+
+  const pending = request.proposals.filter((p) => p.status === "pending");
+  const reviewed = request.proposals.filter((p) => p.status === "approved" || p.status === "rejected");
+
+  const fmtProposal = (p: { startAt: string; timezone: string }) => {
+    try {
+      return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: p.timezone }).format(new Date(p.startAt)) + ` (${p.timezone})`;
+    } catch { return fmt(p.startAt); }
+  };
+
+  async function submit() {
+    const filled = rows.filter((r) => r.date && r.time);
+    if (!filled.length) { setError("Add at least one date and time"); return; }
+    setBusy("submit"); setError(null);
+    const r = await proposeTimes(token, request.studyId, tz, filled, note.trim() || undefined);
+    setBusy(null);
+    if (!r.success) { setError(r.error || "Failed to submit"); return; }
+    setRows([{ date: "", time: "10:00" }]); setNote("");
+    await onChanged();
+  }
+
+  async function withdraw(id: string) {
+    setBusy(id);
+    const r = await withdrawProposal(token, id);
+    setBusy(null);
+    if (!r.success) { setError(r.error || "Failed to withdraw"); return; }
+    await onChanged();
+  }
+
+  async function decline() {
+    setBusy("decline");
+    const r = await declineOffer(token, request.studyId, declineNote.trim() || undefined);
+    setBusy(null);
+    if (!r.success) { setError(r.error || "Failed"); return; }
+    await onChanged();
+  }
+
+  const isFocus = request.interviewType === "focus_group";
+  const accepted = request.offerStatus === "accepted";
+  return (
+    <div className="bg-white border border-teal-200 rounded-xl p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-semibold text-gray-900">{request.studyCode}</div>
+          <div className="text-xs text-gray-500">
+            {isFocus ? "Focus group · " : ""}{durLabel(request.durationMinutes)}{isFocus ? " session" : " per session"}{request.targetLocale ? ` · ${langName(request.targetLocale)}` : ""}{request.meetingPlatform ? ` · ${request.meetingPlatform}` : ""} · offered {fmt(request.offeredAt)}
+          </div>
+        </div>
+        <span className={`inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 whitespace-nowrap ${accepted ? "text-green-700 bg-green-50 border-green-200" : "text-teal-700 bg-teal-50 border-teal-200"}`}>
+          {accepted ? <><CheckCircle2 className="w-3.5 h-3.5" /> Accepted</> : <><CalendarPlus className="w-3.5 h-3.5" /> New offer</>}
+        </span>
+      </div>
+      {!accepted && (
+        <div className="mt-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+          You've been offered this {isFocus ? "focus group" : "interview"}. Add the times that work for you and submit — that accepts the offer. Cethos may be asking a few moderators, so please respond{request.expiresAt ? ` before ${fmt(request.expiresAt)}` : " soon"}.
+        </div>
+      )}
+      {isFocus && (
+        <div className="mt-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+          This is a focus group — <span className="font-medium">one shared session</span> that all participants join. Offer a few time options that work for you; Cethos will confirm <span className="font-medium">one</span> of them.
+        </div>
+      )}
+      {request.requestNote && (
+        <div className="mt-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">Note from Cethos: {request.requestNote}</div>
+      )}
+
+      {(pending.length > 0 || reviewed.length > 0) && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Your proposed times</div>
+          <ul className="space-y-1">
+            {[...pending, ...reviewed].map((p) => (
+              <li key={p.id} className="flex items-center gap-2 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5">
+                <span className="flex-1">{fmtProposal(p)}</span>
+                {p.status === "pending" && (
+                  <>
+                    <span className="text-xs text-amber-600">Awaiting Cethos review</span>
+                    <button onClick={() => withdraw(p.id)} disabled={busy === p.id} title="Withdraw this proposed time" className="text-gray-400 hover:text-red-600">
+                      {busy === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </>
+                )}
+                {p.status === "approved" && <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="w-3.5 h-3.5" /> Approved — session booked in</span>}
+                {p.status === "rejected" && <span className="text-xs text-red-600" title={p.reviewNote || undefined}>Not used{p.reviewNote ? `: ${p.reviewNote}` : ""}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-3">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{accepted ? "Add more times" : "Accept & propose your times"}</div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-gray-500">Your timezone:</span>
+          <select value={tz} onChange={(e) => setTz(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm flex-1">
+            {[...new Set([tz, browserTz, ...tzOptions])].map((z) => <option key={z}>{z}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          {rows.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input type="date" value={r.date} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, date: e.target.value } : x))} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+              <input type="time" value={r.time} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, time: e.target.value } : x))} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+              <span className="text-xs text-gray-400">{isFocus ? `${durLabel(request.durationMinutes)} group session` : `each session ${durLabel(request.durationMinutes)}`}</span>
+              {rows.length > 1 && <button onClick={() => setRows(rows.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
+            </div>
+          ))}
+        </div>
+        {rows.length < 10 && (
+          <button onClick={() => setRows([...rows, { date: rows[rows.length - 1]?.date || "", time: "10:00" }])} className="mt-1.5 text-xs text-teal-700 hover:underline">+ add another time</button>
+        )}
+        <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Note for the Cethos team (optional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-2" />
+        {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+        <div className="flex items-center justify-between mt-2">
+          {!declining ? (
+            <button onClick={() => setDeclining(true)} className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600">
+              <XCircle className="w-3.5 h-3.5" /> Decline this offer
+            </button>
+          ) : <span />}
+          <button onClick={submit} disabled={busy === "submit"} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700 disabled:opacity-50">
+            {busy === "submit" && <Loader2 className="w-4 h-4 animate-spin" />} {accepted ? "Submit times" : "Accept & submit times"}
+          </button>
+        </div>
+        {declining && (
+          <div className="mt-2 border border-red-200 bg-red-50 rounded-lg p-3">
+            <p className="text-xs text-gray-600 mb-2">Let Cethos know you can't take this — they'll assign another moderator. Your pending proposed times are withdrawn.</p>
+            <input value={declineNote} onChange={(e) => setDeclineNote(e.target.value)} maxLength={500} placeholder="Reason (optional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2" />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeclining(false)} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-white">Cancel</button>
+              <button onClick={decline} disabled={busy === "decline"} className="inline-flex items-center gap-1.5 text-sm bg-red-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-red-700 disabled:opacity-50">
+                {busy === "decline" && <Loader2 className="w-4 h-4 animate-spin" />} Confirm — can't take it
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

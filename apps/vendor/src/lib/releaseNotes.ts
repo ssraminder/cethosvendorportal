@@ -23,6 +23,31 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.5",
+    date: "2026-07-10",
+    summary:
+      "Interview scheduling is now offer-based: when Cethos needs a moderator they send you an offer, which you accept by proposing your available times — or decline. My Interviews shows your open offers under 'Interview offers'.",
+    changes: [
+      "New offers arrive with a 'New offer' badge and an expiry note. Add the times that work for you and submit — that accepts the offer. Cethos may be asking a few moderators, so the offer notes that too.",
+      "Decline an offer outright if it doesn't suit — Cethos then assigns another moderator; the other candidates are unaffected.",
+      "Once you've accepted, the badge shows 'Accepted' and you can keep adding times until Cethos confirms.",
+      "Focus groups are flagged as one shared session — offer a few options and Cethos confirms one.",
+    ],
+  },
+  {
+    version: "2026.7.4",
+    date: "2026-07-09",
+    summary:
+      "Moderators can now propose their own session times: when Cethos requests availability for a study, it appears on My Interviews with a simple date/time picker in your timezone — approved times become your booked sessions.",
+    changes: [
+      "New 'Availability requested' section on My Interviews: studies Cethos offered you, with the session length, language, and any note from the team.",
+      "Propose up to 10 times per submission in your own timezone (each session's length is fixed by the study); times must be at least 24 hours out and can't overlap your existing sessions or proposals.",
+      "Each proposed time shows its review status — awaiting review, approved (session booked in), or not used (with Cethos's note) — and pending ones can be withdrawn.",
+      "'I can't take this study' lets you decline the request with an optional reason so Cethos can assign another moderator.",
+      "The My Interviews nav item now also appears when you have an open availability request (previously only with booked sessions).",
+    ],
+  },
+  {
     version: "2026.7.3",
     date: "2026-07-09",
     summary:
