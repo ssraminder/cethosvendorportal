@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.9",
+    date: "2026-07-10",
+    summary:
+      "For 1-to-1 interview offers, you now need to propose at least as many session times as the study has participants (one session each).",
+    changes: [
+      "When you apply for a 1-to-1 study, the form now asks for at least one session time per participant and shows the required number; you can't submit fewer. Focus groups are unchanged (one shared session).",
+      "The times list starts with enough empty rows for the required number of sessions, so it's clear how many to add.",
+    ],
+  },
+  {
     version: "2026.7.8",
     date: "2026-07-10",
     summary:

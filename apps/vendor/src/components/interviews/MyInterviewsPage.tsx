@@ -365,7 +365,14 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
 }) {
   const browserTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
   const [tz, setTz] = useState(browserTz);
-  const [rows, setRows] = useState<{ date: string; time: string }[]>([{ date: "", time: "10:00" }]);
+  // Seed enough empty rows for a 1-to-1 study (one session per participant),
+  // minus any times already proposed, capped at the per-submission limit.
+  const [rows, setRows] = useState<{ date: string; time: string }[]>(() => {
+    const live = request.proposals.filter((p) => p.status === "pending" || p.status === "approved").length;
+    const need = request.interviewType !== "focus_group" && request.maxRespondents ? request.maxRespondents : 0;
+    const seed = Math.min(Math.max(need - live, 1), 10);
+    return Array.from({ length: seed }, () => ({ date: "", time: "10:00" }));
+  });
   const [rate, setRate] = useState(request.proposedRate != null ? String(request.proposedRate) : "");
   const [currency, setCurrency] = useState(request.proposedRateCurrency || "USD");
   const [note, setNote] = useState("");
@@ -381,6 +388,10 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
 
   const pending = request.proposals.filter((p) => p.status === "pending");
   const reviewed = request.proposals.filter((p) => p.status === "approved" || p.status === "rejected");
+  // 1-to-1 studies need one session per participant, so the moderator must offer
+  // at least max_respondents times (times already proposed count toward it).
+  const existingLive = request.proposals.filter((p) => p.status === "pending" || p.status === "approved").length;
+  const minSessions = request.interviewType !== "focus_group" && request.maxRespondents ? request.maxRespondents : 0;
 
   const fmtProposal = (p: { startAt: string; timezone: string }) => {
     try {
@@ -391,6 +402,10 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
   async function submit() {
     const filled = rows.filter((r) => r.date && r.time);
     if (!filled.length) { setError("Add at least one date and time"); return; }
+    if (minSessions && existingLive + filled.length < minSessions && filled.length < 10) {
+      setError(`This 1-to-1 study is for ${minSessions} participants — please add at least ${minSessions} session times (one per participant). You have ${existingLive + filled.length}.`);
+      return;
+    }
     const rateNum = Number(rate);
     if (!rate.trim() || !Number.isFinite(rateNum) || rateNum <= 0) { setError("Enter your hourly rate"); return; }
     setBusy("submit"); setError(null);
@@ -471,6 +486,11 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
 
       <div className="mt-3">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{accepted ? "Add more times" : "Apply & propose your times"}</div>
+        {minSessions > 0 && (
+          <div className="mb-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+            This is a 1-to-1 study for <span className="font-medium">{minSessions} participant{minSessions === 1 ? "" : "s"}</span> — please offer at least <span className="font-medium">{minSessions} session times</span> (one per participant).{existingLive > 0 ? ` You've proposed ${existingLive} so far.` : ""}
+          </div>
+        )}
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs text-gray-500">Your timezone:</span>
           <select value={tz} onChange={(e) => setTz(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm flex-1">

@@ -62,6 +62,8 @@ export interface AvailabilityRequest {
   meetingPlatform: string | null;
   /** "focus_group" = one shared session — Cethos confirms ONE of the proposed times. */
   interviewType: "individual" | "focus_group" | null;
+  /** For 1-to-1 studies, the participant count — the moderator must offer at least this many times. */
+  maxRespondents: number | null;
   /** offered = not yet responded; accepted = you accepted and are proposing times. */
   offerStatus: "offered" | "accepted";
   offeredAt: string;
