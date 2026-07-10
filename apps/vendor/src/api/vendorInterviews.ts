@@ -60,6 +60,12 @@ export interface AvailabilityRequest {
   durationMinutes: number | null;
   targetLocale: string | null;
   meetingPlatform: string | null;
+  /** "focus_group" = one shared session — Cethos confirms ONE of the proposed times. */
+  interviewType: "individual" | "focus_group" | null;
+  /** offered = not yet responded; accepted = you accepted and are proposing times. */
+  offerStatus: "offered" | "accepted";
+  offeredAt: string;
+  expiresAt: string | null;
   requestedAt: string;
   requestNote: string | null;
   proposals: SlotProposal[];
@@ -100,12 +106,13 @@ export async function withdrawProposal(
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 
-export async function declineAvailability(
+// Decline the interview offer (other candidates are unaffected).
+export async function declineOffer(
   token: string,
   studyId: string,
   note?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await safePost(URL, { session_token: token, action: "decline_availability", studyId, note });
+  const res = await safePost(URL, { session_token: token, action: "decline_offer", studyId, note });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 

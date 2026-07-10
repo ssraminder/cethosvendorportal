@@ -16,7 +16,7 @@ import {
   messageParticipants,
   proposeTimes,
   withdrawProposal,
-  declineAvailability,
+  declineOffer,
   type InterviewSession,
   type InterviewParticipant,
   type AvailabilityRequest,
@@ -53,12 +53,12 @@ export function MyInterviewsPage() {
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><CalendarClock className="w-6 h-6 text-teal-600" /> My interviews</h1>
-        <p className="text-sm text-gray-500">Propose times for new studies, run your sessions, then mark them complete and rate each participant.</p>
+        <p className="text-sm text-gray-500">Accept interview offers and propose your times, run your sessions, then mark them complete and rate each participant.</p>
       </div>
 
       {availabilityRequests.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Availability requested</h2>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Interview offers</h2>
           <div className="space-y-3">
             {availabilityRequests.map((a) => (
               <AvailabilityRequestCard key={a.studyId} request={a} token={sessionToken!} onChanged={load} />
@@ -404,25 +404,37 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
 
   async function decline() {
     setBusy("decline");
-    const r = await declineAvailability(token, request.studyId, declineNote.trim() || undefined);
+    const r = await declineOffer(token, request.studyId, declineNote.trim() || undefined);
     setBusy(null);
     if (!r.success) { setError(r.error || "Failed"); return; }
     await onChanged();
   }
 
+  const isFocus = request.interviewType === "focus_group";
+  const accepted = request.offerStatus === "accepted";
   return (
     <div className="bg-white border border-teal-200 rounded-xl p-4">
       <div className="flex items-center justify-between">
         <div>
           <div className="font-semibold text-gray-900">{request.studyCode}</div>
           <div className="text-xs text-gray-500">
-            {durLabel(request.durationMinutes)} per session{request.targetLocale ? ` · ${langName(request.targetLocale)}` : ""}{request.meetingPlatform ? ` · ${request.meetingPlatform}` : ""} · requested {fmt(request.requestedAt)}
+            {isFocus ? "Focus group · " : ""}{durLabel(request.durationMinutes)}{isFocus ? " session" : " per session"}{request.targetLocale ? ` · ${langName(request.targetLocale)}` : ""}{request.meetingPlatform ? ` · ${request.meetingPlatform}` : ""} · offered {fmt(request.offeredAt)}
           </div>
         </div>
-        <span className="inline-flex items-center gap-1 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
-          <CalendarPlus className="w-3.5 h-3.5" /> Times needed
+        <span className={`inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 whitespace-nowrap ${accepted ? "text-green-700 bg-green-50 border-green-200" : "text-teal-700 bg-teal-50 border-teal-200"}`}>
+          {accepted ? <><CheckCircle2 className="w-3.5 h-3.5" /> Accepted</> : <><CalendarPlus className="w-3.5 h-3.5" /> New offer</>}
         </span>
       </div>
+      {!accepted && (
+        <div className="mt-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+          You've been offered this {isFocus ? "focus group" : "interview"}. Add the times that work for you and submit — that accepts the offer. Cethos may be asking a few moderators, so please respond{request.expiresAt ? ` before ${fmt(request.expiresAt)}` : " soon"}.
+        </div>
+      )}
+      {isFocus && (
+        <div className="mt-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+          This is a focus group — <span className="font-medium">one shared session</span> that all participants join. Offer a few time options that work for you; Cethos will confirm <span className="font-medium">one</span> of them.
+        </div>
+      )}
       {request.requestNote && (
         <div className="mt-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">Note from Cethos: {request.requestNote}</div>
       )}
@@ -451,7 +463,7 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
       )}
 
       <div className="mt-3">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Propose times that work for you</div>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{accepted ? "Add more times" : "Accept & propose your times"}</div>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs text-gray-500">Your timezone:</span>
           <select value={tz} onChange={(e) => setTz(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm flex-1">
@@ -463,7 +475,7 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
             <div key={i} className="flex items-center gap-2">
               <input type="date" value={r.date} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, date: e.target.value } : x))} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
               <input type="time" value={r.time} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, time: e.target.value } : x))} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-              <span className="text-xs text-gray-400">each session {durLabel(request.durationMinutes)}</span>
+              <span className="text-xs text-gray-400">{isFocus ? `${durLabel(request.durationMinutes)} group session` : `each session ${durLabel(request.durationMinutes)}`}</span>
               {rows.length > 1 && <button onClick={() => setRows(rows.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
             </div>
           ))}
@@ -476,16 +488,16 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
         <div className="flex items-center justify-between mt-2">
           {!declining ? (
             <button onClick={() => setDeclining(true)} className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600">
-              <XCircle className="w-3.5 h-3.5" /> I can't take this study
+              <XCircle className="w-3.5 h-3.5" /> Decline this offer
             </button>
           ) : <span />}
           <button onClick={submit} disabled={busy === "submit"} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700 disabled:opacity-50">
-            {busy === "submit" && <Loader2 className="w-4 h-4 animate-spin" />} Submit times
+            {busy === "submit" && <Loader2 className="w-4 h-4 animate-spin" />} {accepted ? "Submit times" : "Accept & submit times"}
           </button>
         </div>
         {declining && (
           <div className="mt-2 border border-red-200 bg-red-50 rounded-lg p-3">
-            <p className="text-xs text-gray-600 mb-2">Let Cethos know you can't moderate this study — they'll assign someone else. Your pending proposed times are withdrawn.</p>
+            <p className="text-xs text-gray-600 mb-2">Let Cethos know you can't take this — they'll assign another moderator. Your pending proposed times are withdrawn.</p>
             <input value={declineNote} onChange={(e) => setDeclineNote(e.target.value)} maxLength={500} placeholder="Reason (optional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2" />
             <div className="flex justify-end gap-2">
               <button onClick={() => setDeclining(false)} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-white">Cancel</button>

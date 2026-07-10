@@ -105,7 +105,7 @@ serve(async (req: Request) => {
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
     if (action === "propose_times") return await proposeTimes(sb, interviewers, body);
     if (action === "withdraw_proposal") return await withdrawProposal(sb, interviewerIds, body);
-    if (action === "decline_availability") return await declineAvailability(sb, interviewers, body);
+    if (action === "decline_offer" || action === "decline_availability") return await declineOffer(sb, interviewers, body);
     return json({ success: false, error: "Unknown action" }, 400);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";
@@ -157,35 +157,47 @@ async function studyFiles(sb: any, studyIds: string[]): Promise<Map<string, any[
 // proposals + review outcomes. A request stays visible after proposals are
 // approved so the moderator can add more times if staff re-request.
 async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
-  const { data: studies } = await sb.from("rp_studies")
-    .select("id,code,duration_minutes,target_locale,meeting_platform,availability_requested_at,availability_request_note,interviewer_id")
+  // Live offers (offered = not yet responded, accepted = accepted + proposing)
+  // to any of this vendor's interviewer identities. Tolerates the offers table
+  // not existing yet (pre-migration deploy).
+  const { data: offers } = await sb.from("rp_study_moderator_offers")
+    .select("id,study_id,interviewer_id,status,offered_at,expires_at,responded_at")
     .in("interviewer_id", interviewerIds)
-    .eq("active", true)
-    .not("availability_requested_at", "is", null)
-    .is("moderator_declined_at", null)
-    .order("availability_requested_at", { ascending: false });
-  const list = studies || [];
-  if (!list.length) return [];
-  const { data: props } = await sb.from("rp_moderator_slot_proposals")
-    .select("id,study_id,start_at,end_at,timezone,note,status,review_note,created_at")
-    .in("study_id", list.map((s: any) => s.id))
-    .in("interviewer_id", interviewerIds)
-    .order("start_at");
-  const byStudy = new Map<string, any[]>();
+    .in("status", ["offered", "accepted"])
+    .order("offered_at", { ascending: false });
+  const offerList = offers || [];
+  if (!offerList.length) return [];
+  const studyIds = Array.from(new Set(offerList.map((o: any) => o.study_id)));
+  const [{ data: studies }, { data: props }] = await Promise.all([
+    sb.from("rp_studies")
+      .select("id,code,duration_minutes,target_locale,meeting_platform,interview_type,availability_request_note")
+      .in("id", studyIds).eq("active", true),
+    sb.from("rp_moderator_slot_proposals")
+      .select("id,study_id,interviewer_id,start_at,end_at,timezone,note,status,review_note,created_at")
+      .in("study_id", studyIds).in("interviewer_id", interviewerIds).order("start_at"),
+  ]);
+  const studyById = new Map<string, any>((studies || []).map((s: any) => [s.id, s]));
+  const propsByStudyIv = new Map<string, any[]>();
   for (const p of props || []) {
-    const arr = byStudy.get(p.study_id) || [];
-    arr.push({
-      id: p.id, startAt: p.start_at, endAt: p.end_at, timezone: p.timezone,
-      note: p.note, status: p.status, reviewNote: p.review_note, createdAt: p.created_at,
-    });
-    byStudy.set(p.study_id, arr);
+    const k = `${p.study_id}|${p.interviewer_id}`;
+    const arr = propsByStudyIv.get(k) || [];
+    arr.push({ id: p.id, startAt: p.start_at, endAt: p.end_at, timezone: p.timezone, note: p.note, status: p.status, reviewNote: p.review_note, createdAt: p.created_at });
+    propsByStudyIv.set(k, arr);
   }
-  return list.map((s: any) => ({
-    studyId: s.id, studyCode: s.code, durationMinutes: s.duration_minutes,
-    targetLocale: s.target_locale, meetingPlatform: s.meeting_platform,
-    requestedAt: s.availability_requested_at, requestNote: s.availability_request_note,
-    proposals: byStudy.get(s.id) || [],
-  }));
+  const out: any[] = [];
+  for (const o of offerList) {
+    const s = studyById.get(o.study_id);
+    if (!s) continue; // study inactive
+    out.push({
+      studyId: s.id, studyCode: s.code, durationMinutes: s.duration_minutes,
+      targetLocale: s.target_locale, meetingPlatform: s.meeting_platform, interviewType: s.interview_type,
+      requestNote: s.availability_request_note,
+      offerStatus: o.status, offeredAt: o.offered_at, expiresAt: o.expires_at,
+      requestedAt: o.offered_at,
+      proposals: propsByStudyIv.get(`${o.study_id}|${o.interviewer_id}`) || [],
+    });
+  }
+  return out;
 }
 
 async function listSessions(sb: any, interviewerIds: string[]) {
@@ -311,12 +323,16 @@ async function proposeTimes(sb: any, interviewers: any[], body: any) {
 
   const interviewerIds = interviewers.map((i: any) => i.id);
   const { data: study } = await sb.from("rp_studies")
-    .select("id,code,duration_minutes,interviewer_id,availability_requested_at,moderator_declined_at,active")
-    .eq("id", studyId).maybeSingle();
-  if (!study || !interviewerIds.includes(study.interviewer_id)) return json({ success: false, error: "Not your study" }, 403);
+    .select("id,code,duration_minutes,active").eq("id", studyId).maybeSingle();
+  if (!study) return json({ success: false, error: "Study not found" }, 404);
   if (!study.active) return json({ success: false, error: "This study is no longer active" }, 409);
-  if (!study.availability_requested_at) return json({ success: false, error: "Availability was not requested for this study" }, 400);
-  const ivId = study.interviewer_id as string;
+  // Accepting = you must have a LIVE offer for this study. Proposing times is
+  // how you accept: the first proposal flips the offer offered→accepted.
+  const { data: offer } = await sb.from("rp_study_moderator_offers")
+    .select("id,interviewer_id,status").eq("study_id", studyId).in("interviewer_id", interviewerIds)
+    .in("status", ["offered", "accepted"]).maybeSingle();
+  if (!offer) return json({ success: false, error: "You don't have an open offer for this study" }, 403);
+  const ivId = offer.interviewer_id as string;
   const dur = Number(study.duration_minutes) || 45;
 
   // Validate + convert to UTC instants.
@@ -372,14 +388,22 @@ async function proposeTimes(sb: any, interviewers: any[], body: any) {
     console.error("[vendor-interviews] propose insert", error.message);
     return json({ success: false, error: "Failed to save proposals" }, 500);
   }
+  // Proposing = accepting the offer: flip offered→accepted (first time only).
+  let justAccepted = false;
+  if (offer.status === "offered") {
+    const { error: aErr } = await sb.from("rp_study_moderator_offers")
+      .update({ status: "accepted", responded_at: new Date().toISOString() })
+      .eq("id", offer.id).eq("status", "offered");
+    if (!aErr) justAccepted = true;
+  }
   const moderatorName = interviewers.find((i: any) => i.id === ivId)?.name || "A moderator";
   await notifyStaff(sb,
-    `Moderator proposed ${rows.length} time(s) — ${study.code}`,
-    `<p>${escapeHtml(moderatorName)} proposed ${rows.length} session time(s) for <strong>${escapeHtml(study.code)}</strong> via the vendor portal${note ? ` with a note: “${escapeHtml(note)}”` : ""}.</p>`
+    `Moderator ${justAccepted ? "accepted + proposed" : "proposed"} ${rows.length} time(s) — ${study.code}`,
+    `<p>${escapeHtml(moderatorName)} ${justAccepted ? "accepted the offer and proposed" : "proposed"} ${rows.length} session time(s) for <strong>${escapeHtml(study.code)}</strong> via the vendor portal${note ? ` with a note: “${escapeHtml(note)}”` : ""}.</p>`
       + `<ul>${candidates.map((c) => `<li>${escapeHtml(c.raw.date)} ${escapeHtml(c.raw.time)} (${escapeHtml(tz)})</li>`).join("")}</ul>`
-      + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review and approve in the admin portal</a>.</p>`,
-    "moderator-availability-proposed");
-  return json({ success: true, proposed: (inserted || []).length });
+      + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review responses and assign in the admin portal</a>.</p>`,
+    "moderator-offer-proposed");
+  return json({ success: true, proposed: (inserted || []).length, accepted: justAccepted });
 }
 
 async function withdrawProposal(sb: any, interviewerIds: string[], body: any) {
@@ -395,30 +419,33 @@ async function withdrawProposal(sb: any, interviewerIds: string[], body: any) {
   return json({ success: true });
 }
 
-// "I can't take this study" — flags the request for staff (who reassign the
-// interviewer) and withdraws the moderator's own pending proposals.
-async function declineAvailability(sb: any, interviewers: any[], body: any) {
+// "I can't take this" — declines the OFFER (sets it declined) and withdraws
+// the moderator's own pending proposals. Other candidates' offers are
+// untouched; staff may still assign one of them.
+async function declineOffer(sb: any, interviewers: any[], body: any) {
   const studyId = String(body.studyId || "");
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
   if (!studyId) return json({ success: false, error: "studyId required" }, 400);
   const interviewerIds = interviewers.map((i: any) => i.id);
-  const { data: study } = await sb.from("rp_studies")
-    .select("id,code,interviewer_id,availability_requested_at").eq("id", studyId).maybeSingle();
-  if (!study || !interviewerIds.includes(study.interviewer_id)) return json({ success: false, error: "Not your study" }, 403);
-  if (!study.availability_requested_at) return json({ success: false, error: "Availability was not requested for this study" }, 400);
-  const { error } = await sb.from("rp_studies")
-    .update({ moderator_declined_at: new Date().toISOString(), moderator_decline_note: note })
-    .eq("id", studyId);
+  const { data: study } = await sb.from("rp_studies").select("id,code").eq("id", studyId).maybeSingle();
+  if (!study) return json({ success: false, error: "Study not found" }, 404);
+  const { data: offer } = await sb.from("rp_study_moderator_offers")
+    .select("id,interviewer_id,status").eq("study_id", studyId).in("interviewer_id", interviewerIds)
+    .in("status", ["offered", "accepted"]).maybeSingle();
+  if (!offer) return json({ success: false, error: "You don't have an open offer for this study" }, 403);
+  const { error } = await sb.from("rp_study_moderator_offers")
+    .update({ status: "declined", responded_at: new Date().toISOString(), decline_note: note })
+    .eq("id", offer.id);
   if (error) { console.error("[vendor-interviews] decline", error.message); return json({ success: false, error: "Failed to decline" }, 500); }
   await sb.from("rp_moderator_slot_proposals")
     .update({ status: "withdrawn" })
-    .eq("study_id", studyId).eq("interviewer_id", study.interviewer_id).eq("status", "pending");
-  const moderatorName = interviewers.find((i: any) => i.id === study.interviewer_id)?.name || "The moderator";
+    .eq("study_id", studyId).eq("interviewer_id", offer.interviewer_id).eq("status", "pending");
+  const moderatorName = interviewers.find((i: any) => i.id === offer.interviewer_id)?.name || "The moderator";
   await notifyStaff(sb,
-    `Moderator declined availability — ${study.code}`,
-    `<p>${escapeHtml(moderatorName)} can't take study <strong>${escapeHtml(study.code)}</strong>${note ? `: “${escapeHtml(note)}”` : "."}</p>`
-      + `<p>Assign a different interviewer and re-request availability: <a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">admin portal</a>.</p>`,
-    "moderator-availability-declined");
+    `Moderator declined the offer — ${study.code}`,
+    `<p>${escapeHtml(moderatorName)} declined the interview offer for <strong>${escapeHtml(study.code)}</strong>${note ? `: “${escapeHtml(note)}”` : "."}</p>`
+      + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review the other candidates in the admin portal</a>.</p>`,
+    "moderator-offer-declined");
   return json({ success: true });
 }
 
