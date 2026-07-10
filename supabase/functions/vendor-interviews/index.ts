@@ -101,7 +101,7 @@ serve(async (req: Request) => {
     if (!interviewerIds.length) return json({ success: true, sessions: [], availabilityRequests: [] });
 
     const action = String(body.action || "list");
-    if (action === "list") return await listSessions(sb, interviewerIds);
+    if (action === "list") return await listSessions(sb, interviewerIds, vendorId);
     if (action === "complete") return await completeSession(sb, interviewerIds, vendorId, body);
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
     if (action === "propose_times") return await proposeTimes(sb, interviewers, vendorId, body);
@@ -157,7 +157,7 @@ async function studyFiles(sb: any, studyIds: string[]): Promise<Map<string, any[
 // timings (and the moderator hasn't declined), with the moderator's own
 // proposals + review outcomes. A request stays visible after proposals are
 // approved so the moderator can add more times if staff re-request.
-async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
+async function availabilityRequestsFor(sb: any, interviewerIds: string[], vendorId?: string) {
   // Live offers (offered = not yet responded, accepted = accepted + proposing)
   // to any of this vendor's interviewer identities. Tolerates the offers table
   // not existing yet (pre-migration deploy).
@@ -177,6 +177,22 @@ async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
       .select("id,study_id,interviewer_id,start_at,end_at,timezone,note,status,review_note,created_at")
       .in("study_id", studyIds).in("interviewer_id", interviewerIds).order("start_at"),
   ]);
+  // The vendor's saved cognitive-debriefing rate — used to PREFILL the rate
+  // field on offers they haven't priced yet, so returning moderators don't
+  // retype it. Prefer the moderator-set interview rate, else any active CD
+  // hourly rate on file.
+  let profileRate: number | null = null;
+  let profileRateCurrency: string | null = null;
+  if (vendorId) {
+    const { data: pr } = await sb.from("vendor_rates")
+      .select("rate,currency,notes,updated_at")
+      .eq("vendor_id", vendorId).eq("service_id", CD_SERVICE_ID)
+      .eq("calculation_unit", "per_hour").eq("is_active", true)
+      .order("updated_at", { ascending: false });
+    const rows = pr || [];
+    const pick = rows.find((r: any) => r.notes === "Moderator interview rate (set when proposing interview times)") || rows[0];
+    if (pick && pick.rate != null) { profileRate = Number(pick.rate); profileRateCurrency = pick.currency || null; }
+  }
   const studyById = new Map<string, any>((studies || []).map((s: any) => [s.id, s]));
   const propsByStudyIv = new Map<string, any[]>();
   for (const p of props || []) {
@@ -195,18 +211,18 @@ async function availabilityRequestsFor(sb: any, interviewerIds: string[]) {
       requestNote: s.availability_request_note,
       offerStatus: o.status, offeredAt: o.offered_at, expiresAt: o.expires_at,
       requestedAt: o.offered_at,
-      proposedRate: o.proposed_rate != null ? Number(o.proposed_rate) : null,
-      proposedRateCurrency: o.proposed_rate_currency || null,
+      proposedRate: o.proposed_rate != null ? Number(o.proposed_rate) : profileRate,
+      proposedRateCurrency: o.proposed_rate_currency || profileRateCurrency,
       proposals: propsByStudyIv.get(`${o.study_id}|${o.interviewer_id}`) || [],
     });
   }
   return out;
 }
 
-async function listSessions(sb: any, interviewerIds: string[]) {
+async function listSessions(sb: any, interviewerIds: string[], vendorId: string) {
   // Availability requests are independent of slots — a fresh request has ZERO
   // slots by definition, so they're fetched before the slot early-return.
-  const availabilityRequests = await availabilityRequestsFor(sb, interviewerIds);
+  const availabilityRequests = await availabilityRequestsFor(sb, interviewerIds, vendorId);
   const { data: slots } = await sb
     .from("rp_availability_slots")
     .select("id,study_id,start_at,end_at,status")
