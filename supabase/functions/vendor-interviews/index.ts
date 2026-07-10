@@ -171,7 +171,7 @@ async function availabilityRequestsFor(sb: any, interviewerIds: string[], vendor
   const studyIds = Array.from(new Set(offerList.map((o: any) => o.study_id)));
   const [{ data: studies }, { data: props }] = await Promise.all([
     sb.from("rp_studies")
-      .select("id,code,duration_minutes,target_locale,meeting_platform,interview_type,availability_request_note")
+      .select("id,code,duration_minutes,target_locale,meeting_platform,interview_type,availability_request_note,max_respondents")
       .in("id", studyIds).eq("active", true),
     sb.from("rp_moderator_slot_proposals")
       .select("id,study_id,interviewer_id,start_at,end_at,timezone,note,status,review_note,created_at")
@@ -208,6 +208,7 @@ async function availabilityRequestsFor(sb: any, interviewerIds: string[], vendor
     out.push({
       studyId: s.id, studyCode: s.code, durationMinutes: s.duration_minutes,
       targetLocale: s.target_locale, meetingPlatform: s.meeting_platform, interviewType: s.interview_type,
+      maxRespondents: s.max_respondents,
       requestNote: s.availability_request_note,
       offerStatus: o.status, offeredAt: o.offered_at, expiresAt: o.expires_at,
       requestedAt: o.offered_at,
@@ -363,7 +364,7 @@ async function proposeTimes(sb: any, interviewers: any[], vendorId: string, body
 
   const interviewerIds = interviewers.map((i: any) => i.id);
   const { data: study } = await sb.from("rp_studies")
-    .select("id,code,duration_minutes,active,order_number,target_locale").eq("id", studyId).maybeSingle();
+    .select("id,code,duration_minutes,active,order_number,target_locale,interview_type,max_respondents").eq("id", studyId).maybeSingle();
   if (!study) return json({ success: false, error: "Study not found" }, 404);
   if (!study.active) return json({ success: false, error: "This study is no longer active" }, 409);
   // Accepting = you must have a LIVE offer for this study. Proposing times is
@@ -397,6 +398,19 @@ async function proposeTimes(sb: any, interviewers: any[], vendorId: string, body
     .eq("study_id", studyId).eq("interviewer_id", ivId).eq("status", "pending");
   if ((pendingCount || 0) + candidates.length > MAX_PENDING_PROPOSALS_PER_STUDY) {
     return json({ success: false, error: `Too many pending proposals for this study (max ${MAX_PENDING_PROPOSALS_PER_STUDY})` }, 400);
+  }
+
+  // One-to-one interviews need one session per participant — the moderator must
+  // offer at least max_respondents session times (existing live proposals count
+  // toward it). Focus groups are one shared session, so this doesn't apply.
+  // Only block while there's still room in THIS submission to add more, so a
+  // target above the per-call cap can still be reached across submissions.
+  if (study.interview_type !== "focus_group" && study.max_respondents != null) {
+    const need = Number(study.max_respondents);
+    const total = (pendingCount || 0) + candidates.length;
+    if (total < need && candidates.length < MAX_PROPOSALS_PER_CALL) {
+      return json({ success: false, error: `This is a 1-to-1 study for ${need} participants — please offer at least ${need} session times (one per participant). You'd have ${total}.` }, 400);
+    }
   }
 
   // No double-booking: check against their own live proposals for this study
