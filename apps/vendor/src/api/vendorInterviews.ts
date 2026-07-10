@@ -68,6 +68,9 @@ export interface AvailabilityRequest {
   expiresAt: string | null;
   requestedAt: string;
   requestNote: string | null;
+  /** The moderator's own hourly-rate ask for this offer (prefilled on re-submit). */
+  proposedRate: number | null;
+  proposedRateCurrency: string | null;
   proposals: SlotProposal[];
 }
 export interface MyInterviews {
@@ -93,8 +96,10 @@ export async function proposeTimes(
   timezone: string,
   slots: { date: string; time: string }[],
   note?: string,
+  hourlyRate?: number | null,
+  rateCurrency?: string | null,
 ): Promise<{ success: boolean; proposed?: number; error?: string }> {
-  const res = await safePost(URL, { session_token: token, action: "propose_times", studyId, timezone, slots, note });
+  const res = await safePost(URL, { session_token: token, action: "propose_times", studyId, timezone, slots, note, hourlyRate, rateCurrency });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 
