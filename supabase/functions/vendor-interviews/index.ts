@@ -315,6 +315,15 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
 
 // Staff notification for proposal activity — reuses the relay sender + the
 // rp_config staff_notify_emails list (same oversight channel as message copies).
+// Human study reference for emails: code + order number (if different) + language,
+// so staff/moderators can identify exactly which interview an email is about.
+function studyRefLabel(study: any): string {
+  const parts = [String(study.code || "study")];
+  if (study.order_number && study.order_number !== study.code) parts.push(`order ${study.order_number}`);
+  if (study.target_locale) parts.push(String(study.target_locale).toUpperCase());
+  return parts.join(" · ");
+}
+
 async function notifyStaff(sb: any, subject: string, html: string, tag: string) {
   try {
     const { data: cfg } = await sb.from("rp_config").select("value").eq("key", "staff_notify_emails").maybeSingle();
@@ -354,7 +363,7 @@ async function proposeTimes(sb: any, interviewers: any[], vendorId: string, body
 
   const interviewerIds = interviewers.map((i: any) => i.id);
   const { data: study } = await sb.from("rp_studies")
-    .select("id,code,duration_minutes,active").eq("id", studyId).maybeSingle();
+    .select("id,code,duration_minutes,active,order_number,target_locale").eq("id", studyId).maybeSingle();
   if (!study) return json({ success: false, error: "Study not found" }, 404);
   if (!study.active) return json({ success: false, error: "This study is no longer active" }, 409);
   // Accepting = you must have a LIVE offer for this study. Proposing times is
@@ -463,8 +472,8 @@ async function proposeTimes(sb: any, interviewers: any[], vendorId: string, body
   }
   const moderatorName = interviewers.find((i: any) => i.id === ivId)?.name || "A moderator";
   await notifyStaff(sb,
-    `Moderator ${justAccepted ? "accepted + proposed" : "proposed"} ${rows.length} time(s) — ${study.code}`,
-    `<p>${escapeHtml(moderatorName)} ${justAccepted ? "accepted the offer and proposed" : "proposed"} ${rows.length} session time(s) for <strong>${escapeHtml(study.code)}</strong> via the vendor portal${note ? ` with a note: “${escapeHtml(note)}”` : ""}.</p>`
+    `Moderator ${justAccepted ? "accepted + proposed" : "proposed"} ${rows.length} time(s) — ${studyRefLabel(study)}`,
+    `<p>${escapeHtml(moderatorName)} ${justAccepted ? "accepted the offer and proposed" : "proposed"} ${rows.length} session time(s) for <strong>${escapeHtml(studyRefLabel(study))}</strong> via the vendor portal${note ? ` with a note: “${escapeHtml(note)}”` : ""}.</p>`
       + (proposedRate != null ? `<p><strong>Hourly rate ask:</strong> ${proposedRate} ${escapeHtml(proposedRateCurrency || "")}</p>` : "")
       + `<ul>${candidates.map((c) => `<li>${escapeHtml(c.raw.date)} ${escapeHtml(c.raw.time)} (${escapeHtml(tz)})</li>`).join("")}</ul>`
       + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review responses and assign in the admin portal</a>.</p>`,
@@ -493,7 +502,7 @@ async function declineOffer(sb: any, interviewers: any[], body: any) {
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
   if (!studyId) return json({ success: false, error: "studyId required" }, 400);
   const interviewerIds = interviewers.map((i: any) => i.id);
-  const { data: study } = await sb.from("rp_studies").select("id,code").eq("id", studyId).maybeSingle();
+  const { data: study } = await sb.from("rp_studies").select("id,code,order_number,target_locale").eq("id", studyId).maybeSingle();
   if (!study) return json({ success: false, error: "Study not found" }, 404);
   const { data: offer } = await sb.from("rp_study_moderator_offers")
     .select("id,interviewer_id,status").eq("study_id", studyId).in("interviewer_id", interviewerIds)
@@ -508,8 +517,8 @@ async function declineOffer(sb: any, interviewers: any[], body: any) {
     .eq("study_id", studyId).eq("interviewer_id", offer.interviewer_id).eq("status", "pending");
   const moderatorName = interviewers.find((i: any) => i.id === offer.interviewer_id)?.name || "The moderator";
   await notifyStaff(sb,
-    `Moderator declined the offer — ${study.code}`,
-    `<p>${escapeHtml(moderatorName)} declined the interview offer for <strong>${escapeHtml(study.code)}</strong>${note ? `: “${escapeHtml(note)}”` : "."}</p>`
+    `Moderator declined the offer — ${studyRefLabel(study)}`,
+    `<p>${escapeHtml(moderatorName)} declined the interview offer for <strong>${escapeHtml(studyRefLabel(study))}</strong>${note ? `: “${escapeHtml(note)}”` : "."}</p>`
       + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review the other candidates in the admin portal</a>.</p>`,
     "moderator-offer-declined");
   return json({ success: true });
