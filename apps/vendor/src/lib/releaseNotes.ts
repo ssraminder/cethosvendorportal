@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.8",
+    date: "2026-07-10",
+    summary:
+      "New interview offers now pre-fill your saved hourly rate, so you don't have to re-enter it each time (you can still change it per offer).",
+    changes: [
+      "When a new interview offer arrives, the hourly-rate field is pre-populated with your saved cognitive-debriefing rate — adjust it for that offer if you like.",
+    ],
+  },
+  {
     version: "2026.7.7",
     date: "2026-07-10",
     summary:
