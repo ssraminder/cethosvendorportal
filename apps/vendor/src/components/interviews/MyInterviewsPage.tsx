@@ -391,13 +391,10 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
   async function submit() {
     const filled = rows.filter((r) => r.date && r.time);
     if (!filled.length) { setError("Add at least one date and time"); return; }
-    let rateNum: number | undefined;
-    if (rate.trim()) {
-      rateNum = Number(rate);
-      if (!Number.isFinite(rateNum) || rateNum < 0) { setError("Enter a valid hourly rate, or leave it blank"); return; }
-    }
+    const rateNum = Number(rate);
+    if (!rate.trim() || !Number.isFinite(rateNum) || rateNum <= 0) { setError("Enter your hourly rate"); return; }
     setBusy("submit"); setError(null);
-    const r = await proposeTimes(token, request.studyId, tz, filled, note.trim() || undefined, rateNum, rateNum != null ? currency : undefined);
+    const r = await proposeTimes(token, request.studyId, tz, filled, note.trim() || undefined, rateNum, currency);
     setBusy(null);
     if (!r.success) { setError(r.error || "Failed to submit"); return; }
     setRows([{ date: "", time: "10:00" }]); setNote("");
@@ -432,12 +429,12 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
           </div>
         </div>
         <span className={`inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 whitespace-nowrap ${accepted ? "text-green-700 bg-green-50 border-green-200" : "text-teal-700 bg-teal-50 border-teal-200"}`}>
-          {accepted ? <><CheckCircle2 className="w-3.5 h-3.5" /> Accepted</> : <><CalendarPlus className="w-3.5 h-3.5" /> New offer</>}
+          {accepted ? <><CheckCircle2 className="w-3.5 h-3.5" /> Applied</> : <><CalendarPlus className="w-3.5 h-3.5" /> New offer</>}
         </span>
       </div>
       {!accepted && (
         <div className="mt-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
-          You've been offered this {isFocus ? "focus group" : "interview"}. Add the times that work for you and submit — that accepts the offer. Cethos may be asking a few moderators, so please respond{request.expiresAt ? ` before ${fmt(request.expiresAt)}` : " soon"}.
+          You've been offered this {isFocus ? "focus group" : "interview"}. Add the times that work for you and your hourly rate, then submit — that applies for this offer. Cethos may be asking a few moderators, so please respond{request.expiresAt ? ` before ${fmt(request.expiresAt)}` : " soon"}.
         </div>
       )}
       {isFocus && (
@@ -473,7 +470,7 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
       )}
 
       <div className="mt-3">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{accepted ? "Add more times" : "Accept & propose your times"}</div>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{accepted ? "Add more times" : "Apply & propose your times"}</div>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs text-gray-500">Your timezone:</span>
           <select value={tz} onChange={(e) => setTz(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm flex-1">
@@ -481,17 +478,17 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
           </select>
         </div>
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs text-gray-500 whitespace-nowrap">Your hourly rate:</span>
+          <span className="text-xs text-gray-500 whitespace-nowrap">Your hourly rate<span className="text-red-500">*</span>:</span>
           <input
-            type="number" min={0} step="1" inputMode="decimal"
+            type="number" min={0} step="1" inputMode="decimal" required
             value={rate} onChange={(e) => setRate(e.target.value)}
-            placeholder="optional"
+            placeholder="e.g. 120"
             className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28"
           />
           <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
             {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
           </select>
-          <span className="text-xs text-gray-400">per hour</span>
+          <span className="text-xs text-gray-400">per hour · saved to your profile</span>
         </div>
         <div className="space-y-1.5">
           {rows.map((r, i) => (
@@ -515,7 +512,7 @@ function AvailabilityRequestCard({ request, token, onChanged }: {
             </button>
           ) : <span />}
           <button onClick={submit} disabled={busy === "submit"} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700 disabled:opacity-50">
-            {busy === "submit" && <Loader2 className="w-4 h-4 animate-spin" />} {accepted ? "Submit times" : "Accept & submit times"}
+            {busy === "submit" && <Loader2 className="w-4 h-4 animate-spin" />} {accepted ? "Submit times" : "Apply and Submit times"}
           </button>
         </div>
         {declining && (
