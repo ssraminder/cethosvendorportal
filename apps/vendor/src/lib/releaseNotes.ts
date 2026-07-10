@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.5",
+    date: "2026-07-10",
+    summary:
+      "Interview scheduling is now offer-based: when Cethos needs a moderator they send you an offer, which you accept by proposing your available times — or decline. My Interviews shows your open offers under 'Interview offers'.",
+    changes: [
+      "New offers arrive with a 'New offer' badge and an expiry note. Add the times that work for you and submit — that accepts the offer. Cethos may be asking a few moderators, so the offer notes that too.",
+      "Decline an offer outright if it doesn't suit — Cethos then assigns another moderator; the other candidates are unaffected.",
+      "Once you've accepted, the badge shows 'Accepted' and you can keep adding times until Cethos confirms.",
+      "Focus groups are flagged as one shared session — offer a few options and Cethos confirms one.",
+    ],
+  },
+  {
     version: "2026.7.4",
     date: "2026-07-09",
     summary:
