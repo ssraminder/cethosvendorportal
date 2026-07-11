@@ -1,14 +1,17 @@
-// reject-vendor-invoice — staff reject a vendor-raised PO invoice (e.g. the
-// vendor uploaded a copy of the Purchase Order instead of a real invoice).
-// Rejecting stamps the invoice `rejected` (freeing the PO to be invoiced again)
-// and emails the vendor the preset reason + any manual notes.
+// reject-vendor-invoice — staff reject one or more vendor-raised PO invoices
+// (e.g. a vendor uploaded a copy of the Purchase Order instead of a real
+// invoice). Rejecting stamps each invoice `rejected` (freeing its PO to be
+// invoiced again) and emails each vendor the preset reason + any manual notes.
 //
 // POST (JSON) {
-//   invoice_id: string,          // cvp_payments.id
+//   invoice_id?: string,         // cvp_payments.id (single)
+//   invoice_ids?: string[],      // cvp_payments.ids (bulk) — one shared reason/note
 //   reason: string,              // preset reason (shown to the vendor)
 //   note?: string,               // optional free-text staff notes (shown to the vendor)
 //   rejected_by?: string         // staff_users.id (audit)
 // }
+// Single mode (invoice_id) returns the flat result; bulk mode (invoice_ids)
+// returns { results, rejected_count, email_sent_count, failed_count }.
 // Invoked from the admin Portal Invoices screen. Deployed --no-verify-jwt.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -77,6 +80,100 @@ function renderRejectionEmail(params: {
   return { subject, html, text };
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface RejectOutcome {
+  invoice_id: string;
+  ok: boolean;
+  status?: string;
+  po_number?: string | null;
+  email_sent?: boolean;
+  email_reason?: string;
+  error?: string;
+}
+
+// deno-lint-ignore no-explicit-any
+async function rejectOne(
+  sb: any,
+  invoiceId: string,
+  reason: string,
+  note: string,
+  rejectedBy: string | null,
+): Promise<RejectOutcome> {
+  const { data: inv } = await sb
+    .from("cvp_payments")
+    .select("id, vendor_id, status, invoice_number, vendor_invoice_number, vendor_purchase_order_id, paid_at")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (!inv) return { invoice_id: invoiceId, ok: false, error: "Invoice not found" };
+  if (inv.paid_at || inv.status === "paid") {
+    return { invoice_id: invoiceId, ok: false, error: "Already paid — cannot reject" };
+  }
+  if (!["submitted", "approved"].includes(inv.status)) {
+    return { invoice_id: invoiceId, ok: false, error: `Cannot reject a ${inv.status} invoice` };
+  }
+
+  // Mark rejected — this frees the PO to be invoiced again (the one-active-
+  // invoice-per-PO unique index excludes 'rejected').
+  const nowIso = new Date().toISOString();
+  const { error: updErr } = await sb
+    .from("cvp_payments")
+    .update({
+      status: "rejected",
+      rejected_at: nowIso,
+      rejected_by: rejectedBy,
+      rejection_reason: reason,
+      rejection_note: note || null,
+      updated_at: nowIso,
+    })
+    .eq("id", invoiceId);
+  if (updErr) return { invoice_id: invoiceId, ok: false, error: updErr.message };
+
+  // Resolve the PO number and vendor contact for the email.
+  let poNumber: string | null = null;
+  if (inv.vendor_purchase_order_id) {
+    const { data: po } = await sb
+      .from("vendor_purchase_orders")
+      .select("po_number")
+      .eq("id", inv.vendor_purchase_order_id)
+      .maybeSingle();
+    poNumber = po?.po_number ?? null;
+  }
+
+  const { data: vendor } = await sb
+    .from("vendors")
+    .select("full_name, email")
+    .eq("id", inv.vendor_id)
+    .maybeSingle();
+
+  let emailSent = false;
+  let emailReason: string | undefined;
+  if (vendor?.email) {
+    const rendered = renderRejectionEmail({
+      vendor_name: vendor.full_name || "there",
+      po_number: poNumber,
+      invoice_ref: inv.vendor_invoice_number || inv.invoice_number || invoiceId,
+      reason,
+      note: note || null,
+      portal_url: Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com",
+    });
+    const result = await sendMailgunOperationalEmail({
+      to: { email: vendor.email, name: vendor.full_name || undefined },
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      replyTo: "ap@cethos.com",
+      tags: ["invoice-rejected", invoiceId.slice(0, 40)],
+    });
+    emailSent = result.sent;
+    if (!result.sent) emailReason = result.reason;
+  } else {
+    emailReason = "vendor_has_no_email";
+  }
+
+  return { invoice_id: invoiceId, ok: true, status: "rejected", po_number: poNumber, email_sent: emailSent, email_reason: emailReason };
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -87,93 +184,58 @@ serve(async (req: Request) => {
     );
 
     const body = await req.json().catch(() => ({}));
-    const invoiceId = String(body.invoice_id || "").trim();
     const reason = String(body.reason || "").trim();
     const note = body.note != null ? String(body.note).trim() : "";
     const rejectedBy = body.rejected_by ? String(body.rejected_by) : null;
 
-    if (!invoiceId) return json({ success: false, error: "Missing invoice_id" }, 400);
+    // Accept a single invoice_id or a bulk invoice_ids[]. Bulk mode is flagged
+    // by the presence of invoice_ids so the response shape stays predictable.
+    const bulk = Array.isArray(body.invoice_ids);
+    const ids: string[] = [
+      ...new Set(
+        (bulk ? body.invoice_ids : [body.invoice_id])
+          .map((x: unknown) => String(x ?? "").trim())
+          .filter(Boolean),
+      ),
+    ];
+
+    if (!ids.length) return json({ success: false, error: "No invoice id(s) provided" }, 400);
     if (!reason) return json({ success: false, error: "A rejection reason is required" }, 400);
+    if (ids.length > 200) return json({ success: false, error: "Too many invoices in one request (max 200)" }, 400);
 
-    // Fetch the invoice.
-    const { data: inv } = await sb
-      .from("cvp_payments")
-      .select("id, vendor_id, status, invoice_number, vendor_invoice_number, vendor_purchase_order_id, paid_at")
-      .eq("id", invoiceId)
-      .maybeSingle();
-    if (!inv) return json({ success: false, error: "Invoice not found" }, 404);
-    if (inv.paid_at || inv.status === "paid") {
-      return json({ success: false, error: "This invoice has already been paid and cannot be rejected" }, 409);
-    }
-    if (!["submitted", "approved"].includes(inv.status)) {
-      return json({ success: false, error: `This invoice is ${inv.status} and cannot be rejected` }, 409);
-    }
-
-    // Mark rejected — this frees the PO to be invoiced again (the one-active-
-    // invoice-per-PO unique index excludes 'rejected').
-    const nowIso = new Date().toISOString();
-    const { error: updErr } = await sb
-      .from("cvp_payments")
-      .update({
-        status: "rejected",
-        rejected_at: nowIso,
-        rejected_by: rejectedBy,
-        rejection_reason: reason,
-        rejection_note: note || null,
-        updated_at: nowIso,
-      })
-      .eq("id", invoiceId);
-    if (updErr) return json({ success: false, error: `Failed to reject invoice: ${updErr.message}` }, 500);
-
-    // Resolve the PO number and vendor contact for the email.
-    let poNumber: string | null = null;
-    if (inv.vendor_purchase_order_id) {
-      const { data: po } = await sb
-        .from("vendor_purchase_orders")
-        .select("po_number")
-        .eq("id", inv.vendor_purchase_order_id)
-        .maybeSingle();
-      poNumber = po?.po_number ?? null;
+    // Process sequentially, throttling the Mailgun sends so a large batch
+    // doesn't trip the per-function rate limit.
+    const results: RejectOutcome[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      if (i > 0) await sleep(250);
+      try {
+        results.push(await rejectOne(sb, ids[i], reason, note, rejectedBy));
+      } catch (e) {
+        results.push({ invoice_id: ids[i], ok: false, error: e instanceof Error ? e.message : "error" });
+      }
     }
 
-    const { data: vendor } = await sb
-      .from("vendors")
-      .select("full_name, email")
-      .eq("id", inv.vendor_id)
-      .maybeSingle();
-
-    let emailSent = false;
-    let emailReason: string | undefined;
-    if (vendor?.email) {
-      const rendered = renderRejectionEmail({
-        vendor_name: vendor.full_name || "there",
-        po_number: poNumber,
-        invoice_ref: inv.vendor_invoice_number || inv.invoice_number || invoiceId,
-        reason,
-        note: note || null,
-        portal_url: Deno.env.get("VENDOR_PORTAL_URL") || "https://vendor.cethos.com",
+    // Single mode: preserve the original flat response shape.
+    if (!bulk) {
+      const r = results[0];
+      if (!r.ok) return json({ success: false, error: r.error || "Failed to reject invoice" }, 409);
+      return json({
+        success: true,
+        invoice_id: r.invoice_id,
+        status: r.status,
+        po_number: r.po_number,
+        email_sent: r.email_sent,
+        email_reason: r.email_reason,
       });
-      const result = await sendMailgunOperationalEmail({
-        to: { email: vendor.email, name: vendor.full_name || undefined },
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        replyTo: "ap@cethos.com",
-        tags: ["invoice-rejected", invoiceId.slice(0, 40)],
-      });
-      emailSent = result.sent;
-      if (!result.sent) emailReason = result.reason;
-    } else {
-      emailReason = "vendor_has_no_email";
     }
 
+    const rejected = results.filter((r) => r.ok);
     return json({
       success: true,
-      invoice_id: invoiceId,
-      status: "rejected",
-      po_number: poNumber,
-      email_sent: emailSent,
-      email_reason: emailReason,
+      results,
+      rejected_count: rejected.length,
+      email_sent_count: rejected.filter((r) => r.email_sent).length,
+      failed_count: results.length - rejected.length,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";
