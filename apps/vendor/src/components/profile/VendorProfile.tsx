@@ -42,6 +42,7 @@ import {
   ChevronRight,
   Tags,
   Camera,
+  GraduationCap,
 } from "lucide-react";
 
 // --- Editable text field ---
@@ -892,6 +893,7 @@ export function VendorProfile() {
   const [provinceState, setProvinceState] = useState("");
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [nativeLanguages, setNativeLanguages] = useState<string[]>([]);
+  const [yearsExperience, setYearsExperience] = useState<number | null>(null);
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -931,6 +933,9 @@ export function VendorProfile() {
         setPreferredRateCurrency(result.vendor.preferred_rate_currency || "CAD");
         setProvinceState(result.vendor.province_state || "");
         setNativeLanguages(result.vendor.native_languages || []);
+        setYearsExperience(
+          typeof result.vendor.years_experience === "number" ? result.vendor.years_experience : null,
+        );
         setSpecializations(
           Array.isArray(result.vendor.specializations)
             ? (result.vendor.specializations as unknown[]).map((s) => String(s))
@@ -1045,6 +1050,18 @@ export function VendorProfile() {
     if (result.error) return result.error;
     if (result.vendor) setVendor(result.vendor);
     setNativeLanguages(codes);
+    return null;
+  }
+
+  async function saveYearsExperience(value: string): Promise<string | null> {
+    const trimmed = value.trim();
+    if (trimmed === "") return "Enter your years of professional experience";
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 0 || n > 80) return "Years must be a number between 0 and 80";
+    const result = await updateProfile(sessionToken!, { years_experience: n });
+    if (result.error) return result.error;
+    if (result.vendor) setVendor(result.vendor);
+    setYearsExperience(n);
     return null;
   }
 
@@ -1217,6 +1234,16 @@ export function VendorProfile() {
             <NativeLanguagesField
               value={nativeLanguages}
               onSave={saveNativeLanguages}
+            />
+          )}
+          {profileLoaded && (
+            <EditableField
+              icon={GraduationCap}
+              label="Years of Professional Experience"
+              value={yearsExperience !== null ? String(yearsExperience) : ""}
+              type="number"
+              placeholder="e.g. 5"
+              onSave={saveYearsExperience}
             />
           )}
           {profileLoaded && (
