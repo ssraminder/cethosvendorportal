@@ -62,6 +62,18 @@ export async function uploadCv(
   // picks a .docx we convert in the browser AND ship the original docx
   // alongside, so the source is preserved (re-render if conversion
   // improves; staff fallback if rendering loses anything).
+  // Hard size guard. The UI advertises 10 MB, and the Netlify proxy path
+  // rejects oversized bodies at the platform layer with a non-JSON error
+  // page — which previously surfaced as a silent/opaque failure (bug
+  // reports: "picked my PDF and nothing happened").
+  const MAX_CV_BYTES = 10 * 1024 * 1024;
+  if (file.size > MAX_CV_BYTES) {
+    return {
+      success: false,
+      error: `Your file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 10 MB. Try compressing the PDF or exporting it at a lower quality.`,
+    };
+  }
+
   let toUpload = file;
   let sourceDocx: File | null = null;
   if (isDocxFile(file)) {
@@ -96,7 +108,23 @@ export async function uploadCv(
     headers: { Authorization: `Bearer ${sessionToken}` },
     body: form,
   });
-  return (await res.json()) as UploadResult;
+  // The proxy (or the platform in front of it) can answer with a non-JSON
+  // error page — e.g. when the request body exceeds the Lambda payload cap.
+  // An unguarded res.json() here used to throw and swallow the real cause.
+  let parsed: UploadResult | null = null;
+  try {
+    parsed = (await res.json()) as UploadResult;
+  } catch {
+    parsed = null;
+  }
+  if (parsed) return parsed;
+  return {
+    success: false,
+    error:
+      res.status === 413 || res.status === 502
+        ? "The upload was rejected because the file is too large for our upload service. Please compress the PDF (under ~4 MB is safest) and try again."
+        : `Upload failed (HTTP ${res.status}). Please try again, or email your CV to vm@cethos.com if it keeps failing.`,
+  };
 }
 
 export async function listCvs(sessionToken: string): Promise<ListResult> {

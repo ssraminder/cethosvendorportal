@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.10",
+    date: "2026-07-10",
+    summary:
+      "Fixes from vendor bug reports: requesting a domain test no longer wrongly says 'no active test in the library' when a matching test exists, and CV uploads that fail (e.g. file too large) now explain why instead of doing nothing.",
+    changes: [
+      "Request a test: the availability check now matches language variants (e.g. English (US) counts as English) and the language-agnostic seed tests, exactly like the test sender does — vendors approved for medical, life sciences, pharmaceutical and other domains were being blocked even though tests existed.",
+      "CV upload (onboarding and profile): files over 10 MB are rejected up front with a clear message, and upload-service errors now surface a readable explanation instead of failing silently.",
+    ],
+  },
+  {
     version: "2026.7.9",
     date: "2026-07-10",
     summary:
