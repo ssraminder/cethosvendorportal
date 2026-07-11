@@ -10,6 +10,12 @@ export interface VendorPOInvoiceRef {
   submitted_at: string | null;
 }
 
+export interface VendorPORejection {
+  reason: string | null;
+  note: string | null;
+  rejected_at: string | null;
+}
+
 export interface VendorPurchaseOrder {
   id: string;
   po_number: string;
@@ -29,6 +35,7 @@ export interface VendorPurchaseOrder {
   sent_at: string | null;
   has_pdf: boolean;
   invoice: VendorPOInvoiceRef | null;
+  last_rejection: VendorPORejection | null;
 }
 
 export interface VendorTaxProfile {

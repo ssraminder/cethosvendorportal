@@ -6,7 +6,7 @@ import {
   type VendorPurchaseOrder,
   type VendorTaxProfile,
 } from "../../api/vendorPurchaseOrders";
-import { FileText, Loader2, ClipboardList, Upload, CheckCircle2 } from "lucide-react";
+import { FileText, Loader2, ClipboardList, Upload, CheckCircle2, AlertTriangle } from "lucide-react";
 
 function money(amount: number | null | undefined, currency: string) {
   if (amount == null) return "—";
@@ -192,6 +192,20 @@ function PurchaseOrderCard({
           <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
           Invoice {po.invoice.vendor_invoice_number || po.invoice.invoice_number} received
           {po.invoice.submitted_at ? ` on ${new Date(po.invoice.submitted_at).toLocaleDateString("en-CA")}` : ""}.
+        </div>
+      )}
+
+      {!alreadyRaised && po.last_rejection && (
+        <div className="flex items-start gap-2 border-t border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
+          <div>
+            <span className="font-semibold">Your previous invoice was not accepted.</span>{" "}
+            {po.last_rejection.reason || "Please submit a corrected invoice."}
+            {po.last_rejection.note ? (
+              <span className="block mt-0.5 text-amber-700">Note: {po.last_rejection.note}</span>
+            ) : null}
+            <span className="block mt-0.5 text-amber-700">Please attach a proper invoice document (not a copy of the purchase order) and re-submit below.</span>
+          </div>
         </div>
       )}
 

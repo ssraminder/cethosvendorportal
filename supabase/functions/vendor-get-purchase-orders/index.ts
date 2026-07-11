@@ -63,27 +63,47 @@ serve(async (req: Request) => {
     const poRows = pos || [];
 
     // Which POs already have an invoice raised? (one active invoice per PO)
+    // A cancelled or rejected invoice does NOT lock the PO — the vendor can
+    // raise a corrected one. When the most recent attempt was rejected we also
+    // surface the reason so the reopened PO explains what to fix.
     const poIds = poRows.map((p) => p.id);
     let invByPo = new Map<string, { id: string; status: string; invoice_number: string | null; vendor_invoice_number: string | null; submitted_at: string | null }>();
+    let rejectionByPo = new Map<string, { reason: string | null; note: string | null; rejected_at: string | null }>();
     if (poIds.length) {
       const { data: invs } = await sb
         .from("cvp_payments")
-        .select("id, vendor_purchase_order_id, status, invoice_number, vendor_invoice_number, submitted_at")
+        .select("id, vendor_purchase_order_id, status, invoice_number, vendor_invoice_number, submitted_at, rejection_reason, rejection_note, rejected_at")
         .in("vendor_purchase_order_id", poIds)
-        .neq("status", "cancelled");
+        .order("created_at", { ascending: false });
       for (const inv of invs || []) {
-        invByPo.set(inv.vendor_purchase_order_id as string, {
-          id: inv.id as string,
-          status: inv.status as string,
-          invoice_number: (inv.invoice_number as string) ?? null,
-          vendor_invoice_number: (inv.vendor_invoice_number as string) ?? null,
-          submitted_at: (inv.submitted_at as string) ?? null,
-        });
+        const poKey = inv.vendor_purchase_order_id as string;
+        if (inv.status === "cancelled" || inv.status === "rejected") {
+          // Keep the most recent rejection per PO (rows are newest-first).
+          if (inv.status === "rejected" && !rejectionByPo.has(poKey)) {
+            rejectionByPo.set(poKey, {
+              reason: (inv.rejection_reason as string) ?? null,
+              note: (inv.rejection_note as string) ?? null,
+              rejected_at: (inv.rejected_at as string) ?? null,
+            });
+          }
+          continue; // does not occupy the active-invoice slot
+        }
+        if (!invByPo.has(poKey)) {
+          invByPo.set(poKey, {
+            id: inv.id as string,
+            status: inv.status as string,
+            invoice_number: (inv.invoice_number as string) ?? null,
+            vendor_invoice_number: (inv.vendor_invoice_number as string) ?? null,
+            submitted_at: (inv.submitted_at as string) ?? null,
+          });
+        }
       }
     }
 
     const out = poRows.map((po) => {
       const inv = invByPo.get(po.id) || null;
+      // Only show the rejection banner while the PO is open again (no active invoice).
+      const lastRejection = !inv ? (rejectionByPo.get(po.id) || null) : null;
       return {
         id: po.id,
         po_number: po.po_number,
@@ -104,6 +124,7 @@ serve(async (req: Request) => {
         sent_at: po.sent_at,
         has_pdf: !!po.pdf_storage_path,
         invoice: inv, // null => can raise; otherwise already raised
+        last_rejection: lastRejection, // set when a prior invoice was rejected and the PO is open again
       };
     });
 

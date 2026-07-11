@@ -81,23 +81,27 @@ serve(async (req: Request) => {
       return json({ success: false, error: `This PO is ${po.status} and cannot be invoiced` }, 409);
     }
 
-    // One invoice per PO.
+    // One invoice per PO. A cancelled or rejected invoice frees the PO, so the
+    // vendor can raise a corrected invoice against it.
     const { data: existing } = await sb
       .from("cvp_payments")
       .select("id, status, invoice_number")
       .eq("vendor_purchase_order_id", poId)
-      .neq("status", "cancelled")
+      .not("status", "in", "(cancelled,rejected)")
       .maybeSingle();
     if (existing) {
       return json({ success: false, error: `An invoice (${existing.invoice_number}) has already been raised for ${po.po_number}` }, 409);
     }
 
-    // Duplicate vendor invoice reference guard (same vendor, same ref).
+    // Duplicate vendor invoice reference guard (same vendor, same ref). Ignore
+    // cancelled/rejected invoices so a corrected re-submission can reuse the
+    // same invoice number after a rejection.
     const { data: dup } = await sb
       .from("cvp_payments")
       .select("id, invoice_number")
       .eq("vendor_id", vendorId)
       .eq("vendor_invoice_number", vendorInvoiceNumber)
+      .not("status", "in", "(cancelled,rejected)")
       .maybeSingle();
     if (dup) {
       return json({ success: false, error: `Invoice reference "${vendorInvoiceNumber}" is already used on ${dup.invoice_number}` }, 409);
