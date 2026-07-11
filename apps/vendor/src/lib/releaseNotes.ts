@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.11",
+    date: "2026-07-10",
+    summary:
+      "You can now enter your years of professional experience directly on your Profile page — no need to wait for a document-request link from Cethos.",
+    changes: [
+      "Profile page: added a 'Years of Professional Experience' field (0–80) next to Native Language(s), so this ISO 17100 checklist item can be completed self-serve. The existing document-request link still works the same way for evidence uploads.",
+    ],
+  },
+  {
     version: "2026.7.10",
     date: "2026-07-10",
     summary:
