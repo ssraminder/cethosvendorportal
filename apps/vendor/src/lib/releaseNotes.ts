@@ -23,7 +23,7 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "2026.7.11",
+    version: "2026.7.12",
     date: "2026-07-10",
     summary:
       "If Cethos can't accept an invoice you submitted, the purchase order reopens so you can send a corrected one — with a note explaining what to fix.",
@@ -31,6 +31,15 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "When an invoice is not accepted, its purchase order becomes available to invoice again instead of staying locked.",
       "The reopened purchase order shows why the previous invoice wasn't accepted, and you'll also receive an email with the reason and any notes.",
       "Please attach a proper invoice document (not a copy of the purchase order) when re-submitting.",
+    ],
+  },
+  {
+    version: "2026.7.11",
+    date: "2026-07-10",
+    summary:
+      "You can now enter your years of professional experience directly on your Profile page — no need to wait for a document-request link from Cethos.",
+    changes: [
+      "Profile page: added a 'Years of Professional Experience' field (0–80) next to Native Language(s), so this ISO 17100 checklist item can be completed self-serve. The existing document-request link still works the same way for evidence uploads.",
     ],
   },
   {
