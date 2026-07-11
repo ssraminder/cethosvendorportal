@@ -214,14 +214,52 @@ serve(async (req: Request) => {
   }
 
   // ---- G5: library has an active test for (pair, domain) ----
-  const { data: libraryRows } = await supabase
+  // This pre-flight must resolve tests the same way cvp-send-tests does, or
+  // it blocks requests the sender would happily fulfil. cvp-send-tests
+  // matches BOTH languages against their variant-equivalence group (root
+  // name before " (", e.g. "English (US)" ≡ "English") and falls back to
+  // target-language-agnostic wildcard rows (target_language_id IS NULL —
+  // the EN→any seed rows). The old exact-id match here wrongly 409'd
+  // vendors on language variants and on domains covered only by wildcards.
+  const { data: allLangs } = await supabase.from("languages").select("id, name");
+  const variantRoot = (name: string): string => {
+    const i = name.indexOf(" (");
+    return i === -1 ? name : name.slice(0, i);
+  };
+  const byRoot = new Map<string, string[]>();
+  for (const l of (allLangs ?? []) as { id: string; name: string }[]) {
+    const r = variantRoot(l.name);
+    const arr = byRoot.get(r) ?? [];
+    arr.push(l.id);
+    byRoot.set(r, arr);
+  }
+  const equivIds = (langId: string): string[] => {
+    const lang = ((allLangs ?? []) as { id: string; name: string }[]).find((l) => l.id === langId);
+    return lang ? byRoot.get(variantRoot(lang.name)) ?? [langId] : [langId];
+  };
+  const srcEquiv = equivIds(sourceLanguageId);
+  const tgtEquiv = equivIds(targetLanguageId);
+
+  const { data: exactRows } = await supabase
     .from("cvp_test_library")
     .select("id")
-    .eq("source_language_id", sourceLanguageId)
-    .eq("target_language_id", targetLanguageId)
+    .in("source_language_id", srcEquiv)
+    .in("target_language_id", tgtEquiv)
     .eq("domain", domain)
     .eq("is_active", true)
     .limit(1);
+  let libraryRows = exactRows;
+  if (!libraryRows || libraryRows.length === 0) {
+    const { data: wildcardRows } = await supabase
+      .from("cvp_test_library")
+      .select("id")
+      .in("source_language_id", srcEquiv)
+      .is("target_language_id", null)
+      .eq("domain", domain)
+      .eq("is_active", true)
+      .limit(1);
+    libraryRows = wildcardRows;
+  }
   if (!libraryRows || libraryRows.length === 0) {
     return json(
       {
