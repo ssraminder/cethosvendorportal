@@ -23,6 +23,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.14",
+    date: "2026-07-13",
+    summary:
+      "You can now text or WhatsApp your interview participants too, not just call them — all from the My Interviews page, and still without either side seeing the other's number.",
+    changes: [
+      "The 'Call' button is now 'Call / text': choose Call, SMS, or WhatsApp for each participant or waitlister.",
+      "SMS and WhatsApp go out from the Cethos Research Panel number — the participant never sees your number, and replies come back to Cethos (not routed to you yet).",
+      "Only the channels Cethos has set up are shown, so you won't see an option that can't send.",
+      "Clearer errors: if a call or text can't go out because of a set-up problem on the Cethos side, it now says so instead of blaming your number.",
+      "Standard call/messaging rates may apply.",
+    ],
+  },
+  {
     version: "2026.7.13",
     date: "2026-07-13",
     summary:

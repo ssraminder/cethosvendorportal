@@ -86,21 +86,32 @@ export interface AvailabilityRequest {
   proposedRateCurrency: string | null;
   proposals: SlotProposal[];
 }
+// Which contact channels are configured on the Cethos side (Twilio). The UI
+// only offers what will actually work.
+export interface ContactChannels {
+  call: boolean;
+  sms: boolean;
+  whatsapp: boolean;
+}
 export interface MyInterviews {
   sessions: InterviewSession[];
   availabilityRequests: AvailabilityRequest[];
   /** The moderator's remembered click-to-call callback number (prefills the prompt). */
   callbackPhone: string | null;
+  channels: ContactChannels;
 }
+
+const NO_CHANNELS: ContactChannels = { call: false, sms: false, whatsapp: false };
 
 export async function getMyInterviews(token: string): Promise<MyInterviews> {
   const res = await safePost(URL, { session_token: token, action: "list" });
   const data = await res.json().catch(() => ({}));
-  if (!data.success) return { sessions: [], availabilityRequests: [], callbackPhone: null };
+  if (!data.success) return { sessions: [], availabilityRequests: [], callbackPhone: null, channels: NO_CHANNELS };
   return {
     sessions: (data.sessions || []) as InterviewSession[],
     availabilityRequests: (data.availabilityRequests || []) as AvailabilityRequest[],
     callbackPhone: (data.callbackPhone ?? null) as string | null,
+    channels: { ...NO_CHANNELS, ...(data.channels || {}) } as ContactChannels,
   };
 }
 
@@ -178,5 +189,19 @@ export async function callParticipant(
   kind: "participant" | "waitlist" = "participant",
 ): Promise<{ success: boolean; callSid?: string | null; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "call", slotId, invitationId, moderatorPhone, kind });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// One-way outbound SMS or WhatsApp to a participant / waitlister, sent from the
+// Cethos number (blinded — replies aren't routed back yet).
+export async function textParticipant(
+  token: string,
+  slotId: string,
+  invitationId: string,
+  channel: "sms" | "whatsapp",
+  message: string,
+  kind: "participant" | "waitlist" = "participant",
+): Promise<{ success: boolean; messageSid?: string | null; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "send_text", slotId, invitationId, channel, message, kind });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
