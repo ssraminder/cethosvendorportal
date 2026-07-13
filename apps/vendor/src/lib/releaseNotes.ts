@@ -23,6 +23,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.13",
+    date: "2026-07-13",
+    summary:
+      "Interview moderators can now call their participants from the My Interviews page — Cethos rings you first, then connects the participant, and neither side sees the other's number.",
+    changes: [
+      "New 'Call' button on each session, next to 'Message participants'.",
+      "Enter the number to reach you on — we call you first, then bridge in the participant. You never see their number and they never see yours; they see the Cethos Research Panel line.",
+      "Your callback number is remembered and prefilled for next time.",
+      "If someone is a no-show, the study's waitlist is shown so you can call those participants to check availability.",
+      "International call rates may apply.",
+    ],
+  },
+  {
     version: "2026.7.12",
     date: "2026-07-10",
     summary:

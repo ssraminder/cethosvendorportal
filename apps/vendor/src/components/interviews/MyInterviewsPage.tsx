@@ -6,19 +6,26 @@
 // Phase 6: the moderator can also message booked participants before the
 // session (blinded relay — Cethos emails them; no contact info is shown here
 // and replies go to Cethos staff), and sees the session's meeting link.
+//
+// Phase 6c: the moderator can place a masked click-to-call — Cethos rings the
+// moderator first, then bridges to the participant, so neither side sees the
+// other's number. The study's waitlist is callable the same way to backfill a
+// no-show.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle } from "lucide-react";
+import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle, Phone } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getMyInterviews,
   completeInterview,
   messageParticipants,
+  callParticipant,
   proposeTimes,
   withdrawProposal,
   declineOffer,
   type InterviewSession,
   type InterviewParticipant,
+  type WaitlistEntry,
   type AvailabilityRequest,
 } from "../../api/vendorInterviews";
 
@@ -31,6 +38,9 @@ export function MyInterviewsPage() {
   const [availabilityRequests, setAvailabilityRequests] = useState<AvailabilityRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
+  // The moderator's callback number for click-to-call — seeded from the server's
+  // remembered value, updated as they place calls so it prefills next time.
+  const [callbackPhone, setCallbackPhone] = useState<string>("");
 
   const load = useCallback(async () => {
     if (!sessionToken) return;
@@ -38,6 +48,7 @@ export function MyInterviewsPage() {
     const data = await getMyInterviews(sessionToken);
     setSessions(data.sessions);
     setAvailabilityRequests(data.availabilityRequests);
+    setCallbackPhone((cur) => cur || data.callbackPhone || "");
     setLoading(false);
   }, [sessionToken]);
 
@@ -88,6 +99,12 @@ export function MyInterviewsPage() {
                   const r = await messageParticipants(sessionToken!, s.slotId, message, invitationIds, attachPaths);
                   if (r.success) await load();
                   return r;
+                }}
+                callbackPhone={callbackPhone}
+                onCall={async (invitationId, moderatorPhone, kind) => {
+                  const r = await callParticipant(sessionToken!, s.slotId, invitationId, moderatorPhone, kind);
+                  if (r.success) setCallbackPhone(moderatorPhone);
+                  return r;
                 }} />
             ))}
           </div>
@@ -123,13 +140,15 @@ export function MyInterviewsPage() {
   );
 }
 
-function SessionCard({ session, busy, onComplete, onMessage }: {
+function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, onCall }: {
   session: InterviewSession;
   busy: boolean;
   onComplete: (results: { invitationId: string; attended: boolean; rating?: number | null; comments?: string | null }[]) => Promise<boolean>;
   onMessage: (message: string, invitationIds?: string[], attachPaths?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
+  callbackPhone: string;
+  onCall: (invitationId: string, moderatorPhone: string, kind: "participant" | "waitlist") => Promise<{ success: boolean; error?: string }>;
 }) {
-  const [panel, setPanel] = useState<null | "complete" | "message">(null);
+  const [panel, setPanel] = useState<null | "complete" | "message" | "call">(null);
   const confirmed = session.participants.filter((p) => p.status === "confirmed");
   const [state, setState] = useState<Record<string, { attended: boolean; rating: number; comments: string }>>(() =>
     Object.fromEntries(confirmed.map((p) => [p.invitationId, { attended: true, rating: 0, comments: "" }])));
@@ -185,6 +204,12 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
               <MessageSquare className="w-4 h-4" /> Message participants
             </button>
           )}
+          {session.canCall && (
+            <button onClick={() => setPanel("call")} className="inline-flex items-center gap-1.5 text-sm border border-teal-600 text-teal-700 rounded-lg px-3 py-2 font-medium hover:bg-teal-50">
+              <Phone className="w-4 h-4" /> Call
+              {session.waitlist.length > 0 && <span className="text-xs text-gray-400">· {session.waitlist.length} on waitlist</span>}
+            </button>
+          )}
         </div>
       ) : panel === "message" ? (
         <MessageComposer participants={confirmed} messages={session.messages} files={session.files}
@@ -194,6 +219,9 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
             if (r.success) setPanel(null);
             return r;
           }} />
+      ) : panel === "call" ? (
+        <CallPanel participants={confirmed} waitlist={session.waitlist} initialPhone={callbackPhone}
+          onCancel={() => setPanel(null)} onCall={onCall} />
       ) : (
         <div className="mt-3 space-y-3">
           {confirmed.map((p: InterviewParticipant) => {
@@ -230,6 +258,92 @@ function SessionCard({ session, busy, onComplete, onMessage }: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Masked click-to-call panel. The moderator enters the number to reach them on;
+// Cethos rings that number first, then bridges to the participant, so the two
+// never see each other's number. Confirmed participants and the study waitlist
+// (for no-show backfill) are callable the same way.
+function CallPanel({ participants, waitlist, initialPhone, onCancel, onCall }: {
+  participants: InterviewParticipant[];
+  waitlist: WaitlistEntry[];
+  initialPhone: string;
+  onCancel: () => void;
+  onCall: (invitationId: string, moderatorPhone: string, kind: "participant" | "waitlist") => Promise<{ success: boolean; error?: string }>;
+}) {
+  const [phone, setPhone] = useState(initialPhone);
+  const [calling, setCalling] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
+  // Loose E.164 check — the server normalizes + validates authoritatively.
+  const phoneOk = /^\+?[\d\s()\-.]{7,}$/.test(phone.trim());
+
+  async function place(invitationId: string, kind: "participant" | "waitlist", name: string) {
+    if (!phoneOk) { setStatus({ id: invitationId, ok: false, msg: "Enter your callback number first." }); return; }
+    setCalling(invitationId);
+    setStatus(null);
+    const r = await onCall(invitationId, phone.trim(), kind);
+    setCalling(null);
+    setStatus({ id: invitationId, ok: r.success, msg: r.success ? `Calling you now — pick up, then we'll connect ${name}.` : (r.error || "Couldn't place the call.") });
+  }
+
+  const Row = ({ id, name, kind }: { id: string; name: string; kind: "participant" | "waitlist" }) => (
+    <div className="flex items-center justify-between gap-2 border border-gray-200 rounded-lg px-3 py-2">
+      <span className="text-sm text-gray-900">{name}</span>
+      <div className="flex items-center gap-2">
+        {status?.id === id && (
+          <span className={`text-xs ${status.ok ? "text-green-600" : "text-red-600"}`}>{status.msg}</span>
+        )}
+        <button
+          onClick={() => place(id, kind, name)}
+          disabled={!phoneOk || calling !== null}
+          className="inline-flex items-center gap-1 text-xs bg-teal-600 text-white rounded-lg px-2.5 py-1.5 font-medium hover:bg-teal-700 disabled:opacity-50">
+          {calling === id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Call
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+        We <span className="font-medium">call you first</span> on the number below, then connect the participant.
+        Neither of you sees the other's number — they'll see the Cethos Research Panel line. International call rates may apply.
+      </div>
+      <label className="block">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Number to reach you</span>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          inputMode="tel"
+          placeholder="+1 415 555 0123 (include country code)"
+          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+        />
+        <span className="text-xs text-gray-400">Include your country code. Saved for next time.</span>
+      </label>
+
+      {participants.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Participants</div>
+          <div className="space-y-1.5">
+            {participants.map((p) => <Row key={p.invitationId} id={p.invitationId} name={p.name} kind="participant" />)}
+          </div>
+        </div>
+      )}
+
+      {waitlist.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Waitlist — call to fill a no-show</div>
+          <div className="space-y-1.5">
+            {waitlist.map((w) => <Row key={w.invitationId} id={w.invitationId} name={w.name} kind="waitlist" />)}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <button onClick={onCancel} disabled={calling !== null} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50 disabled:opacity-50">Done</button>
+      </div>
     </div>
   );
 }

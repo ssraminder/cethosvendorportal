@@ -31,10 +31,21 @@
 //     staff attached to this interview). Each participant email gets fresh
 //     7-day signed links; the audit rows record file_names/file_paths.
 //
+// v4 (2026-07-13, Phase 6c — click-to-call + no-show waitlist):
+//   - "call" action: a Twilio masked bridge. Twilio rings the moderator's own
+//     callback number first, then dials the participant and connects them — the
+//     moderator never sees the participant's number (participant sees the Cethos
+//     Twilio caller ID). Targets a confirmed booking on the slot OR a waitlisted
+//     invite on the study (no-show backfill). Every attempt is audited in
+//     rp_moderator_calls (participant number never stored); the callback number
+//     is remembered on vendors.interview_callback_phone.
+//   - "list" now also returns each session's waitlist (blinded: id + name) and
+//     the moderator's remembered callbackPhone.
+//
 // Auth: vendor_sessions bearer token (header) OR session_token in the body.
 // All rp_* access is via service_role — the sanctioned cross-system boundary.
 //
-// POST { action: "list" | "complete" | "message", session_token?, ... }
+// POST { action: "list" | "complete" | "message" | "call", session_token?, ... }
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -104,6 +115,7 @@ serve(async (req: Request) => {
     if (action === "list") return await listSessions(sb, interviewerIds, vendorId);
     if (action === "complete") return await completeSession(sb, interviewerIds, vendorId, body);
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
+    if (action === "call") return await startModeratorCall(sb, interviewers, vendorId, body);
     if (action === "propose_times") return await proposeTimes(sb, interviewers, vendorId, body);
     if (action === "withdraw_proposal") return await withdrawProposal(sb, interviewerIds, body);
     if (action === "decline_offer" || action === "decline_availability") return await declineOffer(sb, interviewers, body);
@@ -224,6 +236,19 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
   // Availability requests are independent of slots — a fresh request has ZERO
   // slots by definition, so they're fetched before the slot early-return.
   const availabilityRequests = await availabilityRequestsFor(sb, interviewerIds, vendorId);
+  // Remembered click-to-call callback number (prefills the call prompt).
+  // Tolerates the interview_callback_phone column not existing yet (pre-migration
+  // deploy) — falls back to the vendor's profile phone.
+  let callbackPhone: string | null = null;
+  {
+    const { data: vend, error: vErr } = await sb.from("vendors").select("interview_callback_phone,phone").eq("id", vendorId).maybeSingle();
+    if (vErr) {
+      const { data: v2 } = await sb.from("vendors").select("phone").eq("id", vendorId).maybeSingle();
+      callbackPhone = v2?.phone || null;
+    } else {
+      callbackPhone = vend?.interview_callback_phone || vend?.phone || null;
+    }
+  }
   const { data: slots } = await sb
     .from("rp_availability_slots")
     .select("id,study_id,start_at,end_at,status")
@@ -231,7 +256,7 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     .neq("status", "cancelled")
     .order("start_at", { ascending: false });
   const slotList = slots || [];
-  if (!slotList.length) return json({ success: true, sessions: [], availabilityRequests });
+  if (!slotList.length) return json({ success: true, sessions: [], availabilityRequests, callbackPhone });
 
   const slotIds = slotList.map((s: any) => s.id);
   const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean))) as string[];
@@ -289,27 +314,50 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     bySlot.set(b.slot_id, arr);
   }
 
+  // Waitlist per study — for no-show backfill, the moderator can call people who
+  // waitlisted this study to check availability. Blinded like everything else:
+  // invitation id + name only (the phone stays server-side, resolved at call time).
+  const waitlistByStudy = new Map<string, { invitationId: string; name: string }[]>();
+  if (studyIds.length) {
+    const { data: wl } = await sb.from("rp_invitations")
+      .select("id,study_id,submission_id").in("study_id", studyIds).eq("status", "waitlisted");
+    const wlSubIds = Array.from(new Set((wl || []).map((i: any) => i.submission_id).filter(Boolean)));
+    const { data: wlSubs } = wlSubIds.length
+      ? await sb.from("research_panel_signups").select("id,full_name").in("id", wlSubIds)
+      : { data: [] };
+    const wlSubMap = new Map((wlSubs || []).map((s: any) => [s.id, s]));
+    for (const i of wl || []) {
+      const arr = waitlistByStudy.get(i.study_id) || [];
+      arr.push({ invitationId: i.id, name: wlSubMap.get(i.submission_id)?.full_name || "Waitlisted participant" });
+      waitlistByStudy.set(i.study_id, arr);
+    }
+  }
+
   const nowMs = Date.now();
   const sessions = slotList.map((s: any) => {
     const participants = bySlot.get(s.id) || [];
     const confirmed = participants.filter((p: any) => p.status === "confirmed").length;
     const st: any = studyMap.get(s.study_id);
+    const live = new Date(s.end_at || s.start_at).getTime() > nowMs;
     return {
-      slotId: s.id, studyCode: st?.code || "Session", durationMinutes: st?.duration_minutes ?? null,
+      slotId: s.id, studyId: s.study_id, studyCode: st?.code || "Session", durationMinutes: st?.duration_minutes ?? null,
       startAt: s.start_at, endAt: s.end_at,
       meetingLink: linkBySlot.get(s.id) || null,
       files: filesByStudy.get(s.study_id) || [],
       isCompleted: confirmed === 0 && participants.length > 0,
       canComplete: confirmed > 0,
-      // Messaging is for the run-up to the session (and during it): confirmed
-      // participants exist and the session hasn't ended yet.
-      canMessage: confirmed > 0 && new Date(s.end_at || s.start_at).getTime() > nowMs,
+      // Messaging + calling are for the run-up to the session (and during it):
+      // confirmed participants exist and the session hasn't ended yet.
+      canMessage: confirmed > 0 && live,
+      canCall: confirmed > 0 && live,
       messages: msgsBySlot.get(s.id) || [],
       participants,
+      // Waitlist is only actionable while the session is still live.
+      waitlist: live ? (waitlistByStudy.get(s.study_id) || []) : [],
     };
   }).filter((s: any) => s.participants.length > 0);
 
-  return json({ success: true, sessions, availabilityRequests });
+  return json({ success: true, sessions, availabilityRequests, callbackPhone });
 }
 
 // ─────────────────────── moderator availability proposals ───────────────────────
@@ -837,4 +885,132 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
   }
 
   return json({ success: true, sent, failed, batchId });
+}
+
+// ─────────────────────── click-to-call (Twilio masked bridge) ───────────────────────
+//
+// Blinded, like the message relay: the moderator never sees the participant's
+// number. Twilio rings the MODERATOR's callback number first; when they answer,
+// inline TwiML dials the participant and bridges the legs. The participant sees
+// the Cethos Twilio caller ID (TWILIO_FROM_NUMBER), never the moderator's line.
+// Callable targets are (a) a CONFIRMED booking on the moderator's slot, or
+// (b) a WAITLISTED invitation on one of the moderator's studies (no-show
+// backfill). The moderator's callback number is remembered for next time.
+
+// Max calls one moderator can place per 24h (abuse / runaway-cost guard).
+const MAX_CALLS_PER_DAY = 60;
+
+// Normalize a dialled number to E.164 (+<digits>). Returns null if it can't be
+// made into a plausible international number.
+function toE164(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  let s = raw.trim().replace(/[\s()\-.]/g, "");
+  if (s.startsWith("00")) s = "+" + s.slice(2);
+  if (!s.startsWith("+")) {
+    // Bare digits — we can't guess a country code, so require the caller to
+    // include one (leading + or 00). A US-style 10/11-digit fallback is unsafe
+    // for an international panel, so reject instead of mis-dialling.
+    if (/^\d{11,15}$/.test(s)) s = "+" + s; else return null;
+  }
+  return /^\+\d{8,15}$/.test(s) ? s : null;
+}
+
+async function startModeratorCall(sb: any, interviewers: any[], vendorId: string, body: any) {
+  const interviewerIds = interviewers.map((i: any) => i.id);
+  const slotId = String(body.slotId || "");
+  const invitationId = String(body.invitationId || "");
+  const kind = body.kind === "waitlist" ? "waitlist" : "participant";
+  const moderatorPhone = toE164(body.moderatorPhone);
+  if (!slotId || !invitationId) return json({ success: false, error: "slotId and invitationId are required" }, 400);
+  if (!moderatorPhone) return json({ success: false, error: "Enter your callback number in international format, e.g. +14155550123" }, 400);
+
+  const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER");
+  if (!twilioSid || !twilioToken || !twilioFrom) {
+    console.error("[vendor-interviews] TWILIO not configured — sid:", !!twilioSid, "token:", !!twilioToken, "from:", !!twilioFrom);
+    return json({ success: false, error: "Calling isn't configured yet — contact Cethos." }, 503);
+  }
+
+  // Verify the moderator owns this session, and that the invitation is a valid
+  // target: a confirmed booking on the slot, or a waitlisted invite on the same
+  // study. This is the authorization gate that keeps the participant blinded.
+  const { data: slot } = await sb.from("rp_availability_slots")
+    .select("id,interviewer_id,study_id,start_at,end_at,status").eq("id", slotId).maybeSingle();
+  if (!slot || !interviewerIds.includes(slot.interviewer_id)) return json({ success: false, error: "Not your session" }, 403);
+  if (slot.status === "cancelled") return json({ success: false, error: "Session is cancelled" }, 400);
+  if (new Date(slot.end_at || slot.start_at).getTime() <= Date.now()) {
+    return json({ success: false, error: "This session has already ended" }, 400);
+  }
+
+  if (kind === "participant") {
+    const { data: bk } = await sb.from("rp_bookings")
+      .select("id,invitation_id").eq("slot_id", slotId).eq("invitation_id", invitationId).eq("status", "confirmed").maybeSingle();
+    if (!bk) return json({ success: false, error: "That participant isn't a confirmed booking on this session" }, 400);
+  } else {
+    const { data: wl } = await sb.from("rp_invitations")
+      .select("id,study_id,status").eq("id", invitationId).maybeSingle();
+    if (!wl || wl.study_id !== slot.study_id || wl.status !== "waitlisted") {
+      return json({ success: false, error: "That person isn't on this study's waitlist" }, 400);
+    }
+  }
+
+  // Abuse / runaway-cost guard.
+  const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { count: recentCalls } = await sb.from("rp_moderator_calls")
+    .select("id", { count: "exact", head: true }).eq("vendor_id", vendorId).gte("created_at", dayAgo);
+  if ((recentCalls || 0) >= MAX_CALLS_PER_DAY) {
+    return json({ success: false, error: "Daily call limit reached — try again later or contact Cethos." }, 429);
+  }
+
+  // Resolve the participant's phone (server-side only — never returned).
+  const { data: inv } = await sb.from("rp_invitations").select("id,submission_id").eq("id", invitationId).maybeSingle();
+  const subId = inv?.submission_id;
+  const { data: sub } = subId ? await sb.from("research_panel_signups").select("id,full_name,phone").eq("id", subId).maybeSingle() : { data: null };
+  const participantPhone = toE164(sub?.phone);
+
+  // Remember the moderator's callback number for next time (best-effort).
+  await sb.from("vendors").update({ interview_callback_phone: moderatorPhone }).eq("id", vendorId);
+
+  // Audit row first, so a failure stays visible. Participant number is NOT stored.
+  const { data: logRow } = await sb.from("rp_moderator_calls").insert({
+    slot_id: slotId, study_id: slot.study_id, interviewer_id: slot.interviewer_id,
+    invitation_id: invitationId, vendor_id: vendorId, kind,
+    moderator_phone: moderatorPhone, status: "initiated",
+  }).select("id").single();
+
+  if (!participantPhone) {
+    if (logRow) await sb.from("rp_moderator_calls").update({ status: "failed", error: "participant has no phone on file" }).eq("id", logRow.id);
+    return json({ success: false, error: "This participant has no phone number on file — use Message participants instead." }, 400);
+  }
+
+  // Place the masked bridge. Leg 1: call the moderator. On answer, inline TwiML
+  // announces + dials the participant with the Cethos number as caller ID.
+  const twiml =
+    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+    `<Say voice="alice">Connecting you to your Cethos Research Panel participant. Please hold.</Say>` +
+    `<Dial callerId="${escapeHtml(twilioFrom)}" timeout="30" answerOnBridge="true">${escapeHtml(participantPhone)}</Dial>` +
+    `</Response>`;
+  const params = new URLSearchParams({ To: moderatorPhone, From: twilioFrom, Twiml: twiml });
+
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Calls.json`, {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.error("[vendor-interviews] Twilio call failed:", res.status, errBody.slice(0, 400));
+      if (logRow) await sb.from("rp_moderator_calls").update({ status: "failed", error: `twilio ${res.status}` }).eq("id", logRow.id);
+      return json({ success: false, error: "The call couldn't be placed. Check your callback number, or try again shortly." }, 502);
+    }
+    const call = await res.json().catch(() => ({}));
+    if (logRow) await sb.from("rp_moderator_calls").update({ twilio_call_sid: call.sid || null }).eq("id", logRow.id);
+    return json({ success: true, callSid: call.sid || null });
+  } catch (e) {
+    console.error("[vendor-interviews] Twilio call error:", e instanceof Error ? e.message : e);
+    if (logRow) await sb.from("rp_moderator_calls").update({ status: "failed", error: "network" }).eq("id", logRow.id);
+    return json({ success: false, error: "The call couldn't be placed. Please try again." }, 502);
+  }
 }

@@ -27,8 +27,15 @@ export interface InterviewFile {
   url: string;
   sentAt: string;
 }
+// A study waitlister the moderator can call to backfill a no-show. Blinded —
+// only an id + name; the phone is resolved server-side at call time.
+export interface WaitlistEntry {
+  invitationId: string;
+  name: string;
+}
 export interface InterviewSession {
   slotId: string;
+  studyId: string;
   studyCode: string;
   durationMinutes: number | null;
   startAt: string;
@@ -38,8 +45,12 @@ export interface InterviewSession {
   isCompleted: boolean;
   canComplete: boolean;
   canMessage: boolean;
+  /** The session is live and has confirmed participants — click-to-call is available. */
+  canCall: boolean;
   messages: ModeratorMessageBatch[];
   participants: InterviewParticipant[];
+  /** People waitlisted on this study — call them to fill a no-show. */
+  waitlist: WaitlistEntry[];
 }
 
 // A staff request for this moderator's availability on a study, plus the
@@ -78,15 +89,18 @@ export interface AvailabilityRequest {
 export interface MyInterviews {
   sessions: InterviewSession[];
   availabilityRequests: AvailabilityRequest[];
+  /** The moderator's remembered click-to-call callback number (prefills the prompt). */
+  callbackPhone: string | null;
 }
 
 export async function getMyInterviews(token: string): Promise<MyInterviews> {
   const res = await safePost(URL, { session_token: token, action: "list" });
   const data = await res.json().catch(() => ({}));
-  if (!data.success) return { sessions: [], availabilityRequests: [] };
+  if (!data.success) return { sessions: [], availabilityRequests: [], callbackPhone: null };
   return {
     sessions: (data.sessions || []) as InterviewSession[],
     availabilityRequests: (data.availabilityRequests || []) as AvailabilityRequest[],
+    callbackPhone: (data.callbackPhone ?? null) as string | null,
   };
 }
 
@@ -149,5 +163,20 @@ export async function messageParticipants(
   attachPaths?: string[],
 ): Promise<{ success: boolean; sent?: number; failed?: number; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "message", slotId, message, invitationIds, attachPaths });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// Masked click-to-call: Twilio rings the moderator's callbackPhone first, then
+// bridges to the participant — neither side sees the other's number. `kind` is
+// "participant" for a confirmed booking on the slot, or "waitlist" for a study
+// waitlister (no-show backfill). The callback number is remembered server-side.
+export async function callParticipant(
+  token: string,
+  slotId: string,
+  invitationId: string,
+  moderatorPhone: string,
+  kind: "participant" | "waitlist" = "participant",
+): Promise<{ success: boolean; callSid?: string | null; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "call", slotId, invitationId, moderatorPhone, kind });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
