@@ -14,7 +14,7 @@ Format: newest sessions at the top.
 
 ---
 
-## Session — July 16, 2026 (Password auth — Phase 3: frontend, v2026.7.11)
+## Session — July 16, 2026 (Password auth — Phase 3: frontend, v2026.7.18)
 
 Wired the password + trusted-device UX. Frontend only; backend already landed (Phases 1–2).
 
@@ -22,10 +22,10 @@ Wired the password + trusted-device UX. Frontend only; backend already landed (P
 - **`LoginPage.tsx`**: state machine email → (password | OTP) → OTP step-up → set-password (for resets). "Remember this browser" checkbox (off by default, shown only when the vendor has a password). Forgot-password = OTP → set a new password. "Email me a code instead" recovery. Keeps the SMS channel-switch + network-error UI.
 - **Profile → new `SecuritySection`**: set/change password + list/revoke remembered browsers ("sign out everywhere"). Uses the public auth-check for `has_password`.
 - **Dashboard**: dismissible `PasswordSetupReminder` nudge (opt-in per rollout decision).
-- Release note → **2026.7.11**.
+- Release note → **2026.7.18**.
 - **Verified locally:** whole-app `tsc` clean, `vite build` OK, lint clean on touched files.
 
-**Not locally testable end-to-end:** on localhost the frontend routes auth to the Supabase edge (not the new `/sb` Netlify fns), and the repo isn't `netlify link`ed (no local DB env) → verify on a Netlify **deploy preview**. Admin `client/lib/portalRegistry.ts` vendor entry should bump to 2026.7.11 (separate repo). Policy note: OTP-only login still available for password users (recovery) — making password mandatory is an optional follow-up.
+**Not locally testable end-to-end:** on localhost the frontend routes auth to the Supabase edge (not the new `/sb` Netlify fns), and the repo isn't `netlify link`ed (no local DB env) → verify on a Netlify **deploy preview**. Admin `client/lib/portalRegistry.ts` vendor entry should bump to 2026.7.18 (separate repo). Policy note: OTP-only login still available for password users (recovery) — making password mandatory is an optional follow-up.
 
 ---
 
@@ -52,7 +52,7 @@ New `cethos_trust_vendor` HttpOnly/Secure/SameSite=Lax/`.cethos.com` cookie + `T
 All Phase-2 files typecheck clean; prod DML cycle (insert/active/revoke/delete) validated.
 
 ### Next (Phase 3 — frontend)
-LoginPage state machine (email → password | OTP → step-up), "Remember this browser" checkbox (off by default) → passes `remember_device` to verify, set/forgot-password screens, Settings→Devices UI, "add a password" reminder, release-note bump (2026.7.11) + admin portalRegistry. Optional policy follow-up: for has_password vendors, disable standalone OTP-only login (make password mandatory) — currently OTP-only remains available as recovery.
+LoginPage state machine (email → password | OTP → step-up), "Remember this browser" checkbox (off by default) → passes `remember_device` to verify, set/forgot-password screens, Settings→Devices UI, "add a password" reminder, release-note bump (2026.7.18) + admin portalRegistry. Optional policy follow-up: for has_password vendors, disable standalone OTP-only login (make password mandatory) — currently OTP-only remains available as recovery.
 
 ---
 
@@ -93,14 +93,14 @@ Added SMS as a fallback delivery channel for the passwordless login code, to hel
 
 ### Frontend — `LoginPage.tsx`
 - Captures `has_phone` from `checkVendor`; the code-entry step shows "Text me the code instead" (SMS) when a phone is on file, plus "Email me the code instead" to switch back. Resend reuses the last-used channel; the "Code sent/texted to …" label reflects the channel.
-- Version bumped to `2026.7.10` (releaseNotes.ts).
+- Version bumped to `2026.7.17` (releaseNotes.ts).
 
 ### Verified
 - SMS path smoke-tested end-to-end via a throwaway vendor: Twilio accepted + handset delivery confirmed; `TWILIO_FROM_NUMBER` is SMS-capable.
 - Coverage: 1,166/1,816 active vendors (64%) have a usable phone on file.
 
 ### Follow-ups
-- Bump the admin repo `client/lib/portalRegistry.ts` vendor entry to `2026.7.10` (separate repo).
+- Bump the admin repo `client/lib/portalRegistry.ts` vendor entry to `2026.7.17` (separate repo).
 - Localhost dev hits the Supabase edge `vendor-auth-otp-send` (not this Netlify fn), which still ignores `channel`; SMS works in deploy previews/prod. Port to the edge fn later if dev parity is needed.
 - Remove the stray Supabase edge fn `vendor-auth-otp-send-sms` deployed during exploration — not used by the frontend.
 
