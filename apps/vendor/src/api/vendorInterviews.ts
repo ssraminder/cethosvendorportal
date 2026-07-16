@@ -33,6 +33,16 @@ export interface WaitlistEntry {
   invitationId: string;
   name: string;
 }
+// Someone who registered interest in THIS session but whom staff haven't
+// confirmed yet. Blinded exactly like a waitlister.
+export interface InterestedEntry {
+  invitationId: string;
+  bookingId: string;
+  name: string;
+}
+// Which cohort a contact target belongs to. The server re-resolves this from the
+// database on every call — it's a UI hint, not an authorization claim.
+export type ContactKind = "participant" | "interested" | "waitlist";
 export interface InterviewSession {
   slotId: string;
   studyId: string;
@@ -43,12 +53,16 @@ export interface InterviewSession {
   meetingLink: string | null;
   files: InterviewFile[];
   isCompleted: boolean;
+  /** Confirmed participants exist — only they can be marked attended and rated. */
   canComplete: boolean;
+  /** The session is live and someone (any cohort) is reachable. */
   canMessage: boolean;
-  /** The session is live and has confirmed participants — click-to-call is available. */
+  /** The session is live and someone (any cohort) is reachable. */
   canCall: boolean;
   messages: ModeratorMessageBatch[];
   participants: InterviewParticipant[];
+  /** Registered interest in this session, awaiting staff confirmation. */
+  interested: InterestedEntry[];
   /** People waitlisted on this study — call them to fill a no-show. */
   waitlist: WaitlistEntry[];
 }
@@ -163,9 +177,13 @@ export async function completeInterview(
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 
-// Blinded relay: the message is emailed to the selected participants by Cethos
+// Blinded relay: the message is emailed to the selected people by Cethos
 // (participants@cethosresearch.com); the moderator never sees their addresses
-// and replies go to Cethos staff. invitationIds omitted = all confirmed.
+// and replies go to Cethos staff. invitationIds may name confirmed participants,
+// interested candidates or waitlisters — the server resolves which cohort each
+// one is in and words the email accordingly. Omitted = all confirmed.
+// Attachments are confirmed-participants-only and the send is rejected outright
+// if the selection includes anyone else.
 export async function messageParticipants(
   token: string,
   slotId: string,
@@ -179,28 +197,29 @@ export async function messageParticipants(
 
 // Masked click-to-call: Twilio rings the moderator's callbackPhone first, then
 // bridges to the participant — neither side sees the other's number. `kind` is
-// "participant" for a confirmed booking on the slot, or "waitlist" for a study
-// waitlister (no-show backfill). The callback number is remembered server-side.
+// "participant" for a confirmed booking on the slot, "interested" for a candidate
+// awaiting staff confirmation, or "waitlist" for a study waitlister (no-show
+// backfill). The callback number is remembered server-side.
 export async function callParticipant(
   token: string,
   slotId: string,
   invitationId: string,
   moderatorPhone: string,
-  kind: "participant" | "waitlist" = "participant",
+  kind: ContactKind = "participant",
 ): Promise<{ success: boolean; callSid?: string | null; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "call", slotId, invitationId, moderatorPhone, kind });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 
-// One-way outbound SMS or WhatsApp to a participant / waitlister, sent from the
-// Cethos number (blinded — replies aren't routed back yet).
+// One-way outbound SMS or WhatsApp to a participant / interested candidate /
+// waitlister, sent from the Cethos number (blinded — replies aren't routed back yet).
 export async function textParticipant(
   token: string,
   slotId: string,
   invitationId: string,
   channel: "sms" | "whatsapp",
   message: string,
-  kind: "participant" | "waitlist" = "participant",
+  kind: ContactKind = "participant",
 ): Promise<{ success: boolean; messageSid?: string | null; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "send_text", slotId, invitationId, channel, message, kind });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));

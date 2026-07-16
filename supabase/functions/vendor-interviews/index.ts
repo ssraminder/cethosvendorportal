@@ -52,6 +52,19 @@
 //     configured — so the UI only shows what will work. Twilio 401/403 now
 //     surfaces as a clear "not set up correctly" message (not "bad number").
 //
+// v6 (2026-07-15, Phase 6e — reach the whole cohort, not just the confirmed):
+//   - "list" also returns each session's INTERESTED candidates (a booking on this
+//     slot awaiting staff confirmation), so the moderator can chase the people
+//     who haven't been confirmed yet. Sessions now surface as soon as ANYONE is
+//     reachable (interested / confirmed / waitlisted) and the session is live —
+//     previously a slot with no confirmed booking was filtered out entirely,
+//     which hid every study that needed chasing most.
+//   - "message" (email) reaches interested + waitlist too, not only confirmed.
+//     Waitlisters have no booking, so rp_moderator_messages keys recipients on
+//     invitation_id (booking_id is null for them) and records `kind`.
+//   - Relay emails: added es/sk/nl. es matters — it's the biggest live locale
+//     and Spanish moderator mail was silently going out in English.
+//
 // Auth: vendor_sessions bearer token (header) OR session_token in the body.
 // All rp_* access is via service_role — the sanctioned cross-system boundary.
 //
@@ -271,8 +284,12 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
 
   const slotIds = slotList.map((s: any) => s.id);
   const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean))) as string[];
-  const [bkRes, studyRes, msgRes, filesByStudy] = await Promise.all([
+  const [bkRes, intRes, studyRes, msgRes, filesByStudy] = await Promise.all([
     sb.from("rp_bookings").select("id,slot_id,invitation_id,status,meeting_link").in("slot_id", slotIds).in("status", ["confirmed", "completed", "no_show"]),
+    // Interested = a booking on this slot that staff haven't confirmed yet. Kept
+    // OUT of `participants` on purpose: that array drives completion + rating,
+    // and an unconfirmed candidate must never be ratable or count as a seat.
+    sb.from("rp_bookings").select("id,slot_id,invitation_id").in("slot_id", slotIds).eq("status", "interested"),
     studyIds.length ? sb.from("rp_studies").select("id,code,duration_minutes").in("id", studyIds) : Promise.resolve({ data: [] }),
     // Sent-message history (one entry per batch). Tolerates the table not
     // existing yet (pre-migration deploy) — history just comes back empty.
@@ -280,6 +297,7 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     studyFiles(sb, studyIds),
   ]);
   const bookings = bkRes.data || [];
+  const interestedBks = intRes.data || [];
   const studyMap = new Map((studyRes.data || []).map((s: any) => [s.id, s]));
 
   // Group message rows (one per recipient) into batches for display.
@@ -297,7 +315,9 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     msgsBySlot.set(b.slotId, arr);
   }
 
-  const invIds = Array.from(new Set(bookings.map((b: any) => b.invitation_id)));
+  // Names are resolved for both cohorts in one round-trip; feedback only ever
+  // exists for real (confirmed/completed) bookings.
+  const invIds = Array.from(new Set([...bookings, ...interestedBks].map((b: any) => b.invitation_id)));
   const bookingIds = bookings.map((b: any) => b.id);
   const [invRes, fbRes] = await Promise.all([
     invIds.length ? sb.from("rp_invitations").select("id,submission_id").in("id", invIds) : Promise.resolve({ data: [] }),
@@ -325,6 +345,16 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     bySlot.set(b.slot_id, arr);
   }
 
+  // Interested per slot — blinded to id + name, exactly like the waitlist.
+  const interestedBySlot = new Map<string, { invitationId: string; bookingId: string; name: string }[]>();
+  for (const b of interestedBks) {
+    const inv: any = invMap.get(b.invitation_id);
+    const sub: any = inv ? subMap.get(inv.submission_id) : null;
+    const arr = interestedBySlot.get(b.slot_id) || [];
+    arr.push({ invitationId: b.invitation_id, bookingId: b.id, name: sub?.full_name || "Interested candidate" });
+    interestedBySlot.set(b.slot_id, arr);
+  }
+
   // Waitlist per study — for no-show backfill, the moderator can call people who
   // waitlisted this study to check availability. Blinded like everything else:
   // invitation id + name only (the phone stays server-side, resolved at call time).
@@ -350,23 +380,30 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     const confirmed = participants.filter((p: any) => p.status === "confirmed").length;
     const st: any = studyMap.get(s.study_id);
     const live = new Date(s.end_at || s.start_at).getTime() > nowMs;
+    // Unconfirmed cohorts are only actionable while the session is still live.
+    const interested = live ? (interestedBySlot.get(s.id) || []) : [];
+    const waitlist = live ? (waitlistByStudy.get(s.study_id) || []) : [];
     return {
       slotId: s.id, studyId: s.study_id, studyCode: st?.code || "Session", durationMinutes: st?.duration_minutes ?? null,
       startAt: s.start_at, endAt: s.end_at,
       meetingLink: linkBySlot.get(s.id) || null,
       files: filesByStudy.get(s.study_id) || [],
       isCompleted: confirmed === 0 && participants.length > 0,
+      // Completion + rating stay strictly confirmed-only.
       canComplete: confirmed > 0,
-      // Messaging + calling are for the run-up to the session (and during it):
-      // confirmed participants exist and the session hasn't ended yet.
-      canMessage: confirmed > 0 && live,
-      canCall: confirmed > 0 && live,
+      // Contact is for the run-up to the session (and during it): the session is
+      // live and SOMEONE is reachable. Gating these on confirmed > 0 used to hide
+      // the studies that most need chasing — the ones where nobody is confirmed yet.
+      canMessage: live && (confirmed > 0 || interested.length > 0 || waitlist.length > 0),
+      canCall: live && (confirmed > 0 || interested.length > 0 || waitlist.length > 0),
       messages: msgsBySlot.get(s.id) || [],
       participants,
-      // Waitlist is only actionable while the session is still live.
-      waitlist: live ? (waitlistByStudy.get(s.study_id) || []) : [],
+      interested,
+      waitlist,
     };
-  }).filter((s: any) => s.participants.length > 0);
+  // A session is worth showing if it has history to complete/review, or anyone
+  // still reachable. Previously participants-only, which dropped whole studies.
+  }).filter((s: any) => s.participants.length > 0 || s.interested.length > 0 || s.waitlist.length > 0);
 
   return json({ success: true, sessions, availabilityRequests, callbackPhone, channels: twilioChannels() });
 }
@@ -648,12 +685,17 @@ async function completeSession(sb: any, interviewerIds: string[], vendorId: stri
 // (they write in the session language); only the surrounding template is
 // localized, keyed by the participant's invitation locale. Mirrors the locale
 // set of interview-schedule/emailStrings.ts; falls back to English.
-interface RelayStrings { subject: string; hello: string; intro: string; filesLabel: string; replyNote: string; signoff: string }
+// `intro` addresses a confirmed participant — they have a seat, so the session
+// time is theirs to be told. `introPending` addresses someone who has NOT been
+// confirmed (an interested candidate or a waitlister): it names the study but no
+// session time, so the email can never imply a seat that staff haven't granted.
+interface RelayStrings { subject: string; hello: string; intro: string; introPending: string; filesLabel: string; replyNote: string; signoff: string }
 const RELAY_STRINGS: Record<string, RelayStrings> = {
   en: {
     subject: "A message from your interviewer — {code}",
     hello: "Hello {name},",
     intro: "Your interviewer, {interviewer}, sent you a message about your upcoming research session ({code}, {when}):",
+    introPending: "Your interviewer, {interviewer}, sent you a message about the research study you registered interest in ({code}):",
     filesLabel: "Files (links valid for 7 days):",
     replyNote: "You can reply directly to this email — the Cethos Research Panel team will pass your reply on to your interviewer.",
     signoff: "Cethos Research Panel",
@@ -662,6 +704,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Eine Nachricht von Ihrer Interviewerin / Ihrem Interviewer — {code}",
     hello: "Guten Tag {name},",
     intro: "Ihre Interviewerin / Ihr Interviewer, {interviewer}, hat Ihnen eine Nachricht zu Ihrer bevorstehenden Studiensitzung ({code}, {when}) geschickt:",
+    introPending: "Ihre Interviewerin / Ihr Interviewer, {interviewer}, hat Ihnen eine Nachricht zu der Studie geschickt, für die Sie Ihr Interesse bekundet haben ({code}):",
     filesLabel: "Dateien (Links 7 Tage gültig):",
     replyNote: "Sie können direkt auf diese E-Mail antworten — das Cethos-Team leitet Ihre Antwort an Ihre Interviewerin / Ihren Interviewer weiter.",
     signoff: "Cethos Research Panel",
@@ -670,6 +713,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Un message de votre intervieweur — {code}",
     hello: "Bonjour {name},",
     intro: "Votre intervieweur, {interviewer}, vous a envoyé un message concernant votre prochaine session de recherche ({code}, {when}) :",
+    introPending: "Votre intervieweur, {interviewer}, vous a envoyé un message concernant l'étude pour laquelle vous avez manifesté votre intérêt ({code}) :",
     filesLabel: "Fichiers (liens valables 7 jours) :",
     replyNote: "Vous pouvez répondre directement à cet e-mail — l'équipe du panel de recherche Cethos transmettra votre réponse à votre intervieweur.",
     signoff: "Cethos Research Panel",
@@ -678,6 +722,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Un messaggio dal Suo intervistatore — {code}",
     hello: "Gentile {name},",
     intro: "Il Suo intervistatore, {interviewer}, Le ha inviato un messaggio riguardo alla Sua prossima sessione di ricerca ({code}, {when}):",
+    introPending: "Il Suo intervistatore, {interviewer}, Le ha inviato un messaggio riguardo allo studio per cui ha manifestato interesse ({code}):",
     filesLabel: "File (link validi per 7 giorni):",
     replyNote: "Può rispondere direttamente a questa e-mail — il team del panel di ricerca Cethos inoltrerà la Sua risposta all'intervistatore.",
     signoff: "Cethos Research Panel",
@@ -686,6 +731,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Zpráva od vašeho tazatele — {code}",
     hello: "Dobrý den, {name},",
     intro: "Váš tazatel {interviewer} vám poslal zprávu ohledně vaší nadcházející výzkumné schůzky ({code}, {when}):",
+    introPending: "Váš tazatel {interviewer} vám poslal zprávu ohledně studie, o kterou jste projevil(a) zájem ({code}):",
     filesLabel: "Soubory (odkazy platné 7 dní):",
     replyNote: "Na tento e-mail můžete přímo odpovědět — tým výzkumného panelu Cethos vaši odpověď předá tazateli.",
     signoff: "Cethos Research Panel",
@@ -694,6 +740,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "Wiadomość od osoby prowadzącej wywiad — {code}",
     hello: "Dzień dobry, {name},",
     intro: "Osoba prowadząca Państwa wywiad, {interviewer}, przesłała wiadomość dotyczącą nadchodzącej sesji badawczej ({code}, {when}):",
+    introPending: "Osoba prowadząca Państwa wywiad, {interviewer}, przesłała wiadomość dotyczącą badania, którym wyrazili Państwo zainteresowanie ({code}):",
     filesLabel: "Pliki (linki ważne przez 7 dni):",
     replyNote: "Mogą Państwo odpowiedzieć bezpośrednio na tę wiadomość — zespół panelu badawczego Cethos przekaże odpowiedź osobie prowadzącej.",
     signoff: "Cethos Research Panel",
@@ -702,6 +749,7 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "面接担当者からのメッセージ — {code}",
     hello: "{name} 様",
     intro: "ご担当のインタビュアー {interviewer} より、今後のリサーチセッション（{code}、{when}）についてメッセージが届いています。",
+    introPending: "ご関心をお寄せいただいたリサーチ（{code}）について、インタビュアー {interviewer} よりメッセージが届いています。",
     filesLabel: "ファイル（リンクの有効期間は7日間です）：",
     replyNote: "このメールにそのまま返信していただけます。Cethos リサーチパネル担当チームがインタビュアーにお伝えします。",
     signoff: "Cethos Research Panel",
@@ -710,11 +758,75 @@ const RELAY_STRINGS: Record<string, RelayStrings> = {
     subject: "ข้อความจากผู้สัมภาษณ์ของคุณ — {code}",
     hello: "เรียน คุณ{name}",
     intro: "ผู้สัมภาษณ์ของคุณ {interviewer} ได้ส่งข้อความเกี่ยวกับเซสชันการวิจัยที่กำลังจะมาถึง ({code}, {when}):",
+    introPending: "ผู้สัมภาษณ์ของคุณ {interviewer} ได้ส่งข้อความเกี่ยวกับการวิจัยที่คุณแสดงความสนใจ ({code}):",
     filesLabel: "ไฟล์ (ลิงก์ใช้งานได้ 7 วัน):",
     replyNote: "คุณสามารถตอบกลับอีเมลนี้ได้โดยตรง ทีมงาน Cethos Research Panel จะส่งต่อคำตอบของคุณไปยังผู้สัมภาษณ์",
     signoff: "Cethos Research Panel",
   },
+  // es is the panel's single biggest invitation locale — it was missing here, so
+  // every Spanish moderator relay silently fell back to English.
+  es: {
+    subject: "Un mensaje de su entrevistador/a — {code}",
+    hello: "Hola {name}:",
+    intro: "Su entrevistador/a, {interviewer}, le ha enviado un mensaje sobre su próxima sesión de investigación ({code}, {when}):",
+    introPending: "Su entrevistador/a, {interviewer}, le ha enviado un mensaje sobre el estudio en el que ha manifestado su interés ({code}):",
+    filesLabel: "Archivos (enlaces válidos durante 7 días):",
+    replyNote: "Puede responder directamente a este correo electrónico: el equipo del panel de investigación de Cethos hará llegar su respuesta a su entrevistador/a.",
+    signoff: "Cethos Research Panel",
+  },
+  sk: {
+    subject: "Správa od vášho anketára — {code}",
+    hello: "Dobrý deň, {name},",
+    intro: "Váš anketár {interviewer} vám poslal správu týkajúcu sa vášho nadchádzajúceho výskumného stretnutia ({code}, {when}):",
+    introPending: "Váš anketár {interviewer} vám poslal správu týkajúcu sa štúdie, o ktorú ste prejavili záujem ({code}):",
+    filesLabel: "Súbory (odkazy platné 7 dní):",
+    replyNote: "Na tento e-mail môžete priamo odpovedať — tím výskumného panelu Cethos vašu odpoveď odovzdá anketárovi.",
+    signoff: "Cethos Research Panel",
+  },
+  nl: {
+    subject: "Een bericht van uw interviewer — {code}",
+    hello: "Beste {name},",
+    intro: "Uw interviewer, {interviewer}, heeft u een bericht gestuurd over uw aanstaande onderzoekssessie ({code}, {when}):",
+    introPending: "Uw interviewer, {interviewer}, heeft u een bericht gestuurd over het onderzoek waarvoor u belangstelling hebt getoond ({code}):",
+    filesLabel: "Bestanden (links 7 dagen geldig):",
+    replyNote: "U kunt rechtstreeks op deze e-mail antwoorden — het team van het Cethos Research Panel geeft uw antwoord door aan uw interviewer.",
+    signoff: "Cethos Research Panel",
+  },
 };
+
+// A resolvable email recipient on a session. bookingId is null for waitlisters —
+// they're study-level invitations with no booking, which is why
+// rp_moderator_messages keys the audit row on invitation_id.
+interface MessageRecipient {
+  invitationId: string;
+  bookingId: string | null;
+  participantTimezone: string | null;
+  kind: "participant" | "interested" | "waitlist";
+}
+
+// Everyone a moderator may email about this session, keyed by invitation id.
+// Built from the database, never from the request, so cohort membership can't be
+// spoofed by the caller. A booking on the slot wins over a study waitlist entry.
+async function messageAudience(sb: any, slot: any): Promise<Map<string, MessageRecipient>> {
+  const [bkRes, wlRes] = await Promise.all([
+    sb.from("rp_bookings").select("id,invitation_id,participant_timezone,status")
+      .eq("slot_id", slot.id).in("status", ["confirmed", "interested"]),
+    sb.from("rp_invitations").select("id").eq("study_id", slot.study_id).eq("status", "waitlisted"),
+  ]);
+  const out = new Map<string, MessageRecipient>();
+  for (const b of bkRes.data || []) {
+    out.set(b.invitation_id, {
+      invitationId: b.invitation_id,
+      bookingId: b.id,
+      participantTimezone: b.participant_timezone ?? null,
+      kind: b.status === "confirmed" ? "participant" : "interested",
+    });
+  }
+  for (const i of wlRes.data || []) {
+    if (!out.has(i.id)) out.set(i.id, { invitationId: i.id, bookingId: null, participantTimezone: null, kind: "waitlist" });
+  }
+  return out;
+}
 
 const fill = (s: string, ctx: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => ctx[k] ?? "");
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -789,15 +901,28 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
     return json({ success: false, error: "Daily message limit reached for this session" }, 429);
   }
 
-  // Recipients: confirmed bookings on this slot (optionally narrowed by the
-  // moderator's per-participant selection).
-  let bkQuery = sb.from("rp_bookings").select("id,invitation_id,participant_timezone").eq("slot_id", slotId).eq("status", "confirmed");
-  if (onlyInvitationIds) bkQuery = bkQuery.in("invitation_id", onlyInvitationIds);
-  const { data: bks } = await bkQuery;
-  const recipients = bks || [];
-  if (!recipients.length) return json({ success: false, error: "No confirmed participants to message" }, 400);
+  // Everyone this moderator may write to on this session, resolved SERVER-SIDE.
+  // The client sends invitation ids only — never the cohort — so a caller can't
+  // relabel a stranger as a participant to get mail sent to them.
+  const audience = await messageAudience(sb, slot);
+  const recipients: MessageRecipient[] = onlyInvitationIds
+    ? onlyInvitationIds.map((id) => audience.get(id)).filter(Boolean) as MessageRecipient[]
+    // Default (no selection) stays confirmed-only — same as before this cohort work.
+    : [...audience.values()].filter((r) => r.kind === "participant");
+  if (!recipients.length) {
+    return json({ success: false, error: onlyInvitationIds
+      ? "None of the people you selected can be messaged on this session"
+      : "No confirmed participants to message" }, 400);
+  }
 
-  const invIds = recipients.map((b: any) => b.invitation_id);
+  // Interview documents are client material shared for the session itself, so
+  // they go to confirmed participants only. Fail loud rather than silently
+  // dropping the attachments from some recipients' mail.
+  if (attachPaths.length && recipients.some((r) => r.kind !== "participant")) {
+    return json({ success: false, error: "Interview documents can only be sent to confirmed participants — remove the attachments, or select only confirmed participants." }, 400);
+  }
+
+  const invIds = recipients.map((r) => r.invitationId);
   const [invRes, studyRes] = await Promise.all([
     sb.from("rp_invitations").select("id,submission_id,locale").in("id", invIds),
     sb.from("rp_studies").select("id,code").eq("id", slot.study_id).maybeSingle(),
@@ -829,15 +954,16 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
     : "";
 
   let sent = 0, failed = 0;
-  for (const bk of recipients) {
-    const inv: any = invMap.get(bk.invitation_id);
+  for (const r of recipients) {
+    const inv: any = invMap.get(r.invitationId);
     const sub: any = inv ? subMap.get(inv.submission_id) : null;
 
     // Audit row first — a relay failure stays visible (relayed_at null + error).
     // file_* keys only included when files are attached, so a pre-migration
     // deploy still handles plain text messages.
     const { data: row, error: insErr } = await sb.from("rp_moderator_messages").insert({
-      batch_id: batchId, slot_id: slotId, booking_id: bk.id,
+      batch_id: batchId, slot_id: slotId, booking_id: r.bookingId,
+      invitation_id: r.invitationId, kind: r.kind,
       interviewer_id: slot.interviewer_id, vendor_id: vendorId,
       body: message || "(files only)",
       ...(attachedFiles.length ? {
@@ -854,11 +980,15 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
 
     const locale = (inv?.locale || "en").toLowerCase();
     const s = RELAY_STRINGS[locale] || RELAY_STRINGS.en;
-    const when = formatWhen(slot.start_at, locale, bk.participant_timezone || "UTC");
+    // Only a confirmed participant is told the session time — for an interested
+    // candidate or a waitlister the seat isn't theirs yet, so the copy names the
+    // study and nothing more.
+    const isConfirmed = r.kind === "participant";
+    const when = isConfirmed ? formatWhen(slot.start_at, locale, r.participantTimezone || "UTC") : "";
     const ctx = { name: sub.full_name || "", interviewer: interviewerName, code: studyCode, when };
     const html =
       `<p>${escapeHtml(fill(s.hello, ctx))}</p>` +
-      `<p>${escapeHtml(fill(s.intro, ctx))}</p>` +
+      `<p>${escapeHtml(fill(isConfirmed ? s.intro : s.introPending, ctx))}</p>` +
       (message ? `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #0d9488;background:#f0fdfa;color:#111">${bodyHtml}</blockquote>` : "") +
       filesHtml(s.filesLabel) +
       `<p>${escapeHtml(s.replyNote)}</p>` +
@@ -879,12 +1009,22 @@ async function sendModeratorMessage(sb: any, interviewers: any[], vendorId: stri
     const { data: cfg } = await sb.from("rp_config").select("value").eq("key", "staff_notify_emails").maybeSingle();
     const staff: string[] = Array.isArray(cfg?.value) ? cfg.value : [];
     const whenUtc = formatWhen(slot.start_at, "en-GB", "UTC") + " (UTC)";
+    // Spell out WHICH cohorts were written to — staff oversight of a message to
+    // unconfirmed candidates matters more than one to the already-confirmed.
+    const COHORT_LABEL: Record<string, string> = {
+      participant: "confirmed participant", interested: "interested candidate", waitlist: "waitlisted person",
+    };
+    const mix = ["participant", "interested", "waitlist"]
+      .map((k) => ({ k, n: recipients.filter((r) => r.kind === k).length }))
+      .filter((x) => x.n > 0)
+      .map((x) => `${x.n} ${COHORT_LABEL[x.k]}${x.n === 1 ? "" : "s"}`)
+      .join(", ");
     for (const to of staff) {
       await sendRelayEmail({
         to,
         subject: `Moderator message relayed — ${studyCode}`,
         html:
-          `<p>${escapeHtml(interviewerName)} messaged ${sent} participant(s) of ${escapeHtml(studyCode)} (session ${escapeHtml(whenUtc)}) via the vendor portal.${failed ? ` ${failed} relay(s) failed.` : ""}</p>` +
+          `<p>${escapeHtml(interviewerName)} messaged ${escapeHtml(mix)} of ${escapeHtml(studyCode)} (session ${escapeHtml(whenUtc)}) via the vendor portal — ${sent} sent.${failed ? ` ${failed} relay(s) failed.` : ""}</p>` +
           (message ? `<blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #6366f1;background:#eef2ff;color:#111">${bodyHtml}</blockquote>` : "") +
           filesHtml("Attached interview files (7-day links):") +
           `<p>Replies from participants arrive at the research-panel mailbox — forward them to the moderator as needed.</p>`,
@@ -952,6 +1092,10 @@ function twilioErrorMessage(status: number, verb: string): string {
   return `${verb} couldn't be completed. Please try again shortly.`;
 }
 
+// Who a moderator may contact on a session: a confirmed participant, a candidate
+// awaiting staff confirmation, or someone waitlisted on the study.
+const CONTACT_KINDS = ["participant", "interested", "waitlist"];
+
 // Shared authorization + participant-phone resolution for call/SMS/WhatsApp.
 // Returns the slot + the participant's E.164 phone (server-side only), or an
 // { error, status } to return verbatim. Keeps the blinding gate in one place.
@@ -963,10 +1107,20 @@ async function authorizeContact(sb: any, interviewerIds: string[], slotId: strin
   if (slot.status === "cancelled") return { error: "Session is cancelled", status: 400 };
   if (new Date(slot.end_at || slot.start_at).getTime() <= Date.now()) return { error: "This session has already ended", status: 400 };
 
-  if (kind === "participant") {
+  if (kind === "participant" || kind === "interested") {
+    // Both cohorts are bookings ON THIS SLOT — the status is what separates a
+    // confirmed participant from a candidate awaiting staff confirmation.
+    const wantStatus = kind === "participant" ? "confirmed" : "interested";
     const { data: bk } = await sb.from("rp_bookings")
-      .select("id").eq("slot_id", slotId).eq("invitation_id", invitationId).eq("status", "confirmed").maybeSingle();
-    if (!bk) return { error: "That participant isn't a confirmed booking on this session", status: 400, slot };
+      .select("id").eq("slot_id", slotId).eq("invitation_id", invitationId).eq("status", wantStatus).maybeSingle();
+    if (!bk) {
+      return {
+        error: kind === "participant"
+          ? "That participant isn't a confirmed booking on this session"
+          : "That candidate isn't registered as interested in this session",
+        status: 400, slot,
+      };
+    }
   } else {
     const { data: wl } = await sb.from("rp_invitations").select("id,study_id,status").eq("id", invitationId).maybeSingle();
     if (!wl || wl.study_id !== slot.study_id || wl.status !== "waitlisted") return { error: "That person isn't on this study's waitlist", status: 400, slot };
@@ -990,7 +1144,7 @@ async function startModeratorCall(sb: any, interviewers: any[], vendorId: string
   const interviewerIds = interviewers.map((i: any) => i.id);
   const slotId = String(body.slotId || "");
   const invitationId = String(body.invitationId || "");
-  const kind = body.kind === "waitlist" ? "waitlist" : "participant";
+  const kind = CONTACT_KINDS.includes(body.kind) ? String(body.kind) : "participant";
   const moderatorPhone = toE164(body.moderatorPhone);
   if (!slotId || !invitationId) return json({ success: false, error: "slotId and invitationId are required" }, 400);
   if (!moderatorPhone) return json({ success: false, error: "Enter your callback number in international format, e.g. +14155550123" }, 400);
@@ -1065,7 +1219,7 @@ async function sendModeratorText(sb: any, interviewers: any[], vendorId: string,
   const interviewerIds = interviewers.map((i: any) => i.id);
   const slotId = String(body.slotId || "");
   const invitationId = String(body.invitationId || "");
-  const kind = body.kind === "waitlist" ? "waitlist" : "participant";
+  const kind = CONTACT_KINDS.includes(body.kind) ? String(body.kind) : "participant";
   const channel = body.channel === "whatsapp" ? "whatsapp" : "sms";
   const message = String(body.message || "").trim();
   if (!slotId || !invitationId) return json({ success: false, error: "slotId and invitationId are required" }, 400);
