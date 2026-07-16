@@ -23,6 +23,21 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.16",
+    date: "2026-07-16",
+    summary:
+      "You can now finalise your own group from My Interviews — confirm the people who tell you they'll attend, and take off anyone who can't.",
+    changes: [
+      "New 'Manage group' button on each session: Confirm an interested candidate into a seat, or Remove someone who can't make it.",
+      "Confirming sends the participant their joining details automatically — you no longer need to ask Cethos to do it.",
+      "Removing a confirmed participant frees their seat, and Cethos offers it to a standby or the next person waitlisted, without you having to chase it.",
+      "The panel shows how many seats the session has and how many are free, so you can see at a glance whether there's room.",
+      "If the session is already full, Confirm tells you so rather than failing quietly — ask Cethos to raise the capacity.",
+      "Removals ask you to confirm first, and can't be undone. Only Cethos can put someone back.",
+      "Confirm and Remove are kept in their own panel, away from the Call buttons, so a stray click can't drop a participant.",
+    ],
+  },
+  {
     version: "2026.7.15",
     date: "2026-07-15",
     summary:
