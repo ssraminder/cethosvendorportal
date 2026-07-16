@@ -10,6 +10,11 @@ export interface InterviewParticipant {
   bookingId: string;
   status: "confirmed" | "completed" | "no_show";
   name: string;
+  // Attendance re-confirmation (via email/SMS/phone) so the moderator can see who
+  // has confirmed they'll attend vs. who is still pending or has been released.
+  attendanceConfirmedAt: string | null;
+  attendanceConfirmSentAt: string | null;
+  attendanceReleasedAt: string | null;
   rating: number | null;
   attended: boolean | null;
   comments: string | null;
