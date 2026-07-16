@@ -65,10 +65,25 @@
 //   - Relay emails: added es/sk/nl. es matters — it's the biggest live locale
 //     and Spanish moderator mail was silently going out in English.
 //
+// v7 (2026-07-16, Phase 6f — the moderator runs their own group):
+//   - "confirm" action: promote an interested candidate into a seat. The seat
+//     guard, the flip and the booked_count re-sync are the rp_confirm_booking
+//     RPC — SHARED with staff's interview-admin, which cannot import this
+//     TypeScript (same arrangement as rp_complete_session). Guard is
+//     capacity-only, exactly what staff enforce; quota stays advisory.
+//   - "remove" action: rp_cancel_booking (it accepts confirmed AND interested),
+//     then backfill a freed seat via rp_promote_standby_bestfit →
+//     rp_promote_waitlist, mirroring staff's set_booking_status.
+//   - Both audit as `moderator:<vendorId>` in status_changed_by.
+//   - Confirming settles the slot's meeting link FIRST, minting a Zoom if the
+//     study needs one. Non-negotiable: the interview-schedule cron only emails
+//     links that ALREADY exist, so confirming on a linkless slot would leave the
+//     participant confirmed with no way to join.
+//
 // Auth: vendor_sessions bearer token (header) OR session_token in the body.
 // All rp_* access is via service_role — the sanctioned cross-system boundary.
 //
-// POST { action: "list"|"complete"|"message"|"call"|"send_text", session_token?, ... }
+// POST { action: "list"|"complete"|"message"|"call"|"send_text"|"confirm"|"remove", session_token?, ... }
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -140,6 +155,8 @@ serve(async (req: Request) => {
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
     if (action === "call") return await startModeratorCall(sb, interviewers, vendorId, body);
     if (action === "send_text") return await sendModeratorText(sb, interviewers, vendorId, body);
+    if (action === "confirm") return await confirmCandidate(sb, interviewerIds, vendorId, body);
+    if (action === "remove") return await removeFromSession(sb, interviewerIds, vendorId, body);
     if (action === "propose_times") return await proposeTimes(sb, interviewers, vendorId, body);
     if (action === "withdraw_proposal") return await withdrawProposal(sb, interviewerIds, body);
     if (action === "decline_offer" || action === "decline_availability") return await declineOffer(sb, interviewers, body);
@@ -275,7 +292,7 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
   }
   const { data: slots } = await sb
     .from("rp_availability_slots")
-    .select("id,study_id,start_at,end_at,status")
+    .select("id,study_id,start_at,end_at,status,capacity")
     .in("interviewer_id", interviewerIds)
     .neq("status", "cancelled")
     .order("start_at", { ascending: false });
@@ -386,6 +403,10 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     return {
       slotId: s.id, studyId: s.study_id, studyCode: st?.code || "Session", durationMinutes: st?.duration_minutes ?? null,
       startAt: s.start_at, endAt: s.end_at,
+      // Seats, so the console can show why a confirm would be refused before the
+      // moderator tries. The server re-counts authoritatively on confirm.
+      capacity: s.capacity ?? null,
+      seatsTaken: confirmed,
       meetingLink: linkBySlot.get(s.id) || null,
       files: filesByStudy.get(s.study_id) || [],
       isCompleted: confirmed === 0 && participants.length > 0,
@@ -677,6 +698,185 @@ async function completeSession(sb: any, interviewerIds: string[], vendorId: stri
   }
 
   return json({ success: true, completed: row?.completed ?? 0, noShow: row?.no_show ?? 0, rated });
+}
+
+// ────────────────── moderator runs their own group: confirm / remove (v7) ──────────────────
+//
+// Zoom S2S. Mirrors interview-admin's createZoomMeeting (and interview-schedule's
+// copy of it) — the three live in separate functions, two of them in a separate
+// repo, so this cannot be imported. Keep the meeting settings identical: our
+// moderators are external to the Cethos Zoom account and cannot host, so
+// join_before_host + no waiting room is what lets a session actually start.
+function zoomConfigured() {
+  return Boolean(Deno.env.get("ZOOM_ACCOUNT_ID") && Deno.env.get("ZOOM_CLIENT_ID") && Deno.env.get("ZOOM_CLIENT_SECRET") && Deno.env.get("ZOOM_DEFAULT_HOST_EMAIL"));
+}
+let zoomToken: { token: string; exp: number } | null = null;
+async function zoomAccessToken(): Promise<string | null> {
+  if (zoomToken && zoomToken.exp > Date.now() + 60_000) return zoomToken.token;
+  try {
+    const basic = btoa(`${Deno.env.get("ZOOM_CLIENT_ID")}:${Deno.env.get("ZOOM_CLIENT_SECRET")}`);
+    const res = await fetch(`https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${encodeURIComponent(Deno.env.get("ZOOM_ACCOUNT_ID")!)}`, { method: "POST", headers: { Authorization: `Basic ${basic}` } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    zoomToken = { token: j.access_token, exp: Date.now() + j.expires_in * 1000 };
+    return zoomToken.token;
+  } catch { return null; }
+}
+async function createZoomMeeting(i: { topic: string; startAtIso: string; durationMinutes: number; hostEmail?: string | null }) {
+  if (!zoomConfigured()) return null;
+  const token = await zoomAccessToken();
+  if (!token) return null;
+  const host = i.hostEmail || Deno.env.get("ZOOM_DEFAULT_HOST_EMAIL")!;
+  try {
+    const res = await fetch(`https://api.zoom.us/v2/users/${encodeURIComponent(host)}/meetings`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: i.topic, type: 2, start_time: i.startAtIso, duration: i.durationMinutes, timezone: "UTC", settings: { join_before_host: true, waiting_room: false, approval_type: 2, auto_recording: "cloud" } }),
+    });
+    if (!res.ok) { console.error("[vendor-interviews] zoom create failed", res.status); return null; }
+    const j = await res.json();
+    return { id: String(j.id), join_url: j.join_url as string };
+  } catch (e) { console.error("[vendor-interviews] zoom error", e instanceof Error ? e.message : e); return null; }
+}
+
+// Settle the SESSION's meeting link before a confirm. See the RPC's comment: the
+// BEFORE-UPDATE trigger copies the slot link onto the booking at flip time, and
+// the cron never mints. Returns true once the slot has a link.
+async function ensureSlotMeetingLink(sb: any, slot: any, by: string): Promise<boolean> {
+  if (slot.meeting_link) return true;
+  const { data: study } = await sb.from("rp_studies")
+    .select("id,code,duration_minutes,meeting_link,meeting_platform").eq("id", slot.study_id).maybeSingle();
+  const nowIso = new Date().toISOString();
+  if (study?.meeting_link) {
+    await sb.from("rp_availability_slots")
+      .update({ meeting_link: study.meeting_link, meeting_provider: "manual", meeting_link_added_at: nowIso, meeting_link_added_by: "study" })
+      .eq("id", slot.id).is("meeting_link", null);
+    return true;
+  }
+  if (study?.meeting_platform === "zoom" && zoomConfigured()) {
+    const { data: iv } = await sb.from("rp_interviewers").select("zoom_host_email").eq("id", slot.interviewer_id).maybeSingle();
+    const durMin = study.duration_minutes || Math.max(15, Math.round((new Date(slot.end_at).getTime() - new Date(slot.start_at).getTime()) / 60000)) || 45;
+    const z = await createZoomMeeting({ topic: study.code || "Cethos research session", startAtIso: new Date(slot.start_at).toISOString(), durationMinutes: durMin, hostEmail: iv?.zoom_host_email });
+    // Claim atomically; a concurrent confirm that won the race leaves our update
+    // touching 0 rows and this booking simply inherits the link it set.
+    if (z) await sb.from("rp_availability_slots")
+      .update({ meeting_link: z.join_url, meeting_external_id: z.id, meeting_provider: "zoom", meeting_link_added_at: nowIso, meeting_link_added_by: by })
+      .eq("id", slot.id).is("meeting_link", null);
+  }
+  const { data: fresh } = await sb.from("rp_availability_slots").select("meeting_link").eq("id", slot.id).maybeSingle();
+  return Boolean(fresh?.meeting_link);
+}
+
+// The moderator's own slot, or an { error, status } to return verbatim.
+async function ownSlot(sb: any, interviewerIds: string[], slotId: string) {
+  if (!slotId) return { error: "slotId required", status: 400 };
+  const { data: slot } = await sb.from("rp_availability_slots")
+    .select("id,interviewer_id,study_id,start_at,end_at,status,capacity,meeting_link").eq("id", slotId).maybeSingle();
+  if (!slot || !interviewerIds.includes(slot.interviewer_id)) return { error: "Not your session", status: 403 };
+  if (slot.status === "cancelled") return { error: "Session is cancelled", status: 400 };
+  return { slot };
+}
+
+// Human-readable form of the RPC's skip reasons — the moderator sees these.
+function confirmRefusal(reason: string | null, seats: number | null, cap: number | null): string {
+  if (reason === "session_full") return `This session is full (${seats ?? "?"} of ${cap ?? "?"} seats taken). Ask Cethos to raise the capacity if you need them in.`;
+  if (reason?.startsWith("not_interested_")) {
+    const st = reason.replace("not_interested_", "");
+    return st === "confirmed" ? "They're already confirmed for this session." : `They can't be confirmed — their booking is ${st}.`;
+  }
+  if (reason === "slot_cancelled") return "This session has been cancelled.";
+  if (reason === "not_found" || reason === "slot_not_found") return "That booking no longer exists — refresh the page.";
+  return "Couldn't confirm them. Please try again, or contact Cethos.";
+}
+
+// Confirm an interested candidate into a seat on the moderator's own session.
+async function confirmCandidate(sb: any, interviewerIds: string[], vendorId: string, body: any) {
+  const slotId = String(body.slotId || "");
+  const bookingId = String(body.bookingId || "");
+  if (!bookingId) return json({ success: false, error: "bookingId required" }, 400);
+
+  const own = await ownSlot(sb, interviewerIds, slotId);
+  if (own.error) return json({ success: false, error: own.error }, own.status);
+  const slot = own.slot;
+  if (new Date(slot.end_at || slot.start_at).getTime() <= Date.now()) {
+    return json({ success: false, error: "This session has already ended" }, 400);
+  }
+
+  // The booking must belong to THIS slot — the RPC checks status but not that
+  // the moderator owns the session the booking sits on.
+  const { data: bk } = await sb.from("rp_bookings").select("id,slot_id,status").eq("id", bookingId).maybeSingle();
+  if (!bk || bk.slot_id !== slot.id) return json({ success: false, error: "That candidate isn't on this session" }, 400);
+
+  // Link first, always — a confirm on a linkless slot strands the participant.
+  const hasLink = await ensureSlotMeetingLink(sb, slot, `moderator:${vendorId}`);
+  if (!hasLink) {
+    return json({ success: false, error: "This session has no meeting link yet and one couldn't be created — please contact Cethos before confirming anyone." }, 409);
+  }
+
+  const { data: rpc, error } = await sb.rpc("rp_confirm_booking", { p_booking_id: bookingId, p_by: `moderator:${vendorId}` });
+  if (error) {
+    console.error("[vendor-interviews] confirm", error.message);
+    return json({ success: false, error: "Couldn't confirm them. Please try again." }, 500);
+  }
+  const row = Array.isArray(rpc) ? rpc[0] : rpc;
+  if (!row?.confirmed) {
+    return json({ success: false, error: confirmRefusal(row?.reason ?? null, row?.seats_taken ?? null, row?.capacity ?? null), reason: row?.reason ?? null }, 409);
+  }
+  return json({ success: true, seatsTaken: row.seats_taken, capacity: row.capacity });
+}
+
+// Remove someone from the moderator's session. Works for a confirmed participant
+// and for an interested candidate — rp_cancel_booking accepts both, and only
+// decrements the seat count for a confirmed one. When a real seat is freed we
+// backfill it exactly like staff do: best-fit accepted standby first, else the
+// oldest waitlisted person; either inherits the slot's link and gets the
+// localized link email on the next cron pass.
+async function removeFromSession(sb: any, interviewerIds: string[], vendorId: string, body: any) {
+  const slotId = String(body.slotId || "");
+  const bookingId = String(body.bookingId || "");
+  const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
+  if (!bookingId) return json({ success: false, error: "bookingId required" }, 400);
+
+  const own = await ownSlot(sb, interviewerIds, slotId);
+  if (own.error) return json({ success: false, error: own.error }, own.status);
+  const slot = own.slot;
+
+  const { data: bk } = await sb.from("rp_bookings").select("id,slot_id,status").eq("id", bookingId).maybeSingle();
+  if (!bk || bk.slot_id !== slot.id) return json({ success: false, error: "That person isn't on this session" }, 400);
+  if (bk.status !== "confirmed" && bk.status !== "interested") {
+    return json({ success: false, error: `They can't be removed — their booking is ${bk.status}.` }, 409);
+  }
+  const freesASeat = bk.status === "confirmed";
+
+  const by = `moderator:${vendorId}`;
+  const { error } = await sb.rpc("rp_cancel_booking", { p_booking_id: bookingId, p_by: by });
+  if (error) {
+    // The RPC raises booking_not_cancellable if someone else moved it first.
+    console.error("[vendor-interviews] remove", error.message);
+    const msg = String(error.message || "").includes("booking_not_cancellable")
+      ? "They've already been moved — refresh the page."
+      : "Couldn't remove them. Please try again.";
+    return json({ success: false, error: msg }, 409);
+  }
+  await sb.from("rp_bookings").update({
+    outcome_note: note || "Removed from session by the moderator",
+  }).eq("id", bookingId);
+
+  // Only a confirmed removal frees a seat worth backfilling; dropping an
+  // interested candidate never held one.
+  let promoted = false;
+  if (freesASeat) {
+    try {
+      const { data: sbp } = await sb.rpc("rp_promote_standby_bestfit", { p_slot_id: slot.id, p_by: by });
+      promoted = Boolean((Array.isArray(sbp) ? sbp[0] : sbp)?.promoted_booking_id);
+    } catch (e) { console.warn("[vendor-interviews] standby promote", e instanceof Error ? e.message : e); }
+    if (!promoted) {
+      try {
+        const { data: promo } = await sb.rpc("rp_promote_waitlist", { p_slot_id: slot.id, p_by: by });
+        promoted = Array.isArray(promo) ? promo.length > 0 : Boolean(promo);
+      } catch (e) { console.warn("[vendor-interviews] waitlist promote", e instanceof Error ? e.message : e); }
+    }
+  }
+  return json({ success: true, promoted, freedSeat: freesASeat });
 }
 
 // ─────────────────────────── moderator → participant relay (v2) ───────────────────────────

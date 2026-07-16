@@ -50,6 +50,9 @@ export interface InterviewSession {
   durationMinutes: number | null;
   startAt: string;
   endAt: string | null;
+  /** Seats on this session, and how many confirmed people already hold one. */
+  capacity: number | null;
+  seatsTaken: number;
   meetingLink: string | null;
   files: InterviewFile[];
   isCompleted: boolean;
@@ -208,6 +211,33 @@ export async function callParticipant(
   kind: ContactKind = "participant",
 ): Promise<{ success: boolean; callSid?: string | null; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "call", slotId, invitationId, moderatorPhone, kind });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// Confirm an interested candidate into a seat on this session. Capacity-guarded
+// server-side (the same rp_confirm_booking RPC staff use) — a refusal comes back
+// as success:false with a human-readable error, e.g. the session being full.
+// Confirming settles the meeting link, so the participant gets their joining
+// details on the next scheduling pass.
+export async function confirmCandidate(
+  token: string,
+  slotId: string,
+  bookingId: string,
+): Promise<{ success: boolean; seatsTaken?: number; capacity?: number; reason?: string; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "confirm", slotId, bookingId });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// Remove a confirmed participant or an interested candidate from this session.
+// Removing a CONFIRMED participant frees their seat and Cethos automatically
+// offers it to a standby, else the next person waitlisted. Irreversible.
+export async function removeFromSession(
+  token: string,
+  slotId: string,
+  bookingId: string,
+  note?: string,
+): Promise<{ success: boolean; promoted?: boolean; freedSeat?: boolean; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "remove", slotId, bookingId, note });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 

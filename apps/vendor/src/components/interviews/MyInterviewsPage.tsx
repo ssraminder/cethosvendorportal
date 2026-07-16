@@ -27,6 +27,8 @@ import {
   messageParticipants,
   callParticipant,
   textParticipant,
+  confirmCandidate,
+  removeFromSession,
   proposeTimes,
   withdrawProposal,
   declineOffer,
@@ -40,7 +42,9 @@ import {
 } from "../../api/vendorInterviews";
 
 // One reachable person, flattened out of whichever cohort they came from.
-interface ContactTarget { invitationId: string; name: string; kind: ContactKind }
+// bookingId is null for waitlisters — they hold a study-level invitation with no
+// booking, which is why they can't be confirmed or removed from a session.
+interface ContactTarget { invitationId: string; bookingId: string | null; name: string; kind: ContactKind }
 interface Cohort { key: ContactKind; label: string; people: ContactTarget[] }
 
 // The session's cohorts in contact order: confirmed first, then the people the
@@ -48,11 +52,11 @@ interface Cohort { key: ContactKind; label: string; people: ContactTarget[] }
 function cohortsOf(session: InterviewSession, confirmed: InterviewParticipant[]): Cohort[] {
   const all: Cohort[] = [
     { key: "participant", label: "Confirmed participants",
-      people: confirmed.map((p) => ({ invitationId: p.invitationId, name: p.name, kind: "participant" as const })) },
-    { key: "interested", label: "Interested — awaiting Cethos confirmation",
-      people: session.interested.map((x: InterestedEntry) => ({ invitationId: x.invitationId, name: x.name, kind: "interested" as const })) },
+      people: confirmed.map((p) => ({ invitationId: p.invitationId, bookingId: p.bookingId, name: p.name, kind: "participant" as const })) },
+    { key: "interested", label: "Interested — awaiting confirmation",
+      people: session.interested.map((x: InterestedEntry) => ({ invitationId: x.invitationId, bookingId: x.bookingId, name: x.name, kind: "interested" as const })) },
     { key: "waitlist", label: "Waitlist — to fill a no-show",
-      people: session.waitlist.map((w: WaitlistEntry) => ({ invitationId: w.invitationId, name: w.name, kind: "waitlist" as const })) },
+      people: session.waitlist.map((w: WaitlistEntry) => ({ invitationId: w.invitationId, bookingId: null, name: w.name, kind: "waitlist" as const })) },
   ];
   return all.filter((c) => c.people.length > 0);
 }
@@ -142,6 +146,16 @@ export function MyInterviewsPage() {
                 }}
                 onText={async (invitationId, channel, message, kind) => {
                   return textParticipant(sessionToken!, s.slotId, invitationId, channel, message, kind);
+                }}
+                onConfirm={async (bookingId) => {
+                  const r = await confirmCandidate(sessionToken!, s.slotId, bookingId);
+                  if (r.success) await load();
+                  return r;
+                }}
+                onRemove={async (bookingId) => {
+                  const r = await removeFromSession(sessionToken!, s.slotId, bookingId);
+                  if (r.success) await load();
+                  return r;
                 }} />
             ))}
           </div>
@@ -177,7 +191,7 @@ export function MyInterviewsPage() {
   );
 }
 
-function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, channels, onCall, onText }: {
+function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, channels, onCall, onText, onConfirm, onRemove }: {
   session: InterviewSession;
   busy: boolean;
   onComplete: (results: { invitationId: string; attended: boolean; rating?: number | null; comments?: string | null }[]) => Promise<boolean>;
@@ -186,8 +200,10 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
   channels: ContactChannels;
   onCall: (invitationId: string, moderatorPhone: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
   onText: (invitationId: string, channel: "sms" | "whatsapp", message: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
+  onConfirm: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
+  onRemove: (bookingId: string) => Promise<{ success: boolean; promoted?: boolean; error?: string }>;
 }) {
-  const [panel, setPanel] = useState<null | "complete" | "message" | "call">(null);
+  const [panel, setPanel] = useState<null | "complete" | "message" | "call" | "group">(null);
   // Whether the session is live and at least one Twilio channel is configured.
   const canContact = session.canCall && (channels.call || channels.sms || channels.whatsapp);
   const confirmed = session.participants.filter((p) => p.status === "confirmed");
@@ -270,7 +286,18 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
               {reachable > 0 && <span className="text-xs text-gray-400">· {reachable}</span>}
             </button>
           )}
+          {/* Deliberately its own panel, not buttons on the Call rows: removing
+              someone frees their seat and emails a replacement, and that must not
+              be one stray click away from "Call". */}
+          {session.canMessage && (confirmed.length > 0 || session.interested.length > 0) && (
+            <button onClick={() => setPanel("group")} className="inline-flex items-center gap-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg px-3 py-2 font-medium hover:bg-gray-50">
+              <Users className="w-4 h-4" /> Manage group
+            </button>
+          )}
         </div>
+      ) : panel === "group" ? (
+        <GroupPanel session={session} cohorts={cohorts} onCancel={() => setPanel(null)}
+          onConfirm={onConfirm} onRemove={onRemove} />
       ) : panel === "message" ? (
         <MessageComposer cohorts={cohorts} messages={session.messages} files={session.files}
           onCancel={() => setPanel(null)}
@@ -318,6 +345,125 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Manage group — confirm an interested candidate into a seat, or take someone
+// off the session. Kept apart from Call / text on purpose: both actions here are
+// irreversible and outward-facing (a confirm emails joining details, a removal
+// hands the seat to someone else), so they shouldn't sit beside a Call button.
+//
+// Waitlisters aren't listed: they hold a study-level invitation with no booking
+// on this session, so there's nothing to confirm or remove. Free a seat by
+// removing a confirmed participant and Cethos promotes one of them automatically.
+function GroupPanel({ session, cohorts, onCancel, onConfirm, onRemove }: {
+  session: InterviewSession;
+  cohorts: Cohort[];
+  onCancel: () => void;
+  onConfirm: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
+  onRemove: (bookingId: string) => Promise<{ success: boolean; promoted?: boolean; error?: string }>;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmingRemoval, setConfirmingRemoval] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const manageable = cohorts.filter((c) => c.key === "participant" || c.key === "interested");
+  const cap = session.capacity;
+  const seatsLeft = cap != null ? Math.max(0, cap - session.seatsTaken) : null;
+
+  async function confirm(bookingId: string, name: string) {
+    setBusyId(bookingId); setStatus(null);
+    const r = await onConfirm(bookingId);
+    setBusyId(null);
+    setStatus({ ok: r.success, msg: r.success ? `${name} is confirmed — Cethos will send their joining details.` : (r.error || "Couldn't confirm them.") });
+  }
+  async function remove(bookingId: string, name: string, kind: ContactKind) {
+    setBusyId(bookingId); setStatus(null);
+    const r = await onRemove(bookingId);
+    setBusyId(null); setConfirmingRemoval(null);
+    setStatus({
+      ok: r.success,
+      msg: r.success
+        ? `${name} removed.${kind === "participant" ? (r.promoted ? " Their seat went to the next person waiting." : " Their seat is now free — nobody was waiting to take it.") : ""}`
+        : (r.error || "Couldn't remove them."),
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+        Confirm the people who tell you they'll attend, and take off anyone who can't.
+        Confirming sends them their joining details automatically.
+        {cap != null && (
+          <> This session seats <span className="font-medium">{cap}</span> — {session.seatsTaken} taken, <span className="font-medium">{seatsLeft}</span> free.</>
+        )}
+      </div>
+
+      {status && (
+        <div className={`text-sm rounded-lg px-3 py-2 border ${status.ok ? "text-green-800 bg-green-50 border-green-200" : "text-red-700 bg-red-50 border-red-200"}`}>
+          {status.msg}
+        </div>
+      )}
+
+      {manageable.map((c) => (
+        <div key={c.key}>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{c.label}</div>
+          <div className="space-y-1.5">
+            {c.people.map((p) => (
+              <div key={p.invitationId} className="border border-gray-200 rounded-lg px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-gray-900">{p.name}</span>
+                  <div className="flex items-center gap-2">
+                    {p.kind === "interested" && (
+                      <button
+                        onClick={() => p.bookingId && confirm(p.bookingId, p.name)}
+                        disabled={busyId !== null || seatsLeft === 0}
+                        title={seatsLeft === 0 ? "The session is full — ask Cethos to raise the capacity" : undefined}
+                        className="inline-flex items-center gap-1 text-xs bg-teal-600 text-white rounded-lg px-2.5 py-1.5 font-medium hover:bg-teal-700 disabled:opacity-50">
+                        {busyId === p.bookingId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        Confirm
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setConfirmingRemoval(p.bookingId)}
+                      disabled={busyId !== null}
+                      className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50">
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                {confirmingRemoval === p.bookingId && (
+                  <div className="mt-2 border border-red-200 bg-red-50 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-700 mb-2">
+                      Remove <span className="font-medium">{p.name}</span> from this session? This can't be undone.
+                      {p.kind === "participant" && " Their seat is freed and offered to the next person waiting."}
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setConfirmingRemoval(null)} className="text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white hover:bg-gray-50">Keep them</button>
+                      <button onClick={() => p.bookingId && remove(p.bookingId, p.name, p.kind)} disabled={busyId !== null}
+                        className="inline-flex items-center gap-1 text-xs bg-red-600 text-white rounded-lg px-2.5 py-1.5 font-medium hover:bg-red-700 disabled:opacity-50">
+                        {busyId === p.bookingId && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Yes, remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {session.waitlist.length > 0 && (
+        <p className="text-xs text-gray-400">
+          {session.waitlist.length} {session.waitlist.length === 1 ? "person is" : "people are"} waitlisted for this study.
+          Free a seat and Cethos offers it to them automatically — use Call / text if you want to check they're available first.
+        </p>
+      )}
+
+      <div className="flex justify-end">
+        <button onClick={onCancel} disabled={busyId !== null} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50 disabled:opacity-50">Done</button>
+      </div>
     </div>
   );
 }
