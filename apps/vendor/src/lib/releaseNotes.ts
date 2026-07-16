@@ -23,6 +23,29 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.18",
+    date: "2026-07-16",
+    summary:
+      "You can now set a password and sign in without a one-time code every time. On your personal devices, choose “Remember this browser” to skip the code for 30 days.",
+    changes: [
+      "New: set a password from Profile → Security. Once set, you sign in with your email and password, and you're only asked for a one-time code on a new browser or about once a month.",
+      "“Remember this browser” on the code screen keeps that device signed in without a code for 30 days — only use it on your own devices.",
+      "Manage remembered browsers in Profile → Security, and sign out of any one (or all at once). Changing your password signs out every remembered browser.",
+      "Forgot your password? Use “Email me a one-time code instead”, then set a new one.",
+    ],
+  },
+  {
+    version: "2026.7.17",
+    date: "2026-07-16",
+    summary:
+      "You can now get your sign-in code by text message. If the email doesn't arrive, choose \"Text me the code instead\" to receive the same code by SMS on the phone number we have on file.",
+    changes: [
+      "On the code-entry step, if we have a mobile number on your file you'll see a \"Text me the code instead\" option that sends the same 6-digit code by SMS.",
+      "You can switch back to email at any time, and \"Resend code\" uses whichever channel you last chose.",
+      "Entering the code and signing in works exactly the same, no matter how the code was delivered.",
+    ],
+  },
+  {
     version: "2026.7.16",
     date: "2026-07-16",
     summary:

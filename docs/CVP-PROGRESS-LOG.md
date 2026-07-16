@@ -14,6 +14,98 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — July 16, 2026 (Password auth — Phase 3: frontend, v2026.7.11)
+
+Wired the password + trusted-device UX. Frontend only; backend already landed (Phases 1–2).
+
+- **API** (`src/api/vendorAuth.ts`): `loginWithPassword` + `setPassword` re-routed to the region-safe `/sb` path; `verifyOtp(email, code, remember_device)`; new `listDevices`/`revokeDevice` + `TrustedDevice`/`PasswordLoginResponse` types.
+- **`LoginPage.tsx`**: state machine email → (password | OTP) → OTP step-up → set-password (for resets). "Remember this browser" checkbox (off by default, shown only when the vendor has a password). Forgot-password = OTP → set a new password. "Email me a code instead" recovery. Keeps the SMS channel-switch + network-error UI.
+- **Profile → new `SecuritySection`**: set/change password + list/revoke remembered browsers ("sign out everywhere"). Uses the public auth-check for `has_password`.
+- **Dashboard**: dismissible `PasswordSetupReminder` nudge (opt-in per rollout decision).
+- Release note → **2026.7.11**.
+- **Verified locally:** whole-app `tsc` clean, `vite build` OK, lint clean on touched files.
+
+**Not locally testable end-to-end:** on localhost the frontend routes auth to the Supabase edge (not the new `/sb` Netlify fns), and the repo isn't `netlify link`ed (no local DB env) → verify on a Netlify **deploy preview**. Admin `client/lib/portalRegistry.ts` vendor entry should bump to 2026.7.11 (separate repo). Policy note: OTP-only login still available for password users (recovery) — making password mandatory is an optional follow-up.
+
+---
+
+## Session — July 16, 2026 (Password auth — Phase 2: trusted devices, backend)
+
+Built the "remember this browser" trusted-device layer. Backend only — still no UI wiring; all changes are additive/backward-compatible so live login is unchanged (the current OTP flow never sends `remember_device`, so nothing new fires).
+
+### Migration — `vendor_trusted_devices` (applied to prod)
+`supabase/migrations/20260716120000_vendor_trusted_devices.sql`. Columns: token_hash (SHA-256 of the raw cookie token — raw never stored), vendor_id FK, user_agent, label, created/last_seen/expires_at, revoked_at, rotated_from. Unique index on token_hash; partial index on active rows. RLS enabled (no policies) to match sibling auth tables. Table name = `vendor_trusted_devices` (approved, sibling convention over the `cvp_` rule). Insert/rotate/revoke cycle validated against prod.
+
+### New — `_lib/trusted-device.ts`
+`issueTrustedDevice`, `checkAndRotateTrustedDevice` (rotate-on-use), `revokeAllTrustedDevices`, `listTrustedDevices` (marks `current`), `revokeTrustedDevice`. Token = 256-bit `randomBytes`, SHA-256 at rest. Expiry from `TRUSTED_DEVICE_DAYS`.
+
+### `_lib/cookies.ts`
+New `cethos_trust_vendor` HttpOnly/Secure/SameSite=Lax/`.cethos.com` cookie + `TRUSTED_DEVICE_DAYS` (env, default 30, clamped 1–90) + read/build/clear helpers. `_lib/session.ts`: added `createSession(vendorId, origin)`.
+
+### Function wiring
+- `auth-otp-verify` (**extended, additive**): accepts `remember_device`; on success issues a trusted-device token + sets the trust cookie. Defaults off → no change to current UI.
+- `auth-password` (**now issues sessions on the trusted path**): correct password + valid trust cookie → session (no OTP); otherwise `{ needs_otp: true }`. Trust cookie rotates on use. Password is always required — the cookie only skips OTP.
+- `set-password`: revokes all trusted devices on password change (forces re-OTP everywhere).
+- New `list-devices` + `revoke-device` (`/sb/*`) for Settings → Devices (list / revoke one / sign out everywhere). netlify.toml redirects added.
+
+### Verified
+All Phase-2 files typecheck clean; prod DML cycle (insert/active/revoke/delete) validated.
+
+### Next (Phase 3 — frontend)
+LoginPage state machine (email → password | OTP → step-up), "Remember this browser" checkbox (off by default) → passes `remember_device` to verify, set/forgot-password screens, Settings→Devices UI, "add a password" reminder, release-note bump (2026.7.11) + admin portalRegistry. Optional policy follow-up: for has_password vendors, disable standalone OTP-only login (make password mandatory) — currently OTP-only remains available as recovery.
+
+---
+
+## Session — July 16, 2026 (Password auth — Phase 1: region-safe backend, not yet wired)
+
+Started the vendor password + "remember this browser" work per `docs/CVP-VENDOR-AUTH-PASSWORD-PLAN.md` (approved: password + periodic OTP; opt-in with a reminder; cadence configurable, default 30d). Phase 1 = backend foundation only — **no UI change, no change to anyone's current login.**
+
+Data check: only **1** of 175 `vendor_auth` rows has a password set, so passwords are effectively greenfield. Standardized on **bcryptjs cost 12** (legacy edge used cost 10; old hashes still verify).
+
+### New — `_lib/password.ts`
+`hashPassword` (bcrypt 12), `verifyPassword` (runs a dummy compare on the no-account/no-password path to kill the enumeration timing oracle), `checkPasswordPolicy` (≥10 chars, ≥1 letter, ≥1 number, ≤200). Added `bcryptjs` + `@types/bcryptjs` deps.
+
+### New — `set-password` Netlify fn (`/sb/set-password`)
+Region-safe port of edge `vendor-set-password`. Session-gated via `requireSession` (cookie or body token, preserves rotation). First-time set needs nothing extra; changing an existing password is authorized by (1) correct `current_password`, (2) a **verified OTP within 10 min** (the forgot-password path — OTP login proves ownership, then set new password), or (3) `must_reset`. bcrypt 12, policy enforced, `password_set_at`/`must_reset` stamped. (Phase 2 TODO marker to revoke trusted devices on change.)
+
+### New — `auth-password` Netlify fn (`/sb/auth-password`)
+Region-safe port of edge `vendor-auth-password`, but **does NOT issue a session** — correct password returns `{ ok, needs_otp: true, email }` (OTP step-up still required). This is the safe default until Phase 2 adds the trusted-device fast-path. Generic 401 on all failures + dummy compare for uniform timing. Not yet wired into the UI.
+
+### Wiring / safety
+- `netlify.toml`: added `/sb/auth-password` + `/sb/set-password` redirects.
+- No `apps/*/src/**` change → no release-note bump this phase (correct; nothing user-visible). Vendor app + new fns typecheck clean; bcrypt roundtrip verified.
+- Live behavior unchanged: `auth-otp-verify` untouched; LoginPage untouched; the legacy Supabase edge password fns remain but are superseded by the `/sb` ports.
+
+### Next (Phase 2)
+Trusted-device table + `remember_device` issuance on OTP verify + `auth-password` trust-check/step-up + device list/revoke + auto-revoke on password change. **Blocked on decision:** trusted-device table name (`vendor_trusted_devices` vs `cvp_` prefix).
+
+---
+
+## Session — July 16, 2026 (SMS login OTP fallback)
+
+Added SMS as a fallback delivery channel for the passwordless login code, to help vendors whose email OTP never arrives (a small but real per-recipient email-deliverability tail — ~1–2% of vendors over 30 days requested a code repeatedly and never verified). **Email remains the login identifier**; SMS only changes how the same 6-digit code is delivered, so verification is unchanged.
+
+### Backend — `auth-otp-send` Netlify Function
+- New `channel:"sms"` branch (previously rejected with "Only email channel supported"). Reuses the existing `_lib/twilio.ts` `sendTwilioSms` helper already used in prod by `nda-otp-send` (Twilio env `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER` already on Netlify).
+- Phone normalized to E.164 (`toE164`, mirrors `interview-voice-confirm`). Returns `no_phone_on_file` (400) when there's no usable number, so the UI can fall back to email.
+- Rate limit changed from global-per-vendor to **per-channel** (60s), so a vendor can switch email→SMS immediately.
+- OTP row still stores `email`, so `auth-otp-verify` (keys on email) is unchanged; code stays hashed+salted at rest.
+
+### Frontend — `LoginPage.tsx`
+- Captures `has_phone` from `checkVendor`; the code-entry step shows "Text me the code instead" (SMS) when a phone is on file, plus "Email me the code instead" to switch back. Resend reuses the last-used channel; the "Code sent/texted to …" label reflects the channel.
+- Version bumped to `2026.7.10` (releaseNotes.ts).
+
+### Verified
+- SMS path smoke-tested end-to-end via a throwaway vendor: Twilio accepted + handset delivery confirmed; `TWILIO_FROM_NUMBER` is SMS-capable.
+- Coverage: 1,166/1,816 active vendors (64%) have a usable phone on file.
+
+### Follow-ups
+- Bump the admin repo `client/lib/portalRegistry.ts` vendor entry to `2026.7.10` (separate repo).
+- Localhost dev hits the Supabase edge `vendor-auth-otp-send` (not this Netlify fn), which still ignores `channel`; SMS works in deploy previews/prod. Port to the edge fn later if dev parity is needed.
+- Remove the stray Supabase edge fn `vendor-auth-otp-send-sms` deployed during exploration — not used by the frontend.
+
+---
+
 ## Session — July 2, 2026 (CD interviewer enrichment outreach + reply→profile pipeline)
 
 Kicked off a data-enrichment campaign to all cognitive-debriefing (CD) providers to capture what the application form never asked: **rate basis, participant-recruitment capability (patients vs general population), focus-group experience, capacity/turnaround.** Built the outreach sender, then the reply-parsing pipeline that turns free-text answers into structured profile data + a recommended next action.

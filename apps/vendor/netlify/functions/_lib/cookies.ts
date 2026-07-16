@@ -114,3 +114,53 @@ export function buildClearSessionCookie(opts: { domain?: string } = {}): string 
     "Max-Age=0",
   ].join("; ");
 }
+
+// ── Trusted-device ("remember this browser") cookie ─────────────────────────
+// Separate from the session cookie: it survives logout and only lets a vendor
+// SKIP the OTP step-up (never the password) for TRUSTED_DEVICE_DAYS. Raw token
+// in the cookie; only its SHA-256 hash is stored server-side. See
+// docs/CVP-VENDOR-AUTH-PASSWORD-PLAN.md.
+export const TRUST_COOKIE_NAME = "cethos_trust_vendor";
+
+/** OTP re-verification cadence on a trusted browser. Env-tunable, default 30d. */
+export const TRUSTED_DEVICE_DAYS = (() => {
+  const n = Number(process.env.TRUSTED_DEVICE_DAYS ?? "30");
+  return Number.isFinite(n) && n >= 1 && n <= 90 ? Math.floor(n) : 30;
+})();
+
+export function readTrustTokenFromRequest(
+  headers: Record<string, string | undefined> | undefined,
+): string | null {
+  const t = parseCookies(headers)[TRUST_COOKIE_NAME];
+  return t ? t : null;
+}
+
+export function buildTrustCookie(
+  token: string,
+  opts: { domain?: string; maxAgeSeconds?: number } = {},
+): string {
+  const domain = opts.domain ?? ".cethos.com";
+  const maxAge = opts.maxAgeSeconds ?? TRUSTED_DEVICE_DAYS * 24 * 60 * 60;
+  return [
+    `${TRUST_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    `Domain=${domain}`,
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+  ].join("; ");
+}
+
+export function buildClearTrustCookie(opts: { domain?: string } = {}): string {
+  const domain = opts.domain ?? ".cethos.com";
+  return [
+    `${TRUST_COOKIE_NAME}=`,
+    `Domain=${domain}`,
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ].join("; ");
+}
