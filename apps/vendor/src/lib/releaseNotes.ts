@@ -23,6 +23,22 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.15",
+    date: "2026-07-15",
+    summary:
+      "My Interviews now shows everyone you might need to reach for a session — not just the confirmed participants, but the interested candidates and the waitlist too — and you can email, call, SMS or WhatsApp any of them.",
+    changes: [
+      "Sessions where nobody is confirmed yet now appear on this page. Previously they were hidden, even though those are usually the ones that need chasing.",
+      "Each session lists three groups: confirmed participants, interested candidates (registered, waiting on Cethos to confirm), and the study waitlist.",
+      "Email, Call, SMS and WhatsApp all reach any of the three groups — everything stays blinded, so you never see their contact details and they never see yours.",
+      "'Message participants' is now simply 'Email'. Confirmed participants are pre-selected; tick the others only if you mean to contact them.",
+      "Emails to people Cethos hasn't confirmed don't mention a session time, so nobody is told they have a seat they haven't been given.",
+      "Interview documents can still only be attached for confirmed participants.",
+      "'Mark complete & rate' appears once someone is confirmed — only confirmed participants can be marked attended and rated.",
+      "Spanish, Slovak and Dutch participants now receive your relayed emails in their own language instead of English.",
+    ],
+  },
+  {
     version: "2026.7.14",
     date: "2026-07-13",
     summary:

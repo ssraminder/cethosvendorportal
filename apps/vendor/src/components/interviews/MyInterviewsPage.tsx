@@ -11,9 +11,15 @@
 // moderator first, then bridges to the participant, so neither side sees the
 // other's number. The study's waitlist is callable the same way to backfill a
 // no-show.
+//
+// Phase 6e: contact reaches the whole cohort, not just the confirmed — interested
+// candidates (registered for this session, awaiting staff confirmation) and
+// waitlisters are reachable by email, call, SMS and WhatsApp alike. A session now
+// appears as soon as ANYONE is reachable, so studies with nobody confirmed yet —
+// the ones most in need of chasing — are no longer invisible here.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, CalendarClock, CheckCircle2, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle, Phone, Send } from "lucide-react";
+import { Loader2, CalendarClock, CheckCircle2, Clock, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle, Phone, Send } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getMyInterviews,
@@ -26,10 +32,30 @@ import {
   declineOffer,
   type InterviewSession,
   type InterviewParticipant,
+  type InterestedEntry,
   type WaitlistEntry,
   type ContactChannels,
+  type ContactKind,
   type AvailabilityRequest,
 } from "../../api/vendorInterviews";
+
+// One reachable person, flattened out of whichever cohort they came from.
+interface ContactTarget { invitationId: string; name: string; kind: ContactKind }
+interface Cohort { key: ContactKind; label: string; people: ContactTarget[] }
+
+// The session's cohorts in contact order: confirmed first, then the people the
+// moderator may need to chase. Empty cohorts are dropped by the callers.
+function cohortsOf(session: InterviewSession, confirmed: InterviewParticipant[]): Cohort[] {
+  const all: Cohort[] = [
+    { key: "participant", label: "Confirmed participants",
+      people: confirmed.map((p) => ({ invitationId: p.invitationId, name: p.name, kind: "participant" as const })) },
+    { key: "interested", label: "Interested — awaiting Cethos confirmation",
+      people: session.interested.map((x: InterestedEntry) => ({ invitationId: x.invitationId, name: x.name, kind: "interested" as const })) },
+    { key: "waitlist", label: "Waitlist — to fill a no-show",
+      people: session.waitlist.map((w: WaitlistEntry) => ({ invitationId: w.invitationId, name: w.name, kind: "waitlist" as const })) },
+  ];
+  return all.filter((c) => c.people.length > 0);
+}
 
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString(undefined, { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -58,7 +84,10 @@ export function MyInterviewsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const upcoming = sessions.filter((s) => s.canComplete);
+  // Anything not yet completed is live work — including sessions with nobody
+  // confirmed yet, which have people to chase but nothing to complete. Bucketing
+  // on canComplete would drop those on the floor entirely.
+  const upcoming = sessions.filter((s) => !s.isCompleted);
   const completed = sessions.filter((s) => s.isCompleted);
 
   if (loading)
@@ -155,13 +184,15 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
   onMessage: (message: string, invitationIds?: string[], attachPaths?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
   callbackPhone: string;
   channels: ContactChannels;
-  onCall: (invitationId: string, moderatorPhone: string, kind: "participant" | "waitlist") => Promise<{ success: boolean; error?: string }>;
-  onText: (invitationId: string, channel: "sms" | "whatsapp", message: string, kind: "participant" | "waitlist") => Promise<{ success: boolean; error?: string }>;
+  onCall: (invitationId: string, moderatorPhone: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
+  onText: (invitationId: string, channel: "sms" | "whatsapp", message: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
 }) {
   const [panel, setPanel] = useState<null | "complete" | "message" | "call">(null);
   // Whether the session is live and at least one Twilio channel is configured.
   const canContact = session.canCall && (channels.call || channels.sms || channels.whatsapp);
   const confirmed = session.participants.filter((p) => p.status === "confirmed");
+  const cohorts = cohortsOf(session, confirmed);
+  const reachable = cohorts.reduce((n, c) => n + c.people.length, 0);
   const [state, setState] = useState<Record<string, { attended: boolean; rating: number; comments: string }>>(() =>
     Object.fromEntries(confirmed.map((p) => [p.invitationId, { attended: true, rating: 0, comments: "" }])));
 
@@ -193,9 +224,22 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
               <Video className="w-3.5 h-3.5" /> Join meeting
             </a>
           )}
-          <span className="inline-flex items-center gap-1 text-xs text-gray-500"><Users className="w-4 h-4" /> {confirmed.length}</span>
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500" title={`${confirmed.length} confirmed participant${confirmed.length === 1 ? "" : "s"}`}>
+            <Users className="w-4 h-4" /> {confirmed.length}
+          </span>
+          {session.interested.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600" title={`${session.interested.length} interested, awaiting Cethos confirmation`}>
+              <Clock className="w-4 h-4" /> {session.interested.length}
+            </span>
+          )}
         </div>
       </div>
+      {confirmed.length === 0 && session.interested.length > 0 && (
+        <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Nobody is confirmed for this session yet — Cethos is still putting the group together.
+          You can reach the interested candidates below in the meantime.
+        </div>
+      )}
       {session.files.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5" title="Interview documents shared by Cethos — links valid 7 days, refreshed on every visit">
           {session.files.map((f) => (
@@ -207,24 +251,28 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
         </div>
       )}
       {panel === null ? (
-        <div className="mt-3 flex items-center gap-2">
-          <button onClick={() => setPanel("complete")} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700">
-            <CheckCircle2 className="w-4 h-4" /> Mark complete & rate
-          </button>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {/* Only confirmed participants can be marked attended and rated, so this
+              stays hidden until Cethos has confirmed someone. */}
+          {session.canComplete && (
+            <button onClick={() => setPanel("complete")} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700">
+              <CheckCircle2 className="w-4 h-4" /> Mark complete & rate
+            </button>
+          )}
           {session.canMessage && (
             <button onClick={() => setPanel("message")} className="inline-flex items-center gap-1.5 text-sm border border-teal-600 text-teal-700 rounded-lg px-3 py-2 font-medium hover:bg-teal-50">
-              <MessageSquare className="w-4 h-4" /> Message participants
+              <MessageSquare className="w-4 h-4" /> Email
             </button>
           )}
           {canContact && (
             <button onClick={() => setPanel("call")} className="inline-flex items-center gap-1.5 text-sm border border-teal-600 text-teal-700 rounded-lg px-3 py-2 font-medium hover:bg-teal-50">
               <Phone className="w-4 h-4" /> Call / text
-              {session.waitlist.length > 0 && <span className="text-xs text-gray-400">· {session.waitlist.length} on waitlist</span>}
+              {reachable > 0 && <span className="text-xs text-gray-400">· {reachable}</span>}
             </button>
           )}
         </div>
       ) : panel === "message" ? (
-        <MessageComposer participants={confirmed} messages={session.messages} files={session.files}
+        <MessageComposer cohorts={cohorts} messages={session.messages} files={session.files}
           onCancel={() => setPanel(null)}
           onSend={async (message, invitationIds, attachPaths) => {
             const r = await onMessage(message, invitationIds, attachPaths);
@@ -232,7 +280,7 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
             return r;
           }} />
       ) : panel === "call" ? (
-        <ContactPanel participants={confirmed} waitlist={session.waitlist} initialPhone={callbackPhone}
+        <ContactPanel cohorts={cohorts} initialPhone={callbackPhone}
           channels={channels} onCancel={() => setPanel(null)} onCall={onCall} onText={onText} />
       ) : (
         <div className="mt-3 space-y-3">
@@ -282,14 +330,13 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
 //     aren't routed back yet).
 // Only the channels Cethos has configured are offered.
 type ContactMode = "call" | "sms" | "whatsapp";
-function ContactPanel({ participants, waitlist, initialPhone, channels, onCancel, onCall, onText }: {
-  participants: InterviewParticipant[];
-  waitlist: WaitlistEntry[];
+function ContactPanel({ cohorts, initialPhone, channels, onCancel, onCall, onText }: {
+  cohorts: Cohort[];
   initialPhone: string;
   channels: ContactChannels;
   onCancel: () => void;
-  onCall: (invitationId: string, moderatorPhone: string, kind: "participant" | "waitlist") => Promise<{ success: boolean; error?: string }>;
-  onText: (invitationId: string, channel: "sms" | "whatsapp", message: string, kind: "participant" | "waitlist") => Promise<{ success: boolean; error?: string }>;
+  onCall: (invitationId: string, moderatorPhone: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
+  onText: (invitationId: string, channel: "sms" | "whatsapp", message: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
 }) {
   const modes = ([
     { key: "call", label: "Call", on: channels.call },
@@ -307,7 +354,7 @@ function ContactPanel({ participants, waitlist, initialPhone, channels, onCancel
   const textMode = mode === "sms" || mode === "whatsapp";
   const ready = textMode ? message.trim().length > 0 : phoneOk;
 
-  async function act(invitationId: string, kind: "participant" | "waitlist", name: string) {
+  async function act(invitationId: string, kind: ContactKind, name: string) {
     if (!ready) {
       setStatus({ id: invitationId, ok: false, msg: textMode ? "Type a message first." : "Enter your callback number first." });
       return;
@@ -324,7 +371,7 @@ function ContactPanel({ participants, waitlist, initialPhone, channels, onCancel
     setStatus({ id: invitationId, ok: r.success, msg: r.success ? okMsg : (r.error || "Couldn't complete that.") });
   }
 
-  const Row = ({ id, name, kind }: { id: string; name: string; kind: "participant" | "waitlist" }) => (
+  const Row = ({ id, name, kind }: { id: string; name: string; kind: ContactKind }) => (
     <div className="flex items-center justify-between gap-2 border border-gray-200 rounded-lg px-3 py-2">
       <span className="text-sm text-gray-900">{name}</span>
       <div className="flex items-center gap-2">
@@ -341,8 +388,6 @@ function ContactPanel({ participants, waitlist, initialPhone, channels, onCancel
       </div>
     </div>
   );
-
-  const waitlistLabel = mode === "call" ? "Waitlist — call to fill a no-show" : "Waitlist — message to fill a no-show";
 
   return (
     <div className="mt-3 space-y-3">
@@ -397,23 +442,14 @@ function ContactPanel({ participants, waitlist, initialPhone, channels, onCancel
         </>
       )}
 
-      {participants.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Participants</div>
+      {cohorts.map((c) => (
+        <div key={c.key}>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{c.label}</div>
           <div className="space-y-1.5">
-            {participants.map((p) => <Row key={p.invitationId} id={p.invitationId} name={p.name} kind="participant" />)}
+            {c.people.map((p) => <Row key={p.invitationId} id={p.invitationId} name={p.name} kind={p.kind} />)}
           </div>
         </div>
-      )}
-
-      {waitlist.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{waitlistLabel}</div>
-          <div className="space-y-1.5">
-            {waitlist.map((w) => <Row key={w.invitationId} id={w.invitationId} name={w.name} kind="waitlist" />)}
-          </div>
-        </div>
-      )}
+      ))}
 
       <div className="flex justify-end">
         <button onClick={onCancel} disabled={busyId !== null} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50 disabled:opacity-50">Done</button>
@@ -425,18 +461,31 @@ function ContactPanel({ participants, waitlist, initialPhone, channels, onCancel
 // Blinded compose panel: the message goes out as an email from the Cethos
 // Research Panel address — the moderator never sees participant contact info
 // and participant replies land with Cethos staff, who forward them.
-function MessageComposer({ participants, messages, files, onCancel, onSend }: {
-  participants: InterviewParticipant[];
+//
+// Reaches confirmed participants, interested candidates and waitlisters. Only
+// confirmed participants are pre-selected: chasing the unconfirmed is a
+// deliberate act, not the default. Cethos words each email to match the cohort,
+// so an interested candidate is never told a session time they don't have.
+function MessageComposer({ cohorts, messages, files, onCancel, onSend }: {
+  cohorts: Cohort[];
   messages: InterviewSession["messages"];
   files: InterviewSession["files"];
   onCancel: () => void;
   onSend: (message: string, invitationIds?: string[], attachPaths?: string[]) => Promise<{ success: boolean; sent?: number; error?: string }>;
 }) {
+  const everyone = useMemo(() => cohorts.flatMap((c) => c.people), [cohorts]);
   const [message, setMessage] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(participants.map((p) => p.invitationId)));
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(everyone.filter((p) => p.kind === "participant").map((p) => p.invitationId)));
   const [attached, setAttached] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Interview documents are client material for the session itself, so Cethos
+  // only relays them to confirmed participants and rejects the batch otherwise.
+  // Catch it here so the moderator sees why before hitting send.
+  const unconfirmedSelected = everyone.filter((p) => selected.has(p.invitationId) && p.kind !== "participant");
+  const attachmentConflict = attached.size > 0 && unconfirmedSelected.length > 0;
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -448,11 +497,11 @@ function MessageComposer({ participants, messages, files, onCancel, onSend }: {
   }
 
   async function send() {
-    if ((!message.trim() && attached.size === 0) || selected.size === 0) return;
+    if ((!message.trim() && attached.size === 0) || selected.size === 0 || attachmentConflict) return;
     setSending(true);
     setError(null);
-    const all = selected.size === participants.length;
-    const r = await onSend(message.trim(), all ? undefined : [...selected], attached.size ? [...attached] : undefined);
+    // Always explicit: the cohorts differ, so "no ids = everyone" would be ambiguous.
+    const r = await onSend(message.trim(), [...selected], attached.size ? [...attached] : undefined);
     setSending(false);
     if (!r.success) setError(r.error || "Failed to send");
   }
@@ -460,17 +509,37 @@ function MessageComposer({ participants, messages, files, onCancel, onSend }: {
   return (
     <div className="mt-3 space-y-3">
       <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2.5">
-        Your message is sent to the selected participants <span className="font-medium">by email from the Cethos Research Panel</span>.
+        Your message is sent to the people you select <span className="font-medium">by email from the Cethos Research Panel</span>.
         You won't see their contact details, and their replies go to the Cethos team, who will forward them to you.
       </div>
-      <div className="flex flex-wrap gap-2">
-        {participants.map((p) => (
-          <label key={p.invitationId} className="inline-flex items-center gap-1.5 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-gray-50">
-            <input type="checkbox" checked={selected.has(p.invitationId)} onChange={() => toggle(p.invitationId)} />
-            {p.name}
-          </label>
-        ))}
-      </div>
+      {cohorts.map((c) => (
+        <div key={c.key}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{c.label}</span>
+            <button type="button"
+              onClick={() => setSelected((prev) => {
+                const next = new Set(prev);
+                const allOn = c.people.every((p) => next.has(p.invitationId));
+                for (const p of c.people) allOn ? next.delete(p.invitationId) : next.add(p.invitationId);
+                return next;
+              })}
+              className="text-xs text-teal-700 hover:underline">
+              {c.people.every((p) => selected.has(p.invitationId)) ? "Clear" : "Select all"}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {c.people.map((p) => (
+              <label key={p.invitationId} className="inline-flex items-center gap-1.5 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-gray-50">
+                <input type="checkbox" checked={selected.has(p.invitationId)} onChange={() => toggle(p.invitationId)} />
+                {p.name}
+              </label>
+            ))}
+          </div>
+          {c.key === "interested" && (
+            <p className="text-xs text-gray-400 mt-1">Cethos hasn't confirmed these people yet — their email won't mention a session time.</p>
+          )}
+        </div>
+      ))}
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
@@ -498,14 +567,20 @@ function MessageComposer({ participants, messages, files, onCancel, onSend }: {
           <p className="text-xs text-gray-400 mt-1">Documents shared by Cethos for this interview — each participant receives fresh 7-day download links.</p>
         </div>
       )}
+      {attachmentConflict && (
+        <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Interview documents go to <span className="font-medium">confirmed participants only</span>. Remove the attachments,
+          or deselect {unconfirmedSelected.map((p) => p.name).join(", ")} to send them.
+        </div>
+      )}
       {error && <div className="text-sm text-red-600">{error}</div>}
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-400">{message.length}/2000</span>
         <div className="flex gap-2">
           <button onClick={onCancel} disabled={sending} className="text-sm border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">Cancel</button>
-          <button onClick={send} disabled={sending || (!message.trim() && attached.size === 0) || selected.size === 0}
+          <button onClick={send} disabled={sending || (!message.trim() && attached.size === 0) || selected.size === 0 || attachmentConflict}
             className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700 disabled:opacity-50">
-            {sending && <Loader2 className="w-4 h-4 animate-spin" />} Send to {selected.size} participant{selected.size === 1 ? "" : "s"}
+            {sending && <Loader2 className="w-4 h-4 animate-spin" />} Send to {selected.size} {selected.size === 1 ? "person" : "people"}
           </button>
         </div>
       </div>
