@@ -236,7 +236,7 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
   const slotIds = slotList.map((s: any) => s.id);
   const studyIds = Array.from(new Set(slotList.map((s: any) => s.study_id).filter(Boolean))) as string[];
   const [bkRes, studyRes, msgRes, filesByStudy] = await Promise.all([
-    sb.from("rp_bookings").select("id,slot_id,invitation_id,status,meeting_link").in("slot_id", slotIds).in("status", ["confirmed", "completed", "no_show"]),
+    sb.from("rp_bookings").select("id,slot_id,invitation_id,status,meeting_link,attendance_confirmed_at,attendance_confirm_sent_at,attendance_released_at").in("slot_id", slotIds).in("status", ["confirmed", "completed", "no_show"]),
     studyIds.length ? sb.from("rp_studies").select("id,code,duration_minutes").in("id", studyIds) : Promise.resolve({ data: [] }),
     // Sent-message history (one entry per batch). Tolerates the table not
     // existing yet (pre-migration deploy) — history just comes back empty.
@@ -284,6 +284,11 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
     arr.push({
       invitationId: b.invitation_id, bookingId: b.id, status: b.status,
       name: sub?.full_name || "Participant",
+      // Attendance re-confirmation (email/SMS/phone) so the moderator can see who
+      // has actually confirmed they'll attend vs. who is still pending / released.
+      attendanceConfirmedAt: b.attendance_confirmed_at ?? null,
+      attendanceConfirmSentAt: b.attendance_confirm_sent_at ?? null,
+      attendanceReleasedAt: b.attendance_released_at ?? null,
       rating: fb?.rating ?? null, attended: fb?.attended ?? null, comments: fb?.comments ?? null,
     });
     bySlot.set(b.slot_id, arr);
