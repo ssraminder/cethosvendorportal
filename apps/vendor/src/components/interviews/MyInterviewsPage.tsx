@@ -191,6 +191,17 @@ export function MyInterviewsPage() {
   );
 }
 
+// Attendance re-confirmation status for the moderator's participant roster.
+function AttendanceBadge({ p }: { p: InterviewParticipant }) {
+  if (p.attendanceReleasedAt)
+    return <span className="text-[11px] font-medium text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">seat released</span>;
+  if (p.attendanceConfirmedAt)
+    return <span className="text-[11px] font-medium text-green-700 bg-green-100 rounded-full px-2 py-0.5">✓ confirmed</span>;
+  if (p.attendanceConfirmSentAt)
+    return <span className="text-[11px] font-medium text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">awaiting</span>;
+  return <span className="text-[11px] text-gray-400">—</span>;
+}
+
 function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, channels, onCall, onText, onConfirm, onRemove }: {
   session: InterviewSession;
   busy: boolean;
@@ -267,7 +278,18 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
         </div>
       )}
       {panel === null ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 space-y-3">
+          {confirmed.length > 0 && (
+            <div className="space-y-1.5">
+              {confirmed.map((p: InterviewParticipant) => (
+                <div key={p.invitationId} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-gray-800">{p.name}</span>
+                  <AttendanceBadge p={p} />
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
           {/* Only confirmed participants can be marked attended and rated, so this
               stays hidden until Cethos has confirmed someone. */}
           {session.canComplete && (
@@ -294,6 +316,7 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
               <Users className="w-4 h-4" /> Manage group
             </button>
           )}
+          </div>
         </div>
       ) : panel === "group" ? (
         <GroupPanel session={session} cohorts={cohorts} onCancel={() => setPanel(null)}
