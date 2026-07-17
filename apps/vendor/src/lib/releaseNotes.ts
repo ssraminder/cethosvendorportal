@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.19",
+    date: "2026-07-16",
+    summary:
+      "You can now mark a session as in progress when you start it, and let the people still waiting know once your group is full.",
+    changes: [
+      "New 'Start session' button on each session: use it when you begin, after your roll call. The session then shows an 'In progress' badge so you and Cethos can both see it's under way. If you press it by mistake, 'Not started' puts it back.",
+      "'Mark complete & rate' is unchanged — that stays your last step at the end of the session, where you tick who attended and rate them.",
+      "New 'Notify — session full' button: once your group is settled, you can tell everyone still listed as interested that the session has filled and that Cethos will contact them for the next one. It's your choice — nothing is sent automatically.",
+      "That notice is sent by Cethos in the participant's own language where known, so you never see their email address, and anyone already told is skipped if you press it again.",
+    ],
+  },
+  {
     version: "2026.7.18",
     date: "2026-07-16",
     summary:
