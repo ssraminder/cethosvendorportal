@@ -48,6 +48,9 @@ export function LoginPage() {
   const [otpValue, setOtpValue] = useState<string[]>(EMPTY_OTP);
   const [resendCountdown, setResendCountdown] = useState(0);
   const [error, setError] = useState("");
+  // Informational (not an error) — e.g. the text couldn't go out so we emailed
+  // the code instead.
+  const [notice, setNotice] = useState("");
   const [networkError, setNetworkError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -82,7 +85,15 @@ export function LoginPage() {
         }
         throw new Error(message);
       }
-      setChannel(ch);
+      // Use the channel the code was ACTUALLY delivered on — the server falls
+      // back to email if the text can't go out, so it may differ from `ch`.
+      const delivered = result.channel === "sms" ? "sms" : "email";
+      setChannel(delivered);
+      setNotice(
+        result.fell_back_from === "sms"
+          ? "We couldn't text you just now — we've emailed your code instead."
+          : "",
+      );
       setMaskedContact(result.masked_contact || "");
       setStep("otp-verify");
       setResendCountdown(60);
@@ -305,6 +316,7 @@ export function LoginPage() {
   function goBackToEmail() {
     setStep("email");
     setError("");
+    setNotice("");
     setNetworkError(false);
     setPasswordValue("");
     setResetMode(false);
@@ -527,6 +539,12 @@ export function LoginPage() {
             <span className="font-medium">{displayContact}</span>
           </p>
         </div>
+
+        {notice && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {notice}
+          </p>
+        )}
 
         <OtpInput value={otpValue} onChange={setOtpValue} disabled={loading} />
 

@@ -129,19 +129,26 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     );
 
     // ── SMS delivery ──
+    // If the SMS can't go out we fall through and email the SAME code rather
+    // than dead-ending the vendor: a Twilio outage or a credential problem must
+    // never block a login. The failure is logged loudly so a config break (e.g.
+    // the stale-credential 20003 outage) stays visible instead of being masked.
+    let smsFellBack = false;
     if (channel === "sms") {
       const smsBody = `${otpCode} is your CETHOS Vendor Portal sign-in code. It expires in 10 minutes.`;
       const sms = await sendTwilioSms({ to: targetPhone as string, body: smsBody });
-      if (!sms.sent) {
-        console.error("OTP SMS send failed:", sms.reason);
-        return err("Failed to send code by SMS", 502, { detail: sms.reason });
+      if (sms.sent) {
+        console.log(`OTP sent to ${maskPhone(targetPhone as string)} via sms relay`);
+        return json({
+          success: true,
+          channel: "sms",
+          masked_contact: maskPhone(targetPhone as string),
+        });
       }
-      console.log(`OTP sent to ${maskPhone(targetPhone as string)} via twilio`);
-      return json({
-        success: true,
-        channel: "sms",
-        masked_contact: maskPhone(targetPhone as string),
-      });
+      console.error(
+        `OTP SMS send FAILED for vendor ${vendor.id} (${sms.reason}) — falling back to email`,
+      );
+      smsFellBack = true;
     }
 
     const html = `
@@ -185,6 +192,8 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
       success: true,
       channel: "email",
       masked_contact: maskEmail(targetEmail),
+      // Tells the UI to explain why a code was emailed when SMS was asked for.
+      ...(smsFellBack ? { fell_back_from: "sms" } : {}),
     });
   } catch (e) {
     console.error("auth-otp-send error:", e);

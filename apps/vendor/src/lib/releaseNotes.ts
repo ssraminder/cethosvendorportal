@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.20",
+    date: "2026-07-16",
+    summary:
+      "Fixed \"Text me the code instead\" — it was failing to send. If a text still can't go out, we now email your code automatically instead of leaving you stuck.",
+    changes: [
+      "Sign-in codes by text were failing with a set-up error on our side. Texts now send correctly.",
+      "If a text can't be sent for any reason, we send the same code to your email instead and tell you we've done so — asking for a text can no longer leave you unable to sign in.",
+      "Same fix applies to the text option when verifying your phone for NDA signing.",
+    ],
+  },
+  {
     version: "2026.7.19",
     date: "2026-07-16",
     summary:
