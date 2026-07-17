@@ -258,8 +258,13 @@ export function LoginPage() {
       if (result.error) {
         setError(result.error);
       } else if (result.success && result.session_token && result.vendor) {
-        if (resetMode) {
-          // Forgot-password: OTP proved ownership; now let them set a new one.
+        // Land on the set-password step when either:
+        //  • resetMode (forgot-password): OTP proved ownership → set a new one; or
+        //  • the vendor has no password yet (needs_password): the OTP they just
+        //    passed is the gate, so prompt them to add one. This fires on every
+        //    sign-in until a password is set, and is skippable ("Skip for now").
+        // Vendors who already have a password never hit this branch.
+        if (resetMode || result.needs_password) {
           setPendingAuth({
             token: result.session_token,
             vendor: result.vendor,
@@ -469,8 +474,16 @@ export function LoginPage() {
     if (step === "set-password") {
       return (
         <div className="space-y-5">
-          <div className="text-center">
-            <p className="text-sm text-gray-600">Set a new password for your account.</p>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium text-gray-700">
+              {resetMode ? "Set a new password for your account." : "Set a password for faster sign-in"}
+            </p>
+            {!resetMode && (
+              <p className="text-xs text-gray-500">
+                Add one so you can sign in with your password next time instead of a one-time
+                code. You can skip this for now.
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="new-password" className="block text-sm font-medium text-gray-700 mb-1.5">

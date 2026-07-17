@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.21",
+    date: "2026-07-17",
+    summary:
+      "If you don't have a password yet, we now offer to set one right after you sign in — no one-time code needed the next time.",
+    changes: [
+      "After signing in with a one-time code, vendors who haven't set a password are now offered a quick 'Set a password' step. The code you just entered is what authorises it, so you're never asked for an old password.",
+      "It's optional — 'Skip for now' takes you straight to your dashboard, and you'll be offered it again next time you sign in until a password is set.",
+      "Vendors who already have a password are unaffected.",
+    ],
+  },
+  {
     version: "2026.7.20",
     date: "2026-07-16",
     summary:
