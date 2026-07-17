@@ -56,6 +56,9 @@ export interface InterviewSession {
   meetingLink: string | null;
   files: InterviewFile[];
   isCompleted: boolean;
+  /** Manually marked In Progress (roll call at the top); false once completed. */
+  inProgress?: boolean;
+  startedAt?: string | null;
   /** Confirmed participants exist — only they can be marked attended and rated. */
   canComplete: boolean;
   /** The session is live and someone (any cohort) is reachable. */
@@ -177,6 +180,27 @@ export async function completeInterview(
   participants: ParticipantResult[],
 ): Promise<{ success: boolean; completed?: number; noShow?: number; rated?: number; error?: string }> {
   const res = await safePost(URL, { session_token: token, action: "complete", slotId, participants });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// Roll call at the top: mark this session In Progress (or undo with started=false).
+// Completion stays the separate end step.
+export async function startSession(
+  token: string,
+  slotId: string,
+  started = true,
+): Promise<{ success: boolean; startedAt?: string | null; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "start", slotId, started });
+  return res.json().catch(() => ({ success: false, error: "Request failed" }));
+}
+
+// Tell the still-unconfirmed interested people this session is full and they'll be
+// contacted next time. Blinded (Cethos sends); people already emailed are skipped.
+export async function notifySessionFull(
+  token: string,
+  slotId: string,
+): Promise<{ success: boolean; sent?: number; skipped?: number; error?: string }> {
+  const res = await safePost(URL, { session_token: token, action: "notify_full", slotId });
   return res.json().catch(() => ({ success: false, error: "Request failed" }));
 }
 

@@ -19,7 +19,7 @@
 // the ones most in need of chasing — are no longer invisible here.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, CalendarClock, CheckCircle2, Clock, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle, Phone, Send } from "lucide-react";
+import { Loader2, CalendarClock, CheckCircle2, Clock, Users, MessageSquare, Video, FileText, CalendarPlus, Trash2, XCircle, Phone, Send, Play, BellOff } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
 import {
   getMyInterviews,
@@ -29,6 +29,8 @@ import {
   textParticipant,
   confirmCandidate,
   removeFromSession,
+  startSession,
+  notifySessionFull,
   proposeTimes,
   withdrawProposal,
   declineOffer,
@@ -156,6 +158,16 @@ export function MyInterviewsPage() {
                   const r = await removeFromSession(sessionToken!, s.slotId, bookingId);
                   if (r.success) await load();
                   return r;
+                }}
+                onStart={async (started) => {
+                  const r = await startSession(sessionToken!, s.slotId, started);
+                  if (r.success) await load();
+                  return r;
+                }}
+                onNotifyFull={async () => {
+                  const r = await notifySessionFull(sessionToken!, s.slotId);
+                  if (r.success) await load();
+                  return r;
                 }} />
             ))}
           </div>
@@ -191,7 +203,7 @@ export function MyInterviewsPage() {
   );
 }
 
-function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, channels, onCall, onText, onConfirm, onRemove }: {
+function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, channels, onCall, onText, onConfirm, onRemove, onStart, onNotifyFull }: {
   session: InterviewSession;
   busy: boolean;
   onComplete: (results: { invitationId: string; attended: boolean; rating?: number | null; comments?: string | null }[]) => Promise<boolean>;
@@ -202,8 +214,11 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
   onText: (invitationId: string, channel: "sms" | "whatsapp", message: string, kind: ContactKind) => Promise<{ success: boolean; error?: string }>;
   onConfirm: (bookingId: string) => Promise<{ success: boolean; error?: string }>;
   onRemove: (bookingId: string) => Promise<{ success: boolean; promoted?: boolean; error?: string }>;
+  onStart: (started: boolean) => Promise<{ success: boolean; error?: string }>;
+  onNotifyFull: () => Promise<{ success: boolean; sent?: number; skipped?: number; error?: string }>;
 }) {
   const [panel, setPanel] = useState<null | "complete" | "message" | "call" | "group">(null);
+  const [sessionBusy, setSessionBusy] = useState(false);
   // Whether the session is live and at least one Twilio channel is configured.
   const canContact = session.canCall && (channels.call || channels.sms || channels.whatsapp);
   const confirmed = session.participants.filter((p) => p.status === "confirmed");
@@ -212,8 +227,26 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
   const [state, setState] = useState<Record<string, { attended: boolean; rating: number; comments: string }>>(() =>
     Object.fromEntries(confirmed.map((p) => [p.invitationId, { attended: true, rating: 0, comments: "" }])));
 
+  const [note, setNote] = useState<string | null>(null);
+
   function upd(id: string, patch: Partial<{ attended: boolean; rating: number; comments: string }>) {
     setState((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
+  }
+
+  // Roll call at the top: mark In Progress (or undo). Completion stays the end step.
+  async function toggleStart(started: boolean) {
+    setSessionBusy(true);
+    const r = await onStart(started);
+    setSessionBusy(false);
+    if (!r.success && r.error) setNote(r.error);
+  }
+  // Manual "we're full" notice to the still-unconfirmed interested people.
+  async function notifyFull() {
+    if (!window.confirm(`Email the ${session.interested.length} interested candidate(s) that this session is full and they'll be contacted for the next one? Anyone already emailed is skipped.`)) return;
+    setSessionBusy(true);
+    const r = await onNotifyFull();
+    setSessionBusy(false);
+    setNote(r.success ? (r.sent ? `Told ${r.sent} the session is full.` : "Everyone was already notified.") : (r.error || "Could not send."));
   }
 
   async function submit() {
@@ -248,6 +281,11 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
               <Clock className="w-4 h-4" /> {session.interested.length}
             </span>
           )}
+          {session.inProgress && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-600 animate-pulse" /> In progress
+            </span>
+          )}
         </div>
       </div>
       {confirmed.length === 0 && session.interested.length > 0 && (
@@ -268,11 +306,36 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
       )}
       {panel === null ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
+          {/* Roll call at the top: mark the session In Progress. Hidden once it's
+              complete; completion (roll call at the end) is the button below. */}
+          {!session.isCompleted && (
+            session.inProgress ? (
+              <button onClick={() => toggleStart(false)} disabled={sessionBusy}
+                title="Undo — mark this session as not started"
+                className="inline-flex items-center gap-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg px-3 py-2 font-medium hover:bg-gray-50 disabled:opacity-40">
+                <XCircle className="w-4 h-4" /> Not started
+              </button>
+            ) : (
+              <button onClick={() => toggleStart(true)} disabled={sessionBusy}
+                title="Mark this session in progress (roll call at the start)"
+                className="inline-flex items-center gap-1.5 text-sm border border-teal-600 text-teal-700 rounded-lg px-3 py-2 font-medium hover:bg-teal-50 disabled:opacity-40">
+                {sessionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Start session
+              </button>
+            )
+          )}
           {/* Only confirmed participants can be marked attended and rated, so this
               stays hidden until Cethos has confirmed someone. */}
           {session.canComplete && (
             <button onClick={() => setPanel("complete")} className="inline-flex items-center gap-1.5 text-sm bg-teal-600 text-white rounded-lg px-3 py-2 font-medium hover:bg-teal-700">
               <CheckCircle2 className="w-4 h-4" /> Mark complete & rate
+            </button>
+          )}
+          {/* Tell the still-unconfirmed interested people the group is full. */}
+          {session.interested.length > 0 && (
+            <button onClick={notifyFull} disabled={sessionBusy}
+              title="Email everyone still interested that this session is full and they'll be contacted for the next one"
+              className="inline-flex items-center gap-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg px-3 py-2 font-medium hover:bg-gray-50 disabled:opacity-40">
+              <BellOff className="w-4 h-4" /> Notify — session full
             </button>
           )}
           {session.canMessage && (
@@ -345,6 +408,7 @@ function SessionCard({ session, busy, onComplete, onMessage, callbackPhone, chan
           </div>
         </div>
       )}
+      {note && <div className="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{note}</div>}
     </div>
   );
 }
