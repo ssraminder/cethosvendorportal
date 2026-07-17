@@ -27,7 +27,12 @@ import {
   type NetlifyResponse,
 } from "./_lib/response";
 import { verifyPassword } from "./_lib/password";
-import { readTrustTokenFromRequest, buildTrustCookie, buildSessionCookie } from "./_lib/cookies";
+import {
+  readTrustTokenFromRequest,
+  buildTrustCookie,
+  buildSessionCookie,
+  hostFromHeaders,
+} from "./_lib/cookies";
 import { checkAndRotateTrustedDevice } from "./_lib/trusted-device";
 import { createSession } from "./_lib/session";
 
@@ -121,7 +126,9 @@ export const handler = async (event: {
 
     const cookies = [buildSessionCookie(sessionToken)];
     // Re-set the rotated trusted-device cookie.
-    if (trust.rotated) cookies.push(buildTrustCookie(trust.rotated));
+    if (trust.rotated) {
+      cookies.push(buildTrustCookie(trust.rotated, { host: hostFromHeaders(event.headers) }));
+    }
 
     return jsonWithCookies(
       {

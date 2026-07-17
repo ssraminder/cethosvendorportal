@@ -16,7 +16,7 @@ import {
   parseBody,
   type NetlifyResponse,
 } from "./_lib/response";
-import { buildSessionCookie, buildTrustCookie } from "./_lib/cookies";
+import { buildSessionCookie, buildTrustCookie, hostFromHeaders } from "./_lib/cookies";
 import { issueTrustedDevice } from "./_lib/trusted-device";
 import {
   hashOtp,
@@ -155,7 +155,7 @@ export const handler = async (event: {
     if (rememberDevice) {
       try {
         const rawTrust = await issueTrustedDevice(otp.vendor_id, userAgent);
-        cookies.push(buildTrustCookie(rawTrust));
+        cookies.push(buildTrustCookie(rawTrust, { host: hostFromHeaders(event.headers) }));
         deviceRemembered = true;
       } catch (e) {
         // Non-fatal: login still succeeds without the trusted-device cookie.

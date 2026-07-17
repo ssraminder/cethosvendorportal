@@ -135,32 +135,45 @@ export function readTrustTokenFromRequest(
   return t ? t : null;
 }
 
-export function buildTrustCookie(
-  token: string,
-  opts: { domain?: string; maxAgeSeconds?: number } = {},
-): string {
-  const domain = opts.domain ?? ".cethos.com";
-  const maxAge = opts.maxAgeSeconds ?? TRUSTED_DEVICE_DAYS * 24 * 60 * 60;
-  return [
-    `${TRUST_COOKIE_NAME}=${encodeURIComponent(token)}`,
-    `Domain=${domain}`,
-    "Path=/",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    `Max-Age=${maxAge}`,
-  ].join("; ");
+/** The request host, preferring the forwarded host Netlify sets. */
+export function hostFromHeaders(
+  headers: Record<string, string | undefined> | undefined,
+): string | undefined {
+  return headers?.["x-forwarded-host"] ?? headers?.["host"] ?? undefined;
 }
 
-export function buildClearTrustCookie(opts: { domain?: string } = {}): string {
-  const domain = opts.domain ?? ".cethos.com";
-  return [
-    `${TRUST_COOKIE_NAME}=`,
-    `Domain=${domain}`,
-    "Path=/",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    "Max-Age=0",
-  ].join("; ");
+/**
+ * Pick the cookie `Domain` for a request host.
+ *
+ * On `*.cethos.com` we scope to `.cethos.com` so the cookie is shared across
+ * portal subdomains (vendor./tm.) — that's what makes federated SSO work.
+ * ANYWHERE ELSE (Netlify deploy previews, localhost) we must OMIT Domain and
+ * let it be a host-only cookie: a browser silently DROPS a `.cethos.com`
+ * cookie served from `*.netlify.app`, which would disable "remember this
+ * browser" without any error. Returning undefined means "no Domain attribute".
+ */
+export function cookieDomainForHost(host?: string | null): string | undefined {
+  if (!host) return ".cethos.com"; // no host info → preserve prod behaviour
+  const h = host.split(":")[0].toLowerCase();
+  return h === "cethos.com" || h.endsWith(".cethos.com") ? ".cethos.com" : undefined;
+}
+
+export function buildTrustCookie(
+  token: string,
+  opts: { host?: string | null; maxAgeSeconds?: number } = {},
+): string {
+  const domain = cookieDomainForHost(opts.host);
+  const maxAge = opts.maxAgeSeconds ?? TRUSTED_DEVICE_DAYS * 24 * 60 * 60;
+  const parts = [`${TRUST_COOKIE_NAME}=${encodeURIComponent(token)}`];
+  if (domain) parts.push(`Domain=${domain}`);
+  parts.push("Path=/", "HttpOnly", "Secure", "SameSite=Lax", `Max-Age=${maxAge}`);
+  return parts.join("; ");
+}
+
+export function buildClearTrustCookie(opts: { host?: string | null } = {}): string {
+  const domain = cookieDomainForHost(opts.host);
+  const parts = [`${TRUST_COOKIE_NAME}=`];
+  if (domain) parts.push(`Domain=${domain}`);
+  parts.push("Path=/", "HttpOnly", "Secure", "SameSite=Lax", "Max-Age=0");
+  return parts.join("; ");
 }
