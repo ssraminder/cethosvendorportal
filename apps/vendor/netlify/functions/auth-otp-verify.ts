@@ -16,7 +16,8 @@ import {
   parseBody,
   type NetlifyResponse,
 } from "./_lib/response";
-import { buildSessionCookie } from "./_lib/cookies";
+import { buildSessionCookie, buildTrustCookie, hostFromHeaders } from "./_lib/cookies";
+import { issueTrustedDevice } from "./_lib/trusted-device";
 import {
   hashOtp,
   OTP_LOCKOUT_MINUTES,
@@ -44,14 +45,21 @@ interface VendorRow {
   availability_status: string | null;
 }
 
-export const handler = async (event: { body: string | null; isBase64Encoded?: boolean }): Promise<NetlifyResponse> => {
+export const handler = async (event: {
+  body: string | null;
+  isBase64Encoded?: boolean;
+  headers?: Record<string, string | undefined>;
+}): Promise<NetlifyResponse> => {
   try {
     const body = parseBody(event.body, event.isBase64Encoded) as {
       email?: string;
       otp_code?: string;
+      remember_device?: boolean;
     };
     const email = (body.email ?? "").toLowerCase().trim();
     const otpCode = (body.otp_code ?? "").trim();
+    const rememberDevice = body.remember_device === true;
+    const userAgent = event.headers?.["user-agent"] ?? null;
     if (!email || !otpCode) return err("Email and code are required", 400);
 
     // Find the latest non-verified, non-expired OTP for this email
@@ -140,6 +148,21 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     // (localStorage); the cookie is what cookie-aware future code (and
     // the new `sso-issue` function) reads. Both refer to the same
     // session row — there's no double bookkeeping.
+    // Optionally remember this browser: issue a trusted-device token so future
+    // password logins here can skip the OTP step-up for TRUSTED_DEVICE_DAYS.
+    const cookies = [buildSessionCookie(sessionToken)];
+    let deviceRemembered = false;
+    if (rememberDevice) {
+      try {
+        const rawTrust = await issueTrustedDevice(otp.vendor_id, userAgent);
+        cookies.push(buildTrustCookie(rawTrust, { host: hostFromHeaders(event.headers) }));
+        deviceRemembered = true;
+      } catch (e) {
+        // Non-fatal: login still succeeds without the trusted-device cookie.
+        console.error("issueTrustedDevice failed:", e);
+      }
+    }
+
     return jsonWithCookies(
       {
         success: true,
@@ -148,8 +171,9 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
         vendor,
         needs_password: authRows.length === 0,
         is_first_login: isFirstLogin,
+        device_remembered: deviceRemembered,
       },
-      [buildSessionCookie(sessionToken)],
+      cookies,
     );
   } catch (e) {
     console.error("auth-otp-verify error:", e);

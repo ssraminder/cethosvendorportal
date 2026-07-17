@@ -1,17 +1,22 @@
 /**
  * Netlify Function: auth-otp-send
  * Drop-in for Supabase Edge `vendor-auth-otp-send`. Direct Postgres +
- * direct Mailgun.
+ * direct Mailgun (email) / Twilio (SMS).
  *
  * POST /sb/auth-otp-send
- * Body: { email: string, channel: "email" }
+ * Body: { email: string, channel?: "email" | "sms" }
  * Returns: { success, channel, masked_contact }
+ *
+ * Email stays the login IDENTIFIER; `channel:"sms"` only changes the delivery
+ * channel, texting the same 6-digit code to the vendor's phone via Twilio.
+ * auth-otp-verify keys on email, so an SMS code verifies through the same path.
  */
 
 import { query } from "./_lib/db";
 import { sendVendorEmail } from "./_lib/email-send";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
 import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
+import { sendTwilioSms, maskPhone } from "./_lib/twilio";
 
 interface Vendor {
   id: string;
@@ -26,6 +31,23 @@ function maskEmail(email: string): string {
   return `${local[0]}***@${domain}`;
 }
 
+// Normalize a stored phone into E.164 for Twilio. Mirrors the logic in the
+// Supabase edge `interview-voice-confirm`: a bare 10-digit number defaults to
+// +1 (North America), 1xxxxxxxxxx becomes +1xxxxxxxxxx, and anything already
+// carrying a country code (leading +) is preserved.
+function toE164(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/[^0-9]/g, "");
+  if (!digits) return null;
+  if (hasPlus) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return `+${digits}`;
+}
+
 export const handler = async (event: { body: string | null; isBase64Encoded?: boolean }): Promise<NetlifyResponse> => {
   try {
     const body = parseBody(event.body, event.isBase64Encoded) as {
@@ -35,10 +57,8 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     const email = (body.email ?? "").toLowerCase().trim();
     const channel = body.channel ?? "email";
     if (!email) return err("Email is required", 400);
-    if (channel !== "email") {
-      // Phase 1 of the migration only supports email OTP. SMS path can be
-      // ported later if needed; vendor portal defaults to email anyway.
-      return err("Only email channel supported", 400);
+    if (channel !== "email" && channel !== "sms") {
+      return err("Unsupported channel", 400);
     }
 
     // Match the primary email OR any address on the vendor's `additional_emails`
@@ -64,32 +84,65 @@ export const handler = async (event: { body: string | null; isBase64Encoded?: bo
     // vendor using their secondary email still receives the code in that inbox.
     const targetEmail = email;
 
-    // Rate limit: deny if a non-verified OTP was issued in the last 60s
+    // For SMS delivery, require a usable phone on file. Normalize to E.164 so
+    // Twilio accepts it regardless of how it was stored.
+    let targetPhone: string | null = null;
+    if (channel === "sms") {
+      targetPhone = toE164(vendor.phone);
+      if (!targetPhone) {
+        return err("No phone number on file for this account", 400, {
+          detail: "no_phone_on_file",
+        });
+      }
+    }
+
+    // Rate limit: deny if a non-verified OTP was issued on THIS channel in the
+    // last 60s. Per-channel so a vendor who never got the email can switch to
+    // SMS immediately, while still capping cost/abuse to one send per channel
+    // per minute.
     const recent = await query<{ id: string }>(
       `SELECT id FROM vendor_otp
-       WHERE vendor_id = $1 AND verified = false
+       WHERE vendor_id = $1 AND channel = $2 AND verified = false
          AND created_at > now() - INTERVAL '60 seconds'
        LIMIT 1`,
-      [vendor.id],
+      [vendor.id, channel],
     );
     if (recent.length > 0) {
       return err("Please wait before requesting another code", 429);
     }
 
     // Crypto-strong 6-digit OTP + per-row salt. Store only the hash in
-    // the DB; the raw code lives just in this scope + the email body.
+    // the DB; the raw code lives just in this scope + the delivery payload.
     // Audit finding H-4.
     const otpCode = generateOtp();
     const salt = generateSalt();
     const otpHash = hashOtp(otpCode, salt);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
+    // Always store the email (verify keys on it). For SMS, store the
+    // normalized number we actually texted.
     await query(
       `INSERT INTO vendor_otp
          (vendor_id, email, phone, channel, otp_hash, salt, attempts, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
-      [vendor.id, targetEmail, vendor.phone, channel, otpHash, salt, expiresAt],
+      [vendor.id, targetEmail, channel === "sms" ? targetPhone : vendor.phone, channel, otpHash, salt, expiresAt],
     );
+
+    // ── SMS delivery ──
+    if (channel === "sms") {
+      const smsBody = `${otpCode} is your CETHOS Vendor Portal sign-in code. It expires in 10 minutes.`;
+      const sms = await sendTwilioSms({ to: targetPhone as string, body: smsBody });
+      if (!sms.sent) {
+        console.error("OTP SMS send failed:", sms.reason);
+        return err("Failed to send code by SMS", 502, { detail: sms.reason });
+      }
+      console.log(`OTP sent to ${maskPhone(targetPhone as string)} via twilio`);
+      return json({
+        success: true,
+        channel: "sms",
+        masked_contact: maskPhone(targetPhone as string),
+      });
+    }
 
     const html = `
 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

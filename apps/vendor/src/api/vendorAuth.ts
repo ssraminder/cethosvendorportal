@@ -213,21 +213,28 @@ export async function sendOtp(
 
 export async function verifyOtp(
   email: string,
-  otp_code: string
+  otp_code: string,
+  remember_device = false
 ): Promise<AuthResponse> {
-  return postAuth<AuthResponse>("auth-otp-verify", { email, otp_code });
+  // remember_device → server issues a trusted-device cookie so future password
+  // logins on this browser can skip the OTP step-up for TRUSTED_DEVICE_DAYS.
+  return postAuth<AuthResponse>("auth-otp-verify", { email, otp_code, remember_device });
+}
+
+// Either a full session (trusted browser) or { ok, needs_otp } to trigger the
+// OTP step-up. The password is always required; a trusted-device cookie only
+// lets the caller skip OTP.
+export interface PasswordLoginResponse extends AuthResponse {
+  ok?: boolean;
+  needs_otp?: boolean;
+  email?: string;
 }
 
 export async function loginWithPassword(
   email: string,
   password: string
-): Promise<AuthResponse> {
-  const res = await fetch(`${BASE}/vendor-auth-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  return res.json();
+): Promise<PasswordLoginResponse> {
+  return postAuth<PasswordLoginResponse>("auth-password", { email, password });
 }
 
 export async function validateSession(
@@ -305,13 +312,35 @@ export async function setPassword(
   password: string,
   current_password?: string
 ): Promise<SimpleResponse> {
-  const res = await fetch(`${BASE}/vendor-set-password`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ password, current_password }),
+  // /sb/set-password (region-safe). Session in the body (like the rest of the
+  // /sb endpoints), not a Bearer header.
+  return postAuth<SimpleResponse>("set-password", {
+    session_token: token,
+    password,
+    current_password,
   });
-  return res.json();
+}
+
+// ── Trusted devices ("remember this browser") ──
+export interface TrustedDevice {
+  id: string;
+  label: string | null;
+  user_agent: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  current: boolean;
+}
+
+export async function listDevices(
+  token: string
+): Promise<{ devices: TrustedDevice[]; error?: string }> {
+  return postAuth("list-devices", { session_token: token });
+}
+
+export async function revokeDevice(
+  token: string,
+  opts: { device_id?: string; all?: boolean }
+): Promise<SimpleResponse> {
+  return postAuth("revoke-device", { session_token: token, ...opts });
 }

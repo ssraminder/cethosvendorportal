@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { PasswordSetupReminder } from "./PasswordSetupReminder";
 import { getFullProfile, updateAvailability } from "../../api/vendorProfile";
 import { getSteps, type VendorStep } from "../../api/vendorJobs";
 import { getInvoices } from "../../api/vendorInvoices";
@@ -162,6 +163,7 @@ export function VendorDashboard() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      <PasswordSetupReminder />
       {/* Welcome row */}
       <div className="flex items-center justify-between">
         <div>

@@ -134,6 +134,26 @@ export async function revokeSession(token: string): Promise<void> {
   ).catch(() => {});
 }
 
+/**
+ * Mint a fresh 30-day session row and return the token + expiry. Used by
+ * endpoints that authenticate a vendor directly (e.g. password login on a
+ * trusted browser). `origin` records how the session was created
+ * ('otp' | 'password-trusted' | ...).
+ */
+export async function createSession(
+  vendorId: string,
+  origin: string,
+): Promise<{ token: string; expiresAt: string }> {
+  const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  await query(
+    `INSERT INTO vendor_sessions (vendor_id, session_token, expires_at, last_seen_at, origin)
+     VALUES ($1, $2, $3, now(), $4)`,
+    [vendorId, token, expiresAt, origin],
+  );
+  return { token, expiresAt };
+}
+
 // Re-export so callers don't have to import from two files for a
 // typical "validate, build cookie, respond" flow.
 export { buildSessionCookie, SESSION_COOKIE_NAME };

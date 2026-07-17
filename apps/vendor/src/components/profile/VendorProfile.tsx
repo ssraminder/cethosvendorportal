@@ -20,6 +20,7 @@ import { SpecializationsPicker } from "../shared/SpecializationsPicker";
 import { CurrencySelect } from "../shared/CurrencySelect";
 import { CvSection } from "./CvSection";
 import { SupportingDocsSection } from "./SupportingDocsSection";
+import { SecuritySection } from "./SecuritySection";
 import { COUNTRIES } from "../../data/countries";
 import { LANGUAGES } from "../../data/languages";
 import {
@@ -1316,6 +1317,8 @@ export function VendorProfile() {
           </div>
         </div>
       )}
+
+      <SecuritySection />
 
     </div>
   );

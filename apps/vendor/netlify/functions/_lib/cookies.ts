@@ -114,3 +114,66 @@ export function buildClearSessionCookie(opts: { domain?: string } = {}): string 
     "Max-Age=0",
   ].join("; ");
 }
+
+// ── Trusted-device ("remember this browser") cookie ─────────────────────────
+// Separate from the session cookie: it survives logout and only lets a vendor
+// SKIP the OTP step-up (never the password) for TRUSTED_DEVICE_DAYS. Raw token
+// in the cookie; only its SHA-256 hash is stored server-side. See
+// docs/CVP-VENDOR-AUTH-PASSWORD-PLAN.md.
+export const TRUST_COOKIE_NAME = "cethos_trust_vendor";
+
+/** OTP re-verification cadence on a trusted browser. Env-tunable, default 30d. */
+export const TRUSTED_DEVICE_DAYS = (() => {
+  const n = Number(process.env.TRUSTED_DEVICE_DAYS ?? "30");
+  return Number.isFinite(n) && n >= 1 && n <= 90 ? Math.floor(n) : 30;
+})();
+
+export function readTrustTokenFromRequest(
+  headers: Record<string, string | undefined> | undefined,
+): string | null {
+  const t = parseCookies(headers)[TRUST_COOKIE_NAME];
+  return t ? t : null;
+}
+
+/** The request host, preferring the forwarded host Netlify sets. */
+export function hostFromHeaders(
+  headers: Record<string, string | undefined> | undefined,
+): string | undefined {
+  return headers?.["x-forwarded-host"] ?? headers?.["host"] ?? undefined;
+}
+
+/**
+ * Pick the cookie `Domain` for a request host.
+ *
+ * On `*.cethos.com` we scope to `.cethos.com` so the cookie is shared across
+ * portal subdomains (vendor./tm.) — that's what makes federated SSO work.
+ * ANYWHERE ELSE (Netlify deploy previews, localhost) we must OMIT Domain and
+ * let it be a host-only cookie: a browser silently DROPS a `.cethos.com`
+ * cookie served from `*.netlify.app`, which would disable "remember this
+ * browser" without any error. Returning undefined means "no Domain attribute".
+ */
+export function cookieDomainForHost(host?: string | null): string | undefined {
+  if (!host) return ".cethos.com"; // no host info → preserve prod behaviour
+  const h = host.split(":")[0].toLowerCase();
+  return h === "cethos.com" || h.endsWith(".cethos.com") ? ".cethos.com" : undefined;
+}
+
+export function buildTrustCookie(
+  token: string,
+  opts: { host?: string | null; maxAgeSeconds?: number } = {},
+): string {
+  const domain = cookieDomainForHost(opts.host);
+  const maxAge = opts.maxAgeSeconds ?? TRUSTED_DEVICE_DAYS * 24 * 60 * 60;
+  const parts = [`${TRUST_COOKIE_NAME}=${encodeURIComponent(token)}`];
+  if (domain) parts.push(`Domain=${domain}`);
+  parts.push("Path=/", "HttpOnly", "Secure", "SameSite=Lax", `Max-Age=${maxAge}`);
+  return parts.join("; ");
+}
+
+export function buildClearTrustCookie(opts: { host?: string | null } = {}): string {
+  const domain = cookieDomainForHost(opts.host);
+  const parts = [`${TRUST_COOKIE_NAME}=`];
+  if (domain) parts.push(`Domain=${domain}`);
+  parts.push("Path=/", "HttpOnly", "Secure", "SameSite=Lax", "Max-Age=0");
+  return parts.join("; ");
+}
