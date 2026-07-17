@@ -76,11 +76,7 @@ export function LoginPage() {
     async (ch: "email" | "sms" = "email") => {
       const result = await sendOtp(email.trim(), ch);
       if (result.error) {
-        let message = result.error;
-        if (result.detail) {
-          message += `: ${typeof result.detail === "string" ? result.detail : JSON.stringify(result.detail)}`;
-        }
-        throw new Error(message);
+        throw new Error(result.error);
       }
       setChannel(ch);
       setMaskedContact(result.masked_contact || "");

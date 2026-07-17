@@ -8,6 +8,7 @@ import {
   OTP_MAX_ATTEMPTS,
   timingSafeEqual,
 } from "../_shared/otp-crypto.ts";
+import { twilioErrorMessage } from "../_shared/twilio.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -155,12 +156,11 @@ serve(async (req: Request) => {
       );
 
       if (!smsRes.ok) {
+        // Raw Twilio errors stay in the logs — never in the vendor's face.
         const errBody = await smsRes.text();
         console.error("Twilio SMS failed:", smsRes.status, errBody);
-        let detail: unknown;
-        try { detail = JSON.parse(errBody); } catch { detail = errBody; }
         return new Response(
-          JSON.stringify({ error: "Failed to send SMS", detail }),
+          JSON.stringify({ error: twilioErrorMessage(smsRes.status, "The verification code") }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

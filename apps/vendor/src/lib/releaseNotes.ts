@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.21",
+    date: "2026-07-17",
+    summary:
+      "When a text message can't be sent, you now get a plain explanation of what to do instead of a page of technical error text.",
+    changes: [
+      "Adding or verifying a phone number, and asking for a sign-in code by text, now explain themselves in plain language if something goes wrong — for example telling you the number doesn't look valid, or to contact Cethos. Previously the raw error from our text-message provider was shown, which was unreadable and told you nothing useful.",
+      "This is about the wording only. If you saw a 'Failed to send SMS' error with technical text earlier this month, the underlying cause was fixed separately on 15 July — adding a phone number works now.",
+    ],
+  },
+  {
     version: "2026.7.19",
     date: "2026-07-16",
     summary:

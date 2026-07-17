@@ -282,11 +282,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
     try {
       const result = await sendPhoneVerification(sessionToken, trimmed);
       if (result.error) {
-        let msg = result.error;
-        if (result.detail) {
-          msg += `: ${typeof result.detail === "string" ? result.detail : JSON.stringify(result.detail)}`;
-        }
-        setError(msg);
+        setError(result.error);
       } else {
         setMaskedPhone(result.masked_phone || trimmed);
         setStep("verify");
