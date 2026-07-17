@@ -152,6 +152,8 @@ serve(async (req: Request) => {
     const action = String(body.action || "list");
     if (action === "list") return await listSessions(sb, interviewerIds, vendorId);
     if (action === "complete") return await completeSession(sb, interviewerIds, vendorId, body);
+    if (action === "start") return await startSession(sb, interviewerIds, body);
+    if (action === "notify_full") return await notifyInterestedFull(sb, interviewerIds, body);
     if (action === "message") return await sendModeratorMessage(sb, interviewers, vendorId, body);
     if (action === "call") return await startModeratorCall(sb, interviewers, vendorId, body);
     if (action === "send_text") return await sendModeratorText(sb, interviewers, vendorId, body);
@@ -292,7 +294,7 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
   }
   const { data: slots } = await sb
     .from("rp_availability_slots")
-    .select("id,study_id,start_at,end_at,status,capacity")
+    .select("id,study_id,start_at,end_at,status,capacity,started_at,started_by")
     .in("interviewer_id", interviewerIds)
     .neq("status", "cancelled")
     .order("start_at", { ascending: false });
@@ -410,6 +412,10 @@ async function listSessions(sb: any, interviewerIds: string[], vendorId: string)
       meetingLink: linkBySlot.get(s.id) || null,
       files: filesByStudy.get(s.study_id) || [],
       isCompleted: confirmed === 0 && participants.length > 0,
+      // Manual roll-call state: started (In Progress) at the top, until the
+      // moderator marks it complete. A completed session is not "in progress".
+      startedAt: s.started_at || null,
+      inProgress: Boolean(s.started_at) && !(confirmed === 0 && participants.length > 0),
       // Completion + rating stay strictly confirmed-only.
       canComplete: confirmed > 0,
       // Contact is for the run-up to the session (and during it): the session is
@@ -653,6 +659,94 @@ async function declineOffer(sb: any, interviewers: any[], body: any) {
       + `<p><a href="${escapeHtml(ADMIN_INTERVIEWS_URL)}">Review the other candidates in the admin portal</a>.</p>`,
     "moderator-offer-declined");
   return json({ success: true });
+}
+
+// Moderator marks their own session In Progress (roll call at the top) — or undoes
+// a mis-click with { started: false }. Slot-owned state; completion (roll call at
+// the end) stays the separate "complete" action. Ownership: the slot's interviewer
+// must be one of this vendor's interviewers, same guard as complete/message/call.
+async function startSession(sb: any, interviewerIds: string[], body: any) {
+  const slotId = String(body.slotId || "");
+  if (!slotId) return json({ success: false, error: "slotId required" }, 400);
+  const wantStart = body.started !== false; // default = start
+  const { data: slot } = await sb.from("rp_availability_slots").select("id,interviewer_id,started_at").eq("id", slotId).maybeSingle();
+  if (!slot || !interviewerIds.includes(slot.interviewer_id)) return json({ success: false, error: "Not your session" }, 403);
+  if (!wantStart) {
+    const { error } = await sb.from("rp_availability_slots").update({ started_at: null, started_by: null }).eq("id", slotId);
+    if (error) return json({ success: false, error: "Could not update session" }, 400);
+    return json({ success: true, startedAt: null });
+  }
+  if (slot.started_at) return json({ success: true, startedAt: slot.started_at, already: true });
+  const nowIso = new Date().toISOString();
+  const { error } = await sb.from("rp_availability_slots")
+    .update({ started_at: nowIso, started_by: `moderator:${slot.interviewer_id}` }).eq("id", slotId);
+  if (error) return json({ success: false, error: "Could not update session" }, 400);
+  return json({ success: true, startedAt: nowIso });
+}
+
+// Localized "session filled up — we'll contact you next time" notice (EN/ES/FR
+// cover the active studies; English otherwise). Kept short; no links.
+const FULL_NOTICE: Record<string, { subject: string; greeting: (n: string) => string; body: string; signoff: string }> = {
+  en: {
+    subject: "Update on your Cethos research session",
+    greeting: (n) => `Hi ${n || "there"},`,
+    body: "Thank you so much for your interest in taking part. This session has now filled up, so we won't be able to include you this time. We'd love to have you in an upcoming session and will reach out as soon as the next one is scheduled.",
+    signoff: "Warm regards,<br>Cethos Research Team",
+  },
+  es: {
+    subject: "Actualización sobre tu sesión de investigación de Cethos",
+    greeting: (n) => (n ? `Hola ${n},` : "Hola,"),
+    body: "Muchas gracias por tu interés en participar. Esta sesión ya se ha completado, por lo que no podremos incluirte en esta ocasión. Nos encantaría contar contigo en una próxima sesión y te contactaremos en cuanto se programe la siguiente.",
+    signoff: "Un cordial saludo,<br>Equipo de Investigación de Cethos",
+  },
+  fr: {
+    subject: "Mise à jour concernant votre séance de recherche Cethos",
+    greeting: (n) => (n ? `Bonjour ${n},` : "Bonjour,"),
+    body: "Merci beaucoup de votre intérêt à participer. Cette séance est désormais complète, nous ne pourrons donc pas vous inclure cette fois-ci. Nous serions ravis de vous compter parmi nous lors d'une prochaine séance et nous vous contacterons dès qu'elle sera programmée.",
+    signoff: "Cordialement,<br>Équipe de recherche Cethos",
+  },
+};
+function fullNoticeFor(locale: string | null) {
+  const base = String(locale || "en").toLowerCase().split(/[-_]/)[0];
+  return FULL_NOTICE[base] || FULL_NOTICE.en;
+}
+
+// Moderator tells the still-unconfirmed "interested" people on their own session
+// that it's full and they'll be contacted next time. Blinded: the moderator never
+// sees contact info — the server sends via the relay and stamps full_notified_at
+// so nobody is double-emailed. Manual, never automatic.
+async function notifyInterestedFull(sb: any, interviewerIds: string[], body: any) {
+  const slotId = String(body.slotId || "");
+  if (!slotId) return json({ success: false, error: "slotId required" }, 400);
+  const { data: slot } = await sb.from("rp_availability_slots").select("id,interviewer_id,study_id").eq("id", slotId).maybeSingle();
+  if (!slot || !interviewerIds.includes(slot.interviewer_id)) return json({ success: false, error: "Not your session" }, 403);
+
+  // Interested = unconfirmed bookings on THIS slot; map to their invitations.
+  const { data: intBks } = await sb.from("rp_bookings").select("invitation_id").eq("slot_id", slotId).eq("status", "interested");
+  const invIds = Array.from(new Set((intBks || []).map((b: any) => b.invitation_id).filter(Boolean)));
+  if (!invIds.length) return json({ success: true, sent: 0, skipped: 0 });
+  const { data: invs } = await sb.from("rp_invitations")
+    .select("id,submission_id,locale,full_notified_at").in("id", invIds);
+  const targets = (invs || []).filter((i: any) => !i.full_notified_at);
+  if (!targets.length) return json({ success: true, sent: 0, skipped: 0 });
+  const subIds = Array.from(new Set(targets.map((i: any) => i.submission_id).filter(Boolean)));
+  const { data: subs } = subIds.length ? await sb.from("research_panel_signups").select("id,full_name,email").in("id", subIds) : { data: [] };
+  const subById = new Map((subs || []).map((s: any) => [s.id, s]));
+  let sent = 0, skipped = 0;
+  const nowIso = new Date().toISOString();
+  for (const inv of targets) {
+    const s: any = subById.get(inv.submission_id);
+    const email = String(s?.email || "").trim();
+    if (!email || /^e2e-test\+/i.test(email)) { skipped++; continue; }
+    const first = String(s?.full_name || "").trim().split(/\s+/)[0] || "";
+    const t = fullNoticeFor(inv.locale);
+    const html = `<p>${t.greeting(escapeHtml(first))}</p><p>${t.body}</p><p>${t.signoff}</p>`;
+    const ok = await sendRelayEmail({ to: email, toName: s?.full_name, subject: t.subject, html, tags: ["session-full"] });
+    if (ok) { sent++; await sb.from("rp_invitations").update({ full_notified_at: nowIso }).eq("id", inv.id); }
+    else skipped++;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return json({ success: true, sent, skipped });
 }
 
 async function completeSession(sb: any, interviewerIds: string[], vendorId: string, body: any) {
