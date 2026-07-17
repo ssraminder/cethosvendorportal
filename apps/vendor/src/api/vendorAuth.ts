@@ -96,8 +96,12 @@ interface AuthCheckResponse {
 
 interface OtpSendResponse {
   success?: boolean;
+  /** Channel the code was ACTUALLY delivered on — may differ from the one
+   *  requested, e.g. "sms" asked for but the text couldn't go out. */
   channel?: string;
   masked_contact?: string;
+  /** Set to "sms" when an SMS request was served by emailing the code instead. */
+  fell_back_from?: string;
   error?: string;
   detail?: unknown;
 }

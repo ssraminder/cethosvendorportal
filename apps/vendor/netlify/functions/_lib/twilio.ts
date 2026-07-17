@@ -1,36 +1,76 @@
 /**
- * Twilio SMS helper. Mirrors the Supabase Edge `vendor-verify-phone`
- * usage so env vars (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
- * TWILIO_FROM_NUMBER) carry over.
+ * SMS helper — relays through the Supabase `vendor-send-sms` edge function.
+ *
+ * WHY NOT CALL TWILIO DIRECTLY FROM HERE:
+ * The Twilio credentials live ONLY in Supabase. Netlify holds the Mailgun /
+ * Brevo / DB secrets, but its TWILIO_* copies had gone stale — Twilio answered
+ * 20003 ("Authenticate") and SMS silently failed (vendor login "Text me the
+ * code instead", and NDA phone OTP). Rather than keep two copies of the same
+ * credentials in sync — the drift that caused that outage — this mints a
+ * short-lived `service_role` JWT with SUPABASE_JWT_SECRET (already in Netlify
+ * env; same technique as storage.ts) and lets the edge function hold the only
+ * copy of the Twilio credentials.
+ *
+ * The edge function is verify_jwt=true AND checks the role claim is
+ * service_role — the anon key is public, so signature-validity alone would
+ * leave it an open SMS relay.
+ *
+ * Signature is unchanged, so call sites (auth-otp-send, nda-otp-send) are not
+ * affected.
  */
+
+import { createHmac } from "crypto";
 
 interface SendSmsArgs {
   to: string;
   body: string;
 }
 
+const RELAY_PATH = "/functions/v1/vendor-send-sms";
+/** Short-lived: the token is minted and used immediately, server-to-server. */
+const JWT_TTL_SECONDS = 60;
+
+function base64url(input: Buffer | string): string {
+  const buf = typeof input === "string" ? Buffer.from(input) : input;
+  return buf.toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+/** HS256 service_role JWT signed with the project JWT secret. */
+function mintServiceRoleJwt(secret: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "HS256", typ: "JWT" };
+  const payload = {
+    role: "service_role",
+    iss: "supabase",
+    iat: now,
+    exp: now + JWT_TTL_SECONDS,
+  };
+  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`;
+  const signature = createHmac("sha256", secret).update(signingInput).digest();
+  return `${signingInput}.${base64url(signature)}`;
+}
+
 export async function sendTwilioSms(args: SendSmsArgs): Promise<{ sent: boolean; reason?: string }> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_FROM_NUMBER;
-  if (!sid || !token || !from) {
-    return { sent: false, reason: "twilio_not_configured" };
+  const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!supabaseUrl || !secret) {
+    return { sent: false, reason: "sms_relay_not_configured" };
   }
 
-  const params = new URLSearchParams({ To: args.to, From: from, Body: args.body });
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
   try {
-    const res = await fetch(url, {
+    const token = mintServiceRoleJwt(secret);
+    const res = await fetch(`${supabaseUrl}${RELAY_PATH}`, {
       method: "POST",
       headers: {
-        Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      body: params.toString(),
+      body: JSON.stringify({ to: args.to, body: args.body }),
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { sent: false, reason: `twilio_${res.status}: ${text.slice(0, 200)}` };
+
+    const data = (await res.json().catch(() => ({}))) as { sent?: boolean; reason?: string };
+    if (!res.ok || !data.sent) {
+      return { sent: false, reason: data.reason || `sms_relay_${res.status}` };
     }
     return { sent: true };
   } catch (e) {
