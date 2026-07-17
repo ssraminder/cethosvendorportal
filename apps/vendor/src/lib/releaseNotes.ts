@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.20",
+    date: "2026-07-17",
+    summary:
+      "Downloading a file you delivered on a job now works. It was showing a page of error text instead of the file — for every vendor, on every delivered file.",
+    changes: [
+      "Your delivered files on a job now download properly. Previously the Download button produced a page of technical error text ('Bucket not found') rather than the file. This affected every vendor and every delivered file, so if you gave up on it before, it will work now.",
+      "Delivered files now show their real name, size and type again — some were listing a long line of technical text where the file name should be.",
+      "Source and reference file downloads were never affected and are unchanged.",
+    ],
+  },
+  {
     version: "2026.7.19",
     date: "2026-07-16",
     summary:
