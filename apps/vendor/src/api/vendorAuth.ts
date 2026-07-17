@@ -98,8 +98,9 @@ interface OtpSendResponse {
   success?: boolean;
   channel?: string;
   masked_contact?: string;
+  // `error` is already vendor-safe wording — the raw Twilio body stays in the
+  // function's logs and is deliberately not returned.
   error?: string;
-  detail?: unknown;
 }
 
 interface AuthResponse {
@@ -138,8 +139,9 @@ interface PhoneVerifyResponse {
   success?: boolean;
   masked_phone?: string;
   vendor?: VendorProfile;
+  // `error` is already vendor-safe wording — the raw Twilio body stays in the
+  // function's logs and is deliberately not returned.
   error?: string;
-  detail?: unknown;
 }
 
 export type {

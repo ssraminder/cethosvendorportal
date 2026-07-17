@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { sendMailgunOperationalEmail } from "../_shared/mailgun.ts";
 import { generateOtp, generateSalt, hashOtp } from "../_shared/otp-crypto.ts";
+import { twilioErrorMessage } from "../_shared/twilio.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -202,16 +203,11 @@ serve(async (req: Request) => {
       );
 
       if (!smsRes.ok) {
+        // Raw Twilio errors stay in the logs — never in the vendor's face.
         const errBody = await smsRes.text();
         console.error("Twilio SMS failed:", smsRes.status, errBody);
-        let detail: unknown;
-        try {
-          detail = JSON.parse(errBody);
-        } catch {
-          detail = errBody;
-        }
         return new Response(
-          JSON.stringify({ error: "SMS delivery failed", detail }),
+          JSON.stringify({ error: twilioErrorMessage(smsRes.status, "Your sign-in code") }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
