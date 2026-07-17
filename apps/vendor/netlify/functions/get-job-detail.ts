@@ -14,6 +14,14 @@ import { signStorageUrl, signSourceFile } from "./_lib/storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// The only buckets step deliveries are ever written to: `vendor-deliveries`
+// (vendor portal uploads) and `quote-files` (admin-side deliveries).
+const DELIVERY_BUCKETS = ["vendor-deliveries", "quote-files"];
+
+function guessDeliveryBucket(storagePath: string): string {
+  return storagePath.startsWith("workflows/") ? "quote-files" : "vendor-deliveries";
+}
+
 interface FileRow {
   storage_path: string;
   filename: string;
@@ -360,26 +368,71 @@ export const handler = async (event: {
     }
 
     const deliveredFiles: FileRow[] = [];
-    // step_deliveries stores delivered files in `file_paths` (text[]) —
-    // not a `files` jsonb column the original Supabase function referenced.
-    // Filenames are the last segment of the storage path; we lose file
-    // size + mime type for delivered files, which the UI tolerates.
+    // step_deliveries stores delivered files in `file_paths` (text[]).
+    //
+    // Two shapes live in that column. vendor-deliver-step pushes whole
+    // objects into it, so Postgres coerces each element to its JSON text
+    // ('{"storage_path":...}'); the admin side writes plain "workflows/..."
+    // paths. Parse both — the JSON shape also carries the filename, size and
+    // mime type, so those need not be lost.
     const deliveries = await query<{ id: string; version: number; file_paths: string[] | null }>(
       `SELECT id, version, file_paths FROM step_deliveries
        WHERE step_id = $1 ORDER BY version DESC LIMIT 1`,
       [step.id],
     );
     const latest = deliveries[0];
-    const paths: string[] = Array.isArray(latest?.file_paths) ? latest!.file_paths : [];
-    for (const p of paths) {
+    const rawPaths: string[] = Array.isArray(latest?.file_paths) ? latest!.file_paths : [];
+
+    interface DeliveredMeta {
+      storage_path: string;
+      original_filename?: string | null;
+      file_size?: number | null;
+      mime_type?: string | null;
+    }
+    const parsed: DeliveredMeta[] = [];
+    for (const p of rawPaths) {
       if (!p) continue;
+      if (p.startsWith("{")) {
+        try {
+          const o = JSON.parse(p) as DeliveredMeta;
+          if (o?.storage_path) {
+            parsed.push(o);
+            continue;
+          }
+        } catch {
+          // Not the JSON shape after all — fall through and treat as a path.
+        }
+      }
+      parsed.push({ storage_path: p });
+    }
+
+    // Delivered files live in `vendor-deliveries` (vendor portal uploads) or
+    // `quote-files` (admin-side deliveries) depending on who delivered. The
+    // prefix correlates but does not decide it, so resolve against the
+    // storage catalog and keep the prefix only as a fallback.
+    const bucketByPath = new Map<string, string>();
+    if (parsed.length) {
+      try {
+        const objects = await query<{ name: string; bucket_id: string }>(
+          `SELECT name, bucket_id FROM storage.objects
+           WHERE name = ANY($1) AND bucket_id = ANY($2)`,
+          [parsed.map((f) => f.storage_path), DELIVERY_BUCKETS],
+        );
+        for (const o of objects) bucketByPath.set(o.name, o.bucket_id);
+      } catch (e) {
+        console.warn("[get-job-detail] bucket resolution failed, using prefix fallback:", e);
+      }
+    }
+
+    for (const f of parsed) {
+      const bucket = bucketByPath.get(f.storage_path) ?? guessDeliveryBucket(f.storage_path);
       deliveredFiles.push({
-        storage_path: p,
-        filename: p.split("/").pop() || "delivered_file",
-        file_size: null,
-        mime_type: null,
+        storage_path: f.storage_path,
+        filename: f.original_filename || f.storage_path.split("/").pop() || "delivered_file",
+        file_size: f.file_size ?? null,
+        mime_type: f.mime_type ?? null,
         source: "delivered",
-        download_url: signStorageUrl("step-deliveries", p),
+        download_url: signStorageUrl(bucket, f.storage_path),
       });
     }
 
