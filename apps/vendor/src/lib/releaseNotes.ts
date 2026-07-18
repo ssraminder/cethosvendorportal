@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.21",
+    date: "2026-07-18",
+    summary:
+      "Counter-offers are only accepted instantly when they fall inside the limits the project manager set.",
+    changes: [
+      "Fixed a case where a counter-offer could be accepted automatically even when the project manager hadn't set any acceptable-terms limits. Now, unless your counter fits within limits the PM explicitly set, it's sent to the PM for review before anything is agreed.",
+    ],
+  },
+  {
     version: "2026.7.20",
     date: "2026-07-16",
     summary:

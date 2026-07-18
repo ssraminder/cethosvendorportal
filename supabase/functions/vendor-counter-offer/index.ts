@@ -107,6 +107,17 @@ serve(async (req: Request) => {
     const nextCounterRound = (Number(offer.counter_round) || 0) + 1;
 
     // ── Auto-accept evaluation ──
+    // Auto-accept requires at least one explicit bound. Each check below is
+    // guarded by `!= null`, so with NO bounds set every check is skipped and
+    // `withinLimits` stays true — meaning a bounds-less offer with
+    // auto_accept_within_limits=true would accept ANY counter unconditionally
+    // (e.g. a 1 → 700 counter). That's not "within limits", it's "no limits".
+    // So a bounds-less offer must always fall through to admin review.
+    const hasBounds =
+      offer.max_rate != null ||
+      offer.max_total != null ||
+      offer.latest_deadline != null;
+
     let withinLimits = true;
     if (offer.max_rate != null && counterRate != null) {
       if (counterRate > Number(offer.max_rate)) withinLimits = false;
@@ -120,7 +131,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const autoAccept = !!offer.auto_accept_within_limits && withinLimits;
+    const autoAccept = !!offer.auto_accept_within_limits && hasBounds && withinLimits;
     const nowIso = new Date().toISOString();
 
     if (autoAccept) {
