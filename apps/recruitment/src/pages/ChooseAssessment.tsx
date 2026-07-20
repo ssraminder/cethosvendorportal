@@ -18,7 +18,7 @@ type Choice = 'test' | 'quiz'
 type PageState =
   | { kind: 'choosing' }
   | { kind: 'submitting'; choice: Choice }
-  | { kind: 'done'; choice: Choice }
+  | { kind: 'done'; choice: Choice; parked: boolean }
   | { kind: 'error'; message: string; alreadyChosen?: boolean }
 
 async function callEdgeFunction(
@@ -58,14 +58,21 @@ export function ChooseAssessment() {
         choice,
       })
       if (result.success) {
-        setPageState({ kind: 'done', choice })
+        // The server decides whether the assessment actually went out. When the
+        // auto-send gate is closed it records the choice and parks the
+        // application for staff review WITHOUT emailing a link — telling the
+        // applicant to watch their inbox in that case is what drove them to
+        // reply to recruiting@ asking where the test was.
+        const dispatched = (result.data as { dispatched?: { kind?: string } } | undefined)
+          ?.dispatched
+        setPageState({ kind: 'done', choice, parked: dispatched?.kind === 'parked' })
       } else if (result.error === 'already_chosen') {
         setPageState({
           kind: 'error',
           alreadyChosen: true,
           message:
             result.message ??
-            'You have already chosen your assessment. Check your email for the link, or contact recruitment@cethos.com.',
+            'You have already chosen your assessment. Contact recruitment@cethos.com if you need to switch.',
         })
       } else {
         setPageState({
@@ -90,15 +97,35 @@ export function ChooseAssessment() {
           <div className="flex justify-center">
             <CheckCircle className="w-16 h-16 text-green-500" />
           </div>
-          <h1 className="text-2xl font-bold text-cethos-navy">You're all set</h1>
-          <p className="text-gray-600">
-            We just emailed you {pageState.choice === 'test' ? 'your translation test link(s)' : 'your quiz link(s)'}.
-            Check your inbox — it should arrive within a minute or two. The
-            link will be valid for 240 hours.
-          </p>
-          <div className="bg-cethos-bg-blue rounded-lg border border-cethos-teal p-4 text-sm text-cethos-teal">
-            Don't see the email? Check spam, or reply to the original invitation.
-          </div>
+          <h1 className="text-2xl font-bold text-cethos-navy">
+            {pageState.parked ? 'Thanks — your choice is recorded' : "You're all set"}
+          </h1>
+          {pageState.parked ? (
+            <>
+              <p className="text-gray-600">
+                You chose the{' '}
+                {pageState.choice === 'test' ? 'translation test' : 'competence quiz'}. Our
+                recruitment team reviews each application before releasing the assessment, so
+                the link is not sent automatically.
+              </p>
+              <div className="bg-cethos-bg-blue rounded-lg border border-cethos-teal p-4 text-sm text-cethos-teal">
+                You don't need to do anything else, and there's no need to email us — we'll send
+                your assessment link once your application has been reviewed.
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-600">
+                We just emailed you{' '}
+                {pageState.choice === 'test' ? 'your translation test link(s)' : 'your quiz link(s)'}.
+                Check your inbox — it should arrive within a minute or two. The link will be
+                valid for 240 hours.
+              </p>
+              <div className="bg-cethos-bg-blue rounded-lg border border-cethos-teal p-4 text-sm text-cethos-teal">
+                Don't see the email? Check spam, or reply to the original invitation.
+              </div>
+            </>
+          )}
         </div>
       </Layout>
     )
