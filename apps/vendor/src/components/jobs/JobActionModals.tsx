@@ -215,19 +215,37 @@ export function DeclineModal({ step, onClose, onSuccess }: DeclineProps) {
 // DeliverModal
 // ---------------------------------------------------------------------------
 
+// Audio recordings (cognitive-debriefing jobs deliver interview audio). Kept
+// as a separate list so they can carry a larger size cap than documents.
+const AUDIO_EXTENSIONS = [".m4a", ".mp3", ".wav", ".amr"];
+
 const ACCEPTED_EXTENSIONS = [
   ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt", ".html",
   ".rtf", ".jpg", ".png", ".tiff", ".zip",
   ".xliff", ".sdlxliff", ".mqxliff", ".mqxlz",
   ".tmx", ".tbx", ".ttx", ".sdlppx", ".sdlrpx",
+  ...AUDIO_EXTENSIONS,
 ];
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB (documents)
+// Interview recordings run long; allow a higher cap for audio. Note the
+// delivery edge function buffers each file in memory, so files much beyond
+// this may fail to upload regardless of this limit.
+const MAX_AUDIO_FILE_SIZE = 300 * 1024 * 1024; // 300 MB (audio recordings)
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isAudioFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return AUDIO_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
+function maxSizeForFile(file: File): number {
+  return isAudioFile(file) ? MAX_AUDIO_FILE_SIZE : MAX_FILE_SIZE;
 }
 
 function isValidFileType(file: File): boolean {
@@ -291,10 +309,11 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
     const errors: string[] = [];
 
     for (const file of Array.from(incoming)) {
+      const maxSize = maxSizeForFile(file);
       if (!isValidFileType(file)) {
         errors.push(`"${file.name}" — unsupported file type`);
-      } else if (file.size > MAX_FILE_SIZE) {
-        errors.push(`"${file.name}" — exceeds 100 MB limit`);
+      } else if (file.size > maxSize) {
+        errors.push(`"${file.name}" — exceeds ${Math.round(maxSize / (1024 * 1024))} MB limit`);
       } else {
         newFiles.push(file);
       }
@@ -408,7 +427,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
               </button>
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Max 100 MB per file. Accepted: {ACCEPTED_EXTENSIONS.join(", ")}
+              Max 100 MB per file (300 MB for audio). Accepted: {ACCEPTED_EXTENSIONS.join(", ")}
             </p>
             <input
               ref={fileInputRef}
