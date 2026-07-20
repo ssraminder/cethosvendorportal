@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.7.22",
+    date: "2026-07-20",
+    summary:
+      "You can now upload audio recordings when delivering files — useful for cognitive-debriefing interviews.",
+    changes: [
+      "The Deliver Files window now accepts audio formats: .m4a, .mp3, .wav, and .amr, alongside the document and CAT formats already supported.",
+      "Audio files can be up to 300 MB each (other files stay at 100 MB), so full interview recordings can be delivered directly through the portal.",
+    ],
+  },
+  {
     version: "2026.7.21",
     date: "2026-07-18",
     summary:
