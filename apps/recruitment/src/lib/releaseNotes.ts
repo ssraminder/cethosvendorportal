@@ -14,6 +14,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.7.0',
+    date: '2026-07-20',
+    summary:
+      'The assessment chooser no longer promises a test link that was never sent.',
+    changes: [
+      'After choosing an assessment, the confirmation now reflects what actually happened. When recruitment reviews the application before releasing the assessment, applicants are told their choice was recorded and that the link follows after review — instead of being told a link had already been emailed.',
+      'That screen previously instructed applicants to check their spam folder and reply to the invitation if the link had not arrived, which sent a steady stream of "where is my test?" emails to the recruitment inbox for links that were never dispatched.',
+      'Applicants who genuinely were sent a link straight away still see the original "check your inbox" confirmation, unchanged.',
+    ],
+  },
+  {
     version: '2026.6.1',
     date: '2026-07-02',
     summary:
