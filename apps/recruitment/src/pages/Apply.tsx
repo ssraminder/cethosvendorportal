@@ -58,6 +58,7 @@ import {
   TRANSCRIBER_VERBATIM,
   TRANSCRIBER_TIMESTAMPING,
   CLINICIAN_CREDENTIALS,
+  CLINICIAN_PROFESSIONS,
   CLINICIAN_THERAPY_AREAS,
   CONSULTANT_SERVICES,
 } from '../lib/roles'
@@ -73,7 +74,9 @@ const CV_TOO_LARGE_ERROR = 'CV is too large — maximum 10MB.'
 // Only roles offered on the form (must match ROLE_OPTIONS). Interpreter /
 // transcriber / clinician_reviewer forms remain in code but are not offered, so
 // a ?role= deep link can't select an unsupported (400-on-submit) role.
-const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'cd_clinician_consultant']
+const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'clinician_reviewer', 'cd_clinician_consultant']
+
+const CLINICIAN_PROFESSION_VALUES = CLINICIAN_PROFESSIONS.map((p) => p.value) as string[]
 
 export function Apply() {
   const [searchParams] = useSearchParams()
@@ -81,11 +84,20 @@ export function Apply() {
     const r = searchParams.get('role')
     return (r && VALID_ROLES.includes(r as RoleType)) ? (r as RoleType) : 'translator'
   })()
+  // Clinician channel: pre-fill the profession from ?profession= (marketing-site
+  // per-profession cards deep-link here), else default to physician.
+  const initialProfession = (() => {
+    const p = searchParams.get('profession')
+    return (p && CLINICIAN_PROFESSION_VALUES.includes(p)) ? p : 'physician'
+  })()
   const [roleType, setRoleType] = useState<RoleType>(initialRole)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [cvFile, setCvFile] = useState<File | null>(null)
   const [cogSampleFile, setCogSampleFile] = useState<File | null>(null)
+  // Clinician supporting documents (licence / degree / board-cert scans) —
+  // multiple PDFs, uploaded alongside the required CV.
+  const [docFiles, setDocFiles] = useState<File[]>([])
   // Duplicate-email detection: if the entered email already belongs to a vendor
   // or a prior application, block the submission and point them to log in.
   const [emailExists, setEmailExists] = useState<null | { type: 'vendor' | 'application' }>(null)
@@ -163,15 +175,30 @@ export function Apply() {
     resolver: zodResolver(clinicianReviewerSchema) as Resolver<ClinicianReviewerFormData>,
     defaultValues: {
       roleType: 'clinician_reviewer',
+      clinicianProfession: initialProfession as ClinicianReviewerFormData['clinicianProfession'],
       clinicianCredentials: [],
-      clinicianWorkingLanguages: [],
+      degrees: [{ degree: '', field: '', institution: '', year: '' }],
+      registration: { number: '', issuingBody: '', jurisdiction: '', status: 'active', expiresOn: '' },
+      boardCertifications: [],
       clinicianTherapyAreas: [],
+      clinicianWorkingLanguages: [],
+      clinicianOtherLanguages: [],
+      clinicianGcpTrained: false,
+      clinicianCoaExperience: false,
       rateCurrency: 'CAD',
       privacyPolicy: false as unknown as true,
       declarationTrue: false as unknown as true,
-      consentTest: false as unknown as true,
-      consentUnpaid: false as unknown as true,
     },
+  })
+
+  const { fields: degreeFields, append: addDegree, remove: removeDegree } = useFieldArray({
+    control: clinicianForm.control,
+    name: 'degrees',
+  })
+
+  const { fields: boardCertFields, append: addBoardCert, remove: removeBoardCert } = useFieldArray({
+    control: clinicianForm.control,
+    name: 'boardCertifications',
   })
 
   // Cognitive debriefing form
@@ -290,6 +317,40 @@ export function Apply() {
     return path
   }
 
+  // Clinician supporting documents — accept multiple PDFs (licence, degree,
+  // board-cert scans). Same PDF-only / 10MB rule as the CV.
+  const handleDocsAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    const valid: File[] = []
+    for (const file of files) {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+      if (!isPdf) { setSubmitError(CV_NOT_PDF_ERROR); continue }
+      if (file.size > 10 * 1024 * 1024) { setSubmitError(CV_TOO_LARGE_ERROR); continue }
+      valid.push(file)
+    }
+    if (valid.length) { setSubmitError(null); setDocFiles((prev) => [...prev, ...valid]) }
+    e.target.value = ''
+  }
+
+  const removeDoc = (idx: number) => setDocFiles((prev) => prev.filter((_, i) => i !== idx))
+
+  // Uploads each supporting document to the cvp-applicant-cvs bucket with a
+  // doc_ prefix. Non-fatal per file — a failed upload is skipped, not blocking.
+  const uploadDocs = async (): Promise<string[]> => {
+    const paths: string[] = []
+    for (const f of docFiles) {
+      const clientUuid = crypto.randomUUID()
+      const sanitized = f.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+      const path = `${clientUuid}/doc_${sanitized}`
+      const { error } = await supabase.storage
+        .from('cvp-applicant-cvs')
+        .upload(path, f, { cacheControl: '3600', upsert: false })
+      if (!error) paths.push(path)
+      else console.error('Document upload failed:', error.message)
+    }
+    return paths
+  }
+
   const onTranslatorSubmit = async (data: TranslatorFormData) => {
     setSubmitting(true)
     setSubmitError(null)
@@ -350,8 +411,35 @@ export function Apply() {
 
   const onInterpreterSubmit = (data: InterpreterFormData) => submitSimpleRole(data)
   const onTranscriberSubmit = (data: TranscriberFormData) => submitSimpleRole(data)
-  const onClinicianSubmit = (data: ClinicianReviewerFormData) => submitSimpleRole(data)
   const onConsultantSubmit = (data: CdConsultantFormData) => submitSimpleRole(data)
+
+  // Clinician submit uploads the CV + any supporting documents, then posts the
+  // form with cvStoragePath + documentPaths[].
+  const onClinicianSubmit = async (data: ClinicianReviewerFormData) => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const cvPath = await uploadCvIfPresent()
+      if (!cvPath) { setSubmitting(false); return }
+      const documentPaths = await uploadDocs()
+      const payload = { ...data, cvStoragePath: cvPath, documentPaths }
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cvp-submit-application`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      )
+      const result = await response.json()
+      if (!result.success) throw new Error(result.error ?? 'Submission failed')
+      navigate('/apply/confirmation', { state: { applicationNumber: result.data.applicationNumber } })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const onCogSubmit = async (data: CognitiveDebriefingFormData) => {
     setSubmitting(true)
@@ -443,9 +531,10 @@ export function Apply() {
         <div>
           <h1 className="text-2xl font-bold text-cethos-navy">Apply to Join CETHOS</h1>
           <p className="mt-2 text-gray-600">
-            We're recruiting translators &amp; revisers, cognitive debriefing interviewers, and
-            cognitive debriefing &amp; clinician review consultants for our growing clinical and
-            COA linguistic validation work. Complete the form below to start the application process.
+            We're recruiting translators &amp; revisers, cognitive debriefing interviewers,
+            clinician reviewers (physicians, nurses &amp; pharmacists), and cognitive debriefing
+            &amp; clinician review consultants for our growing clinical and COA linguistic
+            validation work. Complete the form below to start the application process.
           </p>
         </div>
 
@@ -1725,7 +1814,7 @@ export function Apply() {
           </form>
         )}
 
-        {/* ===== CLINICIAN REVIEWER FORM ===== */}
+        {/* ===== CLINICIAN REVIEWER FORM (physicians / nurses / pharmacists) ===== */}
         {roleType === 'clinician_reviewer' && (
           <form onSubmit={clinicianForm.handleSubmit(onClinicianSubmit, handleInvalid)} className="space-y-6">
             <FormSection title="Personal Information">
@@ -1754,25 +1843,12 @@ export function Apply() {
               </div>
             </FormSection>
 
-            <FormSection title="Clinical Credentials">
-              <FormField label="Credentials" required error={clinicianForm.formState.errors.clinicianCredentials?.message as string | undefined}>
-                <MultiSelect
-                  options={CLINICIAN_CREDENTIALS.map((c) => ({ value: c.value, label: c.label }))}
-                  value={(clinicianForm.watch('clinicianCredentials') ?? []) as string[]}
-                  onChange={(next) => clinicianForm.setValue('clinicianCredentials', next as ClinicianReviewerFormData['clinicianCredentials'], { shouldValidate: true })}
-                  placeholder="Select credentials…"
-                />
-              </FormField>
-
+            <FormSection title="Profession & Credentials">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label="Licensing country" required error={clinicianForm.formState.errors.clinicianLicensingCountry?.message}>
-                  <select {...clinicianForm.register('clinicianLicensingCountry')} className={selectClasses}>
-                    <option value="">Select...</option>
-                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                <FormField label="I am a" required error={clinicianForm.formState.errors.clinicianProfession?.message as string | undefined}>
+                  <select {...clinicianForm.register('clinicianProfession')} className={selectClasses}>
+                    {CLINICIAN_PROFESSIONS.map((p) => (<option key={p.value} value={p.value}>{p.label}</option>))}
                   </select>
-                </FormField>
-                <FormField label="State / Province (optional)">
-                  <input {...clinicianForm.register('clinicianLicensingRegion')} className={inputClasses} placeholder="e.g. California, Ontario" />
                 </FormField>
                 <FormField label="Education level" required error={clinicianForm.formState.errors.educationLevel?.message}>
                   <select {...clinicianForm.register('educationLevel')} className={selectClasses}>
@@ -1781,14 +1857,121 @@ export function Apply() {
                   </select>
                 </FormField>
               </div>
+              <FormField label="Credentials" required error={clinicianForm.formState.errors.clinicianCredentials?.message as string | undefined}>
+                <MultiSelect
+                  options={CLINICIAN_CREDENTIALS.map((c) => ({ value: c.value, label: c.label }))}
+                  value={(clinicianForm.watch('clinicianCredentials') ?? []) as string[]}
+                  onChange={(next) => clinicianForm.setValue('clinicianCredentials', next as ClinicianReviewerFormData['clinicianCredentials'], { shouldValidate: true })}
+                  placeholder="Select credentials…"
+                />
+              </FormField>
+            </FormSection>
+
+            <FormSection title="Degrees" description="Add each qualifying degree. At least one is required — attach the certificate under Supporting documents below.">
+              <div className="space-y-4">
+                {degreeFields.map((f, i) => (
+                  <div key={f.id} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-3">
+                      <FormField label="Degree" required error={clinicianForm.formState.errors.degrees?.[i]?.degree?.message}>
+                        <input {...clinicianForm.register(`degrees.${i}.degree` as const)} className={inputClasses} placeholder="MD, PharmD, PhD…" />
+                      </FormField>
+                    </div>
+                    <div className="sm:col-span-3">
+                      <FormField label="Field">
+                        <input {...clinicianForm.register(`degrees.${i}.field` as const)} className={inputClasses} placeholder="Medicine…" />
+                      </FormField>
+                    </div>
+                    <div className="sm:col-span-4">
+                      <FormField label="Institution" required error={clinicianForm.formState.errors.degrees?.[i]?.institution?.message}>
+                        <input {...clinicianForm.register(`degrees.${i}.institution` as const)} className={inputClasses} />
+                      </FormField>
+                    </div>
+                    <div className="sm:col-span-2 flex items-end gap-2">
+                      <FormField label="Year">
+                        <input {...clinicianForm.register(`degrees.${i}.year` as const)} type="number" min="1950" className={inputClasses} placeholder="2010" />
+                      </FormField>
+                      {degreeFields.length > 1 && (
+                        <button type="button" onClick={() => removeDegree(i)} className="mb-2 text-gray-500 hover:text-red-600 text-sm shrink-0">Remove</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => addDegree({ degree: '', field: '', institution: '', year: '' })} className="inline-flex items-center gap-1 text-sm text-cethos-teal hover:text-cethos-teal-light">
+                  <Plus className="w-4 h-4" /> Add degree
+                </button>
+                {typeof (clinicianForm.formState.errors.degrees as { message?: string } | undefined)?.message === 'string' && (
+                  <p className="text-sm text-red-600">{(clinicianForm.formState.errors.degrees as { message?: string }).message}</p>
+                )}
+              </div>
+            </FormSection>
+
+            <FormSection title="Professional Registration" description="Your current licence or registration with a regulatory body. The registration number is required — it's how we verify you're licensed to practise.">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Registration / licence number" required error={clinicianForm.formState.errors.registration?.number?.message}>
+                  <input {...clinicianForm.register('registration.number')} className={inputClasses} placeholder="e.g. GMC 1234567" />
+                </FormField>
+                <FormField label="Issuing body / regulator" required error={clinicianForm.formState.errors.registration?.issuingBody?.message}>
+                  <input {...clinicianForm.register('registration.issuingBody')} className={inputClasses} placeholder="e.g. General Medical Council" />
+                </FormField>
+                <FormField label="Jurisdiction" required error={clinicianForm.formState.errors.registration?.jurisdiction?.message}>
+                  <input {...clinicianForm.register('registration.jurisdiction')} className={inputClasses} placeholder="e.g. United Kingdom" />
+                </FormField>
+                <FormField label="Status" required error={clinicianForm.formState.errors.registration?.status?.message}>
+                  <select {...clinicianForm.register('registration.status')} className={selectClasses}>
+                    <option value="active">Active</option>
+                    <option value="provisional">Provisional / trainee</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </FormField>
+                <FormField label="Expiry (optional)">
+                  <input {...clinicianForm.register('registration.expiresOn')} type="month" className={inputClasses} />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Board Certifications (optional)" description="Specialty board certifications, if any.">
+              <div className="space-y-4">
+                {boardCertFields.map((f, i) => (
+                  <div key={f.id} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-5">
+                      <FormField label="Specialty" required error={clinicianForm.formState.errors.boardCertifications?.[i]?.specialty?.message}>
+                        <input {...clinicianForm.register(`boardCertifications.${i}.specialty` as const)} className={inputClasses} placeholder="e.g. Psychiatry" />
+                      </FormField>
+                    </div>
+                    <div className="sm:col-span-4">
+                      <FormField label="Board">
+                        <input {...clinicianForm.register(`boardCertifications.${i}.board` as const)} className={inputClasses} placeholder="Certifying board" />
+                      </FormField>
+                    </div>
+                    <div className="sm:col-span-3 flex items-end gap-2">
+                      <FormField label="Year">
+                        <input {...clinicianForm.register(`boardCertifications.${i}.year` as const)} type="number" min="1950" className={inputClasses} />
+                      </FormField>
+                      <button type="button" onClick={() => removeBoardCert(i)} className="mb-2 text-gray-500 hover:text-red-600 text-sm shrink-0">Remove</button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => addBoardCert({ specialty: '', board: '', year: '', expiresOn: '' })} className="inline-flex items-center gap-1 text-sm text-cethos-teal hover:text-cethos-teal-light">
+                  <Plus className="w-4 h-4" /> Add board certification
+                </button>
+              </div>
             </FormSection>
 
             <FormSection title="Review Profile">
-              <FormField label="Working languages" required error={clinicianForm.formState.errors.clinicianWorkingLanguages?.message as string | undefined}>
+              <FormField label="Languages you can review in" required error={clinicianForm.formState.errors.clinicianWorkingLanguages?.message as string | undefined}>
                 <MultiSelect
                   options={languages.map((l) => ({ value: l.id, label: l.name }))}
                   value={(clinicianForm.watch('clinicianWorkingLanguages') ?? []) as string[]}
                   onChange={(next) => clinicianForm.setValue('clinicianWorkingLanguages', next, { shouldValidate: true })}
+                  placeholder="Select languages…"
+                />
+              </FormField>
+
+              <FormField label="Other languages (can discuss, not review)">
+                <MultiSelect
+                  options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                  value={(clinicianForm.watch('clinicianOtherLanguages') ?? []) as string[]}
+                  onChange={(next) => clinicianForm.setValue('clinicianOtherLanguages', next, { shouldValidate: true })}
                   placeholder="Select languages…"
                 />
               </FormField>
@@ -1803,27 +1986,79 @@ export function Apply() {
               </FormField>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <FormField label="Years clinical review" required error={clinicianForm.formState.errors.clinicianYearsClinicalReview?.message}>
-                  <input {...clinicianForm.register('clinicianYearsClinicalReview')} type="number" min="0" className={inputClasses} />
+                <FormField label="Years of independent practice" required error={clinicianForm.formState.errors.clinicianYearsIndependentPractice?.message}>
+                  <input {...clinicianForm.register('clinicianYearsIndependentPractice')} type="number" min="0" className={inputClasses} />
                 </FormField>
                 <FormField label="Years COA/PRO (optional)">
                   <input {...clinicianForm.register('clinicianYearsCoa')} type="number" min="0" className={inputClasses} />
                 </FormField>
-                <FormField label="Hourly rate" required error={clinicianForm.formState.errors.clinicianHourlyRate?.message}>
-                  <input {...clinicianForm.register('clinicianHourlyRate')} type="number" step="0.01" className={inputClasses} placeholder="150.00" />
+                <FormField label="Time zone (optional)">
+                  <select {...clinicianForm.register('clinicianTimezone')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {TIMEZONE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
                 </FormField>
               </div>
 
-              <FormField label="Currency" required error={clinicianForm.formState.errors.rateCurrency?.message}>
-                <select {...clinicianForm.register('rateCurrency')} className={`${selectClasses} max-w-xs`}>
-                  {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
-                </select>
-              </FormField>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Indicative hourly rate (optional)" hint="Clinicians are engaged on an agreed hourly fee — this is only a guide.">
+                  <input {...clinicianForm.register('clinicianHourlyRate')} type="number" step="0.01" className={inputClasses} placeholder="150.00" />
+                </FormField>
+                <FormField label="Currency">
+                  <select {...clinicianForm.register('rateCurrency')} className={selectClasses}>
+                    {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...clinicianForm.register('clinicianGcpTrained')} className="text-cethos-teal focus:ring-cethos-teal" />
+                  <span className="text-sm text-gray-700">GCP (Good Clinical Practice) trained</span>
+                </label>
+                {clinicianForm.watch('clinicianGcpTrained') && (
+                  <FormField label="GCP training year">
+                    <input {...clinicianForm.register('clinicianGcpYear')} type="number" min="1990" className={`${inputClasses} max-w-xs`} placeholder="2022" />
+                  </FormField>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...clinicianForm.register('clinicianCoaExperience')} className="text-cethos-teal focus:ring-cethos-teal" />
+                  <span className="text-sm text-gray-700">I have prior COA / PRO instrument experience</span>
+                </label>
+                {clinicianForm.watch('clinicianCoaExperience') && (
+                  <FormField label="Briefly describe your COA/PRO experience">
+                    <textarea {...clinicianForm.register('clinicianCoaExperienceNotes')} rows={2} className={inputClasses} />
+                  </FormField>
+                )}
+              </div>
             </FormSection>
 
             <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} showMissingError={submitError === CV_MISSING_ERROR} />
 
+            <FormSection title="Supporting documents" description="Upload scans of your licence, degree certificate(s) and any board certifications (PDF, max 10MB each). You can add several.">
+              <div className="space-y-2">
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-cethos-teal rounded-lg p-6 cursor-pointer transition-colors">
+                  <Upload className="w-5 h-5 text-gray-400" />
+                  <span className="text-sm text-gray-500">Click to add documents (PDF only)</span>
+                  <input type="file" accept="application/pdf,.pdf" multiple className="sr-only" onChange={handleDocsAdd} />
+                </label>
+                {docFiles.length > 0 && (
+                  <ul className="space-y-2">
+                    {docFiles.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="flex items-center justify-between bg-cethos-bg-blue rounded-md px-3 py-2 border border-cethos-teal/30">
+                        <span className="text-sm text-cethos-navy truncate">{f.name}</span>
+                        <button type="button" onClick={() => removeDoc(i)} className="text-gray-500 hover:text-red-600 text-sm shrink-0 ml-2">Remove</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </FormSection>
+
             <FormSection title="Additional Information">
+              <FormField label="Conflicts of interest (optional)" hint="Any commercial or clinical interests that could affect your independence as a reviewer.">
+                <textarea {...clinicianForm.register('conflictsOfInterest')} rows={2} className={inputClasses} />
+              </FormField>
               <FormField label="How did you hear about us?">
                 <select {...clinicianForm.register('referralSource')} className={selectClasses}>
                   <option value="">Select...</option>
@@ -1835,7 +2070,7 @@ export function Apply() {
               </FormField>
             </FormSection>
 
-            <ConsentSection form={clinicianForm} />
+            <ConsentSection form={clinicianForm} testConsent={false} />
 
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>

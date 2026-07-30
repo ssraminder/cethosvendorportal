@@ -14,6 +14,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.7.1',
+    date: '2026-07-29',
+    summary:
+      'New dedicated registration channel for clinicians — physicians, nurses and pharmacists can now apply directly.',
+    changes: [
+      'Added "Clinician Reviewer (Physician / Nurse / Pharmacist)" as an application type, with a profession selector you can deep-link to (e.g. ?profession=nurse).',
+      'Capture your qualifications as structured records: add multiple degrees (degree, field, institution, year) and, optionally, board certifications.',
+      'Professional registration is now collected up front — registration/licence number, issuing body, jurisdiction, status and expiry (registration number required).',
+      'Upload multiple supporting documents (licence, degree and board-certification scans) alongside your CV.',
+      'No skills test for this route — consent is the privacy policy plus a truthful-declaration acknowledgement.',
+    ],
+  },
+  {
     version: '2026.6.1',
     date: '2026-07-02',
     summary:

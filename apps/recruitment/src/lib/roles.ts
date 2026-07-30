@@ -2,12 +2,13 @@
 // constraint on cvp_applications.role_type.
 
 // Roles currently OFFERED on the apply form (each has an end-to-end backend
-// path). Interpreter / Transcriber / Clinician Reviewer forms + schemas still
-// exist in code but are not offered yet — re-add them here once their submit
-// persistence is wired, so applicants never hit a 400 on an unsupported role.
+// path). Interpreter / Transcriber forms + schemas still exist in code but are
+// not offered yet — re-add them here once their submit persistence is wired, so
+// applicants never hit a 400 on an unsupported role.
 export const ROLE_OPTIONS = [
   { value: 'translator', label: 'Translator / Reviewer', hint: 'Translation, review, proofreading, MTPE' },
   { value: 'cognitive_debriefing', label: 'Cognitive Debriefing Interviewer', hint: 'Conducting COA/PRO cognitive debriefing interviews with patients' },
+  { value: 'clinician_reviewer', label: 'Clinician Reviewer (Physician / Nurse / Pharmacist)', hint: 'Independent clinical review of COA/PRO instruments — register with your degrees & licence' },
   { value: 'cd_clinician_consultant', label: 'Cognitive Debriefing & Clinician Review Consultant', hint: 'Participant & clinician recruitment, CD/ClinRO study consulting & coordination' },
 ] as const
 
@@ -55,6 +56,16 @@ export const TRANSCRIBER_TIMESTAMPING = [
   { value: 'yes', label: 'Yes, always' },
   { value: 'on_request', label: 'On request' },
   { value: 'no', label: 'No' },
+] as const
+
+// Top-level profession selector for the Clinician Reviewer channel. Drives the
+// "I am a" pre-fill (?profession= deep link) and the marketing-site cards.
+// Distinct from CLINICIAN_CREDENTIALS, which captures the specific letters.
+export const CLINICIAN_PROFESSIONS = [
+  { value: 'physician', label: 'Physician (MD / DO / MBBS / MBChB)' },
+  { value: 'nurse', label: 'Nurse (RN / NP)' },
+  { value: 'pharmacist', label: 'Pharmacist (PharmD / RPh)' },
+  { value: 'other', label: 'Other regulated clinician' },
 ] as const
 
 export const CLINICIAN_CREDENTIALS = [
