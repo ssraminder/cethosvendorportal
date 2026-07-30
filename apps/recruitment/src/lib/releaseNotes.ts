@@ -14,6 +14,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.7.2',
+    date: '2026-07-30',
+    summary:
+      'Dedicated clinician registration links: /clinicians opens straight to the Clinician Reviewer form.',
+    changes: [
+      'Added /clinicians (and /apply/clinician) — a shareable link that opens directly to the Clinician Reviewer form. It still honours ?profession=, so per-profession links work too (e.g. /clinicians?profession=speech_language_therapist).',
+    ],
+  },
+  {
     version: '2026.7.1',
     date: '2026-07-29',
     summary:
