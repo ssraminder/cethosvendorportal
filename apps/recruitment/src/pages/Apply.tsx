@@ -78,11 +78,15 @@ const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'clinicia
 
 const CLINICIAN_PROFESSION_VALUES = CLINICIAN_PROFESSIONS.map((p) => p.value) as string[]
 
-export function Apply() {
+export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
   const [searchParams] = useSearchParams()
+  // Role precedence: an explicit ?role= wins; otherwise a route-level default
+  // (e.g. the /clinicians dedicated link passes clinician_reviewer); else translator.
   const initialRole = (() => {
     const r = searchParams.get('role')
-    return (r && VALID_ROLES.includes(r as RoleType)) ? (r as RoleType) : 'translator'
+    if (r && VALID_ROLES.includes(r as RoleType)) return r as RoleType
+    if (defaultRole && VALID_ROLES.includes(defaultRole)) return defaultRole
+    return 'translator'
   })()
   // Clinician channel: pre-fill the profession from ?profession= (marketing-site
   // per-profession cards deep-link here), else default to physician.
