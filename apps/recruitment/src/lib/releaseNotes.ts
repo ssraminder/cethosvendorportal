@@ -20,6 +20,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'New dedicated registration channel for clinicians — physicians, nurses, pharmacists and allied-health professionals (speech & language, physio, occupational therapists, dietitians) can now apply directly.',
     changes: [
       'Added a "Clinician Reviewer" application type with a profession selector (physician, nurse, pharmacist, speech & language therapist, physiotherapist, occupational therapist, dietitian, or other) you can deep-link to (e.g. ?profession=nurse).',
+      'Dedicated registration links for clinicians: /clinicians (and /apply/clinician) open straight to the Clinician Reviewer form, and still honour ?profession= for a specific profession.',
       'Capture your qualifications as structured records: add multiple degrees (degree, field, institution, year) and, optionally, board certifications.',
       'Professional registration is now collected up front — registration/licence number, issuing body, jurisdiction, status and expiry (registration number required).',
       'Upload multiple supporting documents (licence, degree and board-certification scans) alongside your CV.',
