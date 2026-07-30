@@ -8,6 +8,7 @@ import {
   TRANSCRIBER_VERBATIM,
   TRANSCRIBER_TIMESTAMPING,
   CLINICIAN_CREDENTIALS,
+  CLINICIAN_PROFESSIONS,
   CLINICIAN_THERAPY_AREAS,
   CONSULTANT_SERVICES,
 } from './roles'
@@ -19,6 +20,7 @@ const transcriberSpecValues = TRANSCRIBER_SPECIALIZATIONS.map((s) => s.value) as
 const verbatimValues = TRANSCRIBER_VERBATIM.map((v) => v.value) as [string, ...string[]]
 const timestampingValues = TRANSCRIBER_TIMESTAMPING.map((t) => t.value) as [string, ...string[]]
 const credentialValues = CLINICIAN_CREDENTIALS.map((c) => c.value) as [string, ...string[]]
+const professionValues = CLINICIAN_PROFESSIONS.map((p) => p.value) as [string, ...string[]]
 const clinicianAreaValues = CLINICIAN_THERAPY_AREAS.map((a) => a.value) as [string, ...string[]]
 const consultantServiceValues = CONSULTANT_SERVICES.map((s) => s.value) as [string, ...string[]]
 
@@ -311,23 +313,63 @@ export const transcriberSchema = z.object({
 })
 
 // -- Clinician Reviewer --
+// Self-registration channel for physicians / nurses / pharmacists. NO skills
+// test (consent block omits the test acknowledgements — like the consultant
+// role). Degrees and professional registration are captured as structured rows
+// so approval maps 1:1 onto clinician_credentials; registration number is
+// REQUIRED as the primary anti-fabrication anchor.
+
+const clinicianDegreeSchema = z.object({
+  degree: z.string().min(1, 'Degree is required'),        // MD, MBChB, PharmD, PhD…
+  field: z.string().optional(),                           // Medicine, Pharmacy…
+  institution: z.string().min(1, 'Institution is required'),
+  year: z.string().optional(),
+})
+
+const clinicianBoardCertSchema = z.object({
+  specialty: z.string().min(1, 'Specialty is required'),  // e.g. Psychiatry
+  board: z.string().optional(),                           // certifying board
+  year: z.string().optional(),
+  expiresOn: z.string().optional(),
+})
+
+const clinicianRegistrationSchema = z.object({
+  number: z.string().min(1, 'Registration / licence number is required'),
+  issuingBody: z.string().min(1, 'Issuing body / regulator is required'),
+  jurisdiction: z.string().min(1, 'Jurisdiction is required'),
+  status: z.enum(['active', 'inactive', 'provisional']).default('active'),
+  expiresOn: z.string().optional(),                       // YYYY-MM
+})
 
 export const clinicianReviewerSchema = z.object({
   roleType: z.literal('clinician_reviewer'),
   ...personalInfoSchema.shape,
-  educationLevel: z.string().min(1, 'Education level is required'),
+  clinicianProfession: z.enum(professionValues, { error: 'Select your profession' }),
   clinicianCredentials: z.array(z.enum(credentialValues)).min(1, 'Select at least one credential'),
-  clinicianLicensingCountry: z.string().min(1, 'Licensing country is required'),
-  clinicianLicensingRegion: z.string().optional(),
-  clinicianWorkingLanguages: z.array(z.string().min(1)).min(1, 'Select at least one working language'),
+  educationLevel: z.string().min(1, 'Education level is required'),
+  degrees: z.array(clinicianDegreeSchema).min(1, 'Add at least one degree'),
+  registration: clinicianRegistrationSchema,
+  boardCertifications: z.array(clinicianBoardCertSchema).default([]),
   clinicianTherapyAreas: z.array(z.enum(clinicianAreaValues)).min(1, 'Select at least one therapy area'),
-  clinicianYearsClinicalReview: z.string().min(1, 'Clinical review experience is required'),
+  clinicianWorkingLanguages: z.array(z.string().min(1)).min(1, 'Select at least one review language'),
+  clinicianOtherLanguages: z.array(z.string()).default([]),
+  clinicianYearsIndependentPractice: z.string().min(1, 'Years of independent practice is required'),
   clinicianYearsCoa: z.string().optional(),
-  clinicianHourlyRate: z.string().min(1, 'Hourly rate is required'),
-  rateCurrency: z.string().min(3, 'Select a currency'),
+  clinicianGcpTrained: z.boolean().default(false),
+  clinicianGcpYear: z.string().optional(),
+  clinicianCoaExperience: z.boolean().default(false),
+  clinicianCoaExperienceNotes: z.string().optional(),
+  clinicianTimezone: z.string().optional(),
+  // Clinicians are engaged off-portal on an agreed hourly fee, and Find Vendors
+  // exempts them from the rate gate — so rate is informational, not required.
+  clinicianHourlyRate: z.string().optional(),
+  rateCurrency: z.string().optional(),
+  conflictsOfInterest: z.string().optional(),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
-  ...consentSchema.shape,
+  // No skills test — privacy consent + truthful-declaration only.
+  privacyPolicy: z.literal(true, { error: 'You must agree to the Privacy Policy' }),
+  declarationTrue: z.literal(true, { error: 'You must declare that the information provided is true and accurate' }),
 })
 
 // -- Cognitive Debriefing & Clinician Review Consultant --
