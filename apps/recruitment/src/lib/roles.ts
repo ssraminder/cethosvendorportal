@@ -65,6 +65,10 @@ export const CLINICIAN_PROFESSIONS = [
   { value: 'physician', label: 'Physician (MD / DO / MBBS / MBChB)' },
   { value: 'nurse', label: 'Nurse (RN / NP)' },
   { value: 'pharmacist', label: 'Pharmacist (PharmD / RPh)' },
+  { value: 'speech_language_therapist', label: 'Speech & Language Therapist (SLP / SLT)' },
+  { value: 'physiotherapist', label: 'Physiotherapist (PT)' },
+  { value: 'occupational_therapist', label: 'Occupational Therapist (OT)' },
+  { value: 'dietitian', label: 'Dietitian / Nutritionist (RD)' },
   { value: 'other', label: 'Other regulated clinician' },
 ] as const
 
@@ -79,6 +83,10 @@ export const CLINICIAN_CREDENTIALS = [
   { value: 'MSc_ClinPsych', label: 'MSc (Clinical Psychology)' },
   { value: 'LMFT', label: 'LMFT (Marriage & Family Therapist)' },
   { value: 'LCSW', label: 'LCSW (Licensed Clinical Social Worker)' },
+  { value: 'SLP', label: 'SLP / SLT (Speech-Language Pathologist / Therapist)' },
+  { value: 'PT', label: 'PT (Physiotherapist)' },
+  { value: 'OT', label: 'OT (Occupational Therapist)' },
+  { value: 'RD', label: 'RD (Registered Dietitian)' },
   { value: 'Other', label: 'Other' },
 ] as const
 
