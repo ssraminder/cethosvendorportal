@@ -367,6 +367,10 @@ export const clinicianReviewerSchema = z.object({
   conflictsOfInterest: z.string().optional(),
   referralSource: z.string().optional(),
   notes: z.string().optional(),
+  // Seamless in-form NDA clickwrap (dedicated clinician confidentiality &
+  // non-disclosure agreement). Signed as part of submitting the form.
+  ndaFullName: z.string().min(2, 'Type your full legal name to sign the confidentiality agreement'),
+  ndaAccepted: z.literal(true, { error: 'You must read and agree to the Confidentiality & Non-Disclosure Agreement' }),
   // No skills test — privacy consent + truthful-declaration only.
   privacyPolicy: z.literal(true, { error: 'You must agree to the Privacy Policy' }),
   declarationTrue: z.literal(true, { error: 'You must declare that the information provided is true and accurate' }),

@@ -14,6 +14,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.7.3',
+    date: '2026-07-30',
+    summary:
+      'Clinician registration now includes a seamless in-form confidentiality & non-disclosure agreement — sign as you apply.',
+    changes: [
+      'Added a dedicated Confidentiality & Non-Disclosure Agreement to the Clinician Reviewer form. Read it inline, type your full legal name, and agree — it is signed as part of submitting, with no separate step. Your acceptance carries through to your vendor record if you are approved.',
+    ],
+  },
+  {
     version: '2026.7.1',
     date: '2026-07-29',
     summary:
