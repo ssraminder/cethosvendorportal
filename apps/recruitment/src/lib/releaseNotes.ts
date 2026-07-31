@@ -14,6 +14,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.7.4',
+    date: '2026-07-30',
+    summary:
+      'Clinicians recruited by email can now sign the confidentiality agreement via a secure link — no account needed.',
+    changes: [
+      'Added a public /sign-nda/:token page. Staff can email an off-portal clinician a unique link to read and sign the Confidentiality & Non-Disclosure Agreement (typed legal name + agree). The signature is recorded on their vendor record, exactly like the in-form clickwrap.',
+    ],
+  },
+  {
     version: '2026.7.3',
     date: '2026-07-30',
     summary:

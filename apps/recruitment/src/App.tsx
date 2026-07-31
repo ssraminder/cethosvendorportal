@@ -10,6 +10,7 @@ import { ReferencesEntry } from './pages/ReferencesEntry'
 import { ReferenceFeedback } from './pages/ReferenceFeedback'
 import { TestFeedback } from './pages/TestFeedback'
 import { AboutSoftware } from './components/AboutSoftware'
+import { ClinicianNdaSign } from './pages/ClinicianNdaSign'
 
 function App() {
   return (
@@ -28,6 +29,8 @@ function App() {
         <Route path="/test-feedback/:token" element={<TestFeedback />} />
         <Route path="/references/:token" element={<ReferencesEntry />} />
         <Route path="/reference-feedback/:token" element={<ReferenceFeedback />} />
+        {/* Emailed clinician NDA signing link (off-portal clinicians). */}
+        <Route path="/sign-nda/:token" element={<ClinicianNdaSign />} />
         <Route path="/about" element={<AboutSoftware />} />
         <Route path="/" element={<Navigate to="/apply" replace />} />
         <Route path="*" element={<Navigate to="/apply" replace />} />
