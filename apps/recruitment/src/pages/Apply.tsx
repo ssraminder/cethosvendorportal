@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -102,11 +102,34 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
   // Clinician supporting documents (licence / degree / board-cert scans) —
   // multiple PDFs, uploaded alongside the required CV.
   const [docFiles, setDocFiles] = useState<File[]>([])
+  // Clinician NDA (dedicated confidentiality & non-disclosure) — fetched for the
+  // seamless in-form clickwrap when the clinician role is active.
+  const [clinicianNda, setClinicianNda] = useState<{ id: string; title: string; version_label: string | null; body_html: string } | null>(null)
   // Duplicate-email detection: if the entered email already belongs to a vendor
   // or a prior application, block the submission and point them to log in.
   const [emailExists, setEmailExists] = useState<null | { type: 'vendor' | 'application' }>(null)
   const { languages, loading: languagesLoading, error: languagesError } = useLanguages()
   const navigate = useNavigate()
+
+  // Load the active clinician confidentiality/NDA agreement once the clinician
+  // role is selected, so it can be shown + signed inline on the form.
+  useEffect(() => {
+    if (roleType !== 'clinician_reviewer' || clinicianNda) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cvp-get-clinician-nda`, {
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        })
+        const data = await res.json()
+        if (!cancelled && data?.success && data.nda) setClinicianNda(data.nda)
+      } catch { /* non-fatal — the server still enforces acceptance on submit */ }
+    })()
+    return () => { cancelled = true }
+  }, [roleType, clinicianNda])
 
   // Translator form
   const translatorForm = useForm<TranslatorFormData>({
@@ -190,6 +213,8 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
       clinicianGcpTrained: false,
       clinicianCoaExperience: false,
       rateCurrency: 'CAD',
+      ndaFullName: '',
+      ndaAccepted: false as unknown as true,
       privacyPolicy: false as unknown as true,
       declarationTrue: false as unknown as true,
     },
@@ -2072,6 +2097,34 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
               <FormField label="Additional notes">
                 <textarea {...clinicianForm.register('notes')} rows={3} className={inputClasses} />
               </FormField>
+            </FormSection>
+
+            {/* Seamless in-form NDA — dedicated clinician confidentiality &
+                non-disclosure agreement, read + signed as part of submitting. */}
+            <FormSection title="Confidentiality & Non-Disclosure Agreement" description="Clinician reviewers handle unpublished, confidential COA/PRO instruments. Please read and sign this agreement to continue.">
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
+                  <span className="text-sm font-semibold text-cethos-navy">{clinicianNda?.title ?? 'Confidentiality & Non-Disclosure Agreement'}</span>
+                  {clinicianNda?.version_label && (<span className="text-xs text-gray-500">{clinicianNda.version_label}</span>)}
+                </div>
+                <div
+                  className="prose prose-sm max-w-none px-5 py-4 max-h-64 overflow-y-auto text-gray-800"
+                  dangerouslySetInnerHTML={{ __html: clinicianNda?.body_html ?? '<p>Loading the agreement…</p>' }}
+                />
+              </div>
+              <FormField label="Full legal name" required error={clinicianForm.formState.errors.ndaFullName?.message} hint="Type your full legal name to sign electronically.">
+                <input {...clinicianForm.register('ndaFullName')} className={inputClasses} placeholder="Your full legal name" />
+              </FormField>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" {...clinicianForm.register('ndaAccepted')} className="mt-0.5 text-cethos-teal focus:ring-cethos-teal" />
+                <span className="text-sm text-gray-700">
+                  I have read and agree to the {clinicianNda?.title ?? 'Confidentiality & Non-Disclosure Agreement'}
+                  {clinicianNda?.version_label ? ` (${clinicianNda.version_label})` : ''}, and I am signing electronically. <span className="text-red-500">*</span>
+                </span>
+              </label>
+              {clinicianForm.formState.errors.ndaAccepted?.message && (
+                <p className="text-sm text-red-600">{clinicianForm.formState.errors.ndaAccepted.message as string}</p>
+              )}
             </FormSection>
 
             <ConsentSection form={clinicianForm} testConsent={false} />
