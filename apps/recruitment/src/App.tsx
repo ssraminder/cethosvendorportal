@@ -16,6 +16,9 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/apply" element={<Apply />} />
+        {/* Dedicated clinician registration links (honour ?profession=…). */}
+        <Route path="/clinicians" element={<Apply defaultRole="clinician_reviewer" />} />
+        <Route path="/apply/clinician" element={<Apply defaultRole="clinician_reviewer" />} />
         <Route path="/apply/agency" element={<ApplyAgency />} />
         <Route path="/apply/confirmation" element={<Confirmation />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
