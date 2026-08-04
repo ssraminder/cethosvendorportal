@@ -29,6 +29,21 @@ function sanitize(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 200);
 }
 
+// NET payment terms: due date = submission date + the vendor's agreed
+// payment_terms_days (vendor_payment_info, Cethos default 45).
+// deno-lint-ignore no-explicit-any
+async function computeDueDate(sb: any, vendorId: string, fromDate: string): Promise<string> {
+  const { data } = await sb
+    .from("vendor_payment_info")
+    .select("payment_terms_days")
+    .eq("vendor_id", vendorId)
+    .maybeSingle();
+  const days = Number(data?.payment_terms_days ?? 45);
+  const d = new Date(fromDate + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + (Number.isFinite(days) ? days : 45));
+  return d.toISOString().split("T")[0];
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -138,6 +153,7 @@ serve(async (req: Request) => {
       vendor_invoice_number: vendorInvoiceNumber.trim(),
       submitted_at: nowIso,
       updated_at: nowIso,
+      due_date: await computeDueDate(sb, vendorId, nowIso.split("T")[0]),
     };
     if (vendorInvoiceFilePath) {
       updateFields.vendor_invoice_file_path = vendorInvoiceFilePath;

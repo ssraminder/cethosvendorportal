@@ -135,6 +135,9 @@ export function InvoiceList() {
                   Date
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                  Due
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
                   Amount
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
@@ -168,6 +171,11 @@ export function InvoiceList() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {new Date(invoice.invoice_date).toLocaleDateString("en-CA")}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {invoice.due_date
+                        ? new Date(invoice.due_date).toLocaleDateString("en-CA")
+                        : "—"}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       {new Intl.NumberFormat("en-CA", {

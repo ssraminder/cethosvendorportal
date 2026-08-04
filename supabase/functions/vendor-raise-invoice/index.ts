@@ -32,6 +32,21 @@ function sanitize(filename: string): string {
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+// NET payment terms: due date = invoice date + the vendor's agreed
+// payment_terms_days (vendor_payment_info, Cethos default 45).
+// deno-lint-ignore no-explicit-any
+async function computeDueDate(sb: any, vendorId: string, fromDate: string): Promise<string> {
+  const { data } = await sb
+    .from("vendor_payment_info")
+    .select("payment_terms_days")
+    .eq("vendor_id", vendorId)
+    .maybeSingle();
+  const days = Number(data?.payment_terms_days ?? 45);
+  const d = new Date(fromDate + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + (Number.isFinite(days) ? days : 45));
+  return d.toISOString().split("T")[0];
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -155,6 +170,8 @@ serve(async (req: Request) => {
     ].filter(Boolean).join(" — ");
     const nowIso = new Date().toISOString();
     const invoiceNum = "PAY-" + crypto.randomUUID().slice(0, 8).toUpperCase();
+    const invoiceDate = nowIso.split("T")[0];
+    const dueDate = await computeDueDate(sb, vendorId, invoiceDate);
 
     const { data: inserted, error: insErr } = await sb
       .from("cvp_payments")
@@ -168,7 +185,8 @@ serve(async (req: Request) => {
         tax_amount: taxAmount,
         total_amount: totalAmount,
         status: "submitted",
-        invoice_date: nowIso.split("T")[0],
+        invoice_date: invoiceDate,
+        due_date: dueDate,
         vendor_invoice_number: vendorInvoiceNumber,
         vendor_invoice_file_path: path,
         order_reference: orderRef ? `${po.po_number} — ${orderRef} — ${desc}` : `${po.po_number} — ${desc}`,
