@@ -15,6 +15,14 @@ const STATUS_BADGES: Record<string, { bg: string; text: string; label: string }>
   cancelled: { bg: "bg-red-100", text: "text-red-700", label: "Cancelled" },
 };
 
+// Date-only strings ("2026-08-14") must be parsed as LOCAL dates —
+// new Date("2026-08-14") is UTC midnight, which renders as the previous
+// day in any western timezone.
+function fmtLocalDate(val: string): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(val) ? new Date(val + "T00:00:00") : new Date(val);
+  return d.toLocaleDateString("en-CA");
+}
+
 export function InvoiceList() {
   const { sessionToken } = useVendorAuth();
   const [invoices, setInvoices] = useState<VendorInvoice[]>([]);
@@ -170,12 +178,10 @@ export function InvoiceList() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
-                      {new Date(invoice.invoice_date).toLocaleDateString("en-CA")}
+                      {fmtLocalDate(invoice.invoice_date)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
-                      {invoice.due_date
-                        ? new Date(invoice.due_date).toLocaleDateString("en-CA")
-                        : "—"}
+                      {invoice.due_date ? fmtLocalDate(invoice.due_date) : "—"}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       {new Intl.NumberFormat("en-CA", {
