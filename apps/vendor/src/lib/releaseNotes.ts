@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.8.1",
+    date: "2026-08-04",
+    summary:
+      "Invoice dates and due dates now display on the correct calendar day.",
+    changes: [
+      "Fixed: invoice dates and the new due dates could display one day early (e.g. a due date of Aug 14 showed as Aug 13) because date-only values were parsed as UTC midnight. They now render as the actual calendar date.",
+    ],
+  },
+  {
     version: "2026.8.0",
     date: "2026-08-04",
     summary:

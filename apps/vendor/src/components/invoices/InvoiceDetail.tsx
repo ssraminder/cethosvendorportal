@@ -18,6 +18,14 @@ import {
   X,
 } from "lucide-react";
 
+// Date-only strings ("2026-08-14") must be parsed as LOCAL dates —
+// new Date("2026-08-14") is UTC midnight, which renders as the previous
+// day in any western timezone.
+function fmtLocalDate(val: string): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(val) ? new Date(val + "T00:00:00") : new Date(val);
+  return d.toLocaleDateString("en-CA");
+}
+
 export function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const { sessionToken } = useVendorAuth();
@@ -167,7 +175,10 @@ export function InvoiceDetail() {
                   {invoice.invoice_number}
                 </h1>
                 <p className="text-sm text-gray-500">
-                  {new Date(invoice.invoice_date).toLocaleDateString("en-CA", {
+                  {(/^\d{4}-\d{2}-\d{2}$/.test(invoice.invoice_date)
+                    ? new Date(invoice.invoice_date + "T00:00:00")
+                    : new Date(invoice.invoice_date)
+                  ).toLocaleDateString("en-CA", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
@@ -218,9 +229,7 @@ export function InvoiceDetail() {
             {invoice.due_date && (
               <div>
                 <span className="text-gray-500">Due Date</span>
-                <p className="font-medium">
-                  {new Date(invoice.due_date).toLocaleDateString("en-CA")}
-                </p>
+                <p className="font-medium">{fmtLocalDate(invoice.due_date)}</p>
               </div>
             )}
           </div>
