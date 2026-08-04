@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.8.2",
+    date: "2026-08-04",
+    summary:
+      "Pilot: enter bank details directly into Airwallex's secure embedded form (selected vendors).",
+    changes: [
+      "Added: a \"Bank details via Airwallex\" section on the Payment page for pilot vendors. Details are typed straight into Airwallex's own secure form with live per-country validation; Cethos stores only the resulting payout record and shows a masked summary.",
+    ],
+  },
+  {
     version: "2026.8.1",
     date: "2026-08-04",
     summary:

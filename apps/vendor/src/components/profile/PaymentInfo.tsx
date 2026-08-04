@@ -6,6 +6,7 @@ import {
   type PaymentInfo as PaymentInfoType,
 } from "../../api/vendorProfile";
 import { CurrencySelect } from "../shared/CurrencySelect";
+import { AirwallexEmbeddedBank } from "./AirwallexEmbeddedBank";
 import { CalendarClock, CreditCard, Loader2, Save, CheckCircle, AlertTriangle } from "lucide-react";
 
 // Product-approved methods only (2026-05-16: "direct deposit, wire
@@ -215,6 +216,10 @@ export function PaymentInfo() {
           {success}
         </div>
       )}
+
+      {/* Airwallex embedded bank form — renders only for pilot vendors
+          (the edge function's allowlist decides; everyone else sees nothing). */}
+      {sessionToken && <AirwallexEmbeddedBank sessionToken={sessionToken} />}
 
       <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-6">
         {/* Payment Method */}
