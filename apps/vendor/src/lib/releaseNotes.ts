@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.8.0",
+    date: "2026-08-04",
+    summary:
+      "Invoices now show a payment due date, calculated from your agreed payment terms.",
+    changes: [
+      "When you raise or submit an invoice, its due date is set automatically as the invoice date plus your NET payment terms (Cethos default: 45 days; custom terms as agreed with Cethos).",
+      "The invoice list has a new Due column, and the invoice detail page shows the due date.",
+      "Existing submitted invoices that were missing a due date have been backfilled using the same rule.",
+    ],
+  },
+  {
     version: "2026.7.22",
     date: "2026-07-20",
     summary:
