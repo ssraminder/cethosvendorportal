@@ -108,6 +108,9 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
         action: "awx_embedded_save_beneficiary",
         session_token: sessionToken,
         beneficiary: result.values.beneficiary,
+        // Airwallex's validate endpoint requires transfer_methods for some
+        // corridors (e.g. IN) — forward what the widget selected.
+        payment_methods: result.values.payment_methods,
       });
       setSummary((saved.summary as Record<string, unknown>) ?? null);
       setUpdatedAt(new Date().toISOString());
