@@ -174,7 +174,7 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
             className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors shadow-sm"
           >
             <ShieldCheck className="h-4 w-4" />
-            {summaryLines.length > 0 ? "Update bank details with Airwallex" : "Add bank details with Airwallex"}
+            {summaryText ? "Update bank details with Airwallex" : "Add bank details with Airwallex"}
           </button>
         </div>
       )}
