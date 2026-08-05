@@ -38,7 +38,15 @@ async function mvp(body: Record<string, unknown>): Promise<Record<string, unknow
   return json;
 }
 
-export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }) {
+export function AirwallexEmbeddedBank({
+  sessionToken,
+  onEnabledChange,
+}: {
+  sessionToken: string;
+  // Lets PaymentInfo hide the manual "Direct Deposit / Bank Transfer" option
+  // when this vendor does bank transfers through Airwallex instead.
+  onEnabledChange?: (enabled: boolean) => void;
+}) {
   const [enabled, setEnabled] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
@@ -56,10 +64,15 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
       .then((r) => {
         const resp = r as unknown as EnabledResp;
         setEnabled(!!resp.enabled);
+        onEnabledChange?.(!!resp.enabled);
         setSummary(resp.summary ?? null);
         setUpdatedAt(resp.updated_at ?? null);
       })
-      .catch(() => setEnabled(false));
+      .catch(() => {
+        setEnabled(false);
+        onEnabledChange?.(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionToken]);
 
   const openForm = useCallback(async () => {
@@ -138,12 +151,12 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
         <ShieldCheck className="h-5 w-5 text-teal-600 mt-0.5 shrink-0" />
         <div>
           <h2 className="text-base font-semibold text-gray-900">
-            Bank details via Airwallex
+            Bank Transfer
             <span className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">Beta</span>
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Enter your bank details directly into Airwallex's secure form — Cethos
-            stores only a masked summary.
+            Enter your bank details in the secure form below (powered by
+            Airwallex) — Cethos stores only a masked summary.
           </p>
         </div>
       </div>

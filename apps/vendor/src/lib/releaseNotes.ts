@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.8.3",
+    date: "2026-08-05",
+    summary:
+      "The secure bank-details form is now simply called \"Bank Transfer\" — pilot vendors use it as their only bank-transfer path.",
+    changes: [
+      "Renamed: the \"Bank details via Airwallex\" section on the Payment page is now \"Bank Transfer\" (powered by Airwallex).",
+      "Changed: for vendors with the secure form, the manual \"Direct Deposit / Bank Transfer\" payment-method option is hidden — bank transfers go through the secure form only. It remains selectable if it's already the saved method, and unchanged for all other vendors.",
+    ],
+  },
+  {
     version: "2026.8.2",
     date: "2026-08-04",
     summary:

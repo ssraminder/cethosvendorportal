@@ -44,6 +44,11 @@ export function PaymentInfo() {
   const [method, setMethod] = useState("");
   const [currency, setCurrency] = useState("CAD");
   const [invoiceNotes, setInvoiceNotes] = useState("");
+  // Vendors on the Airwallex embedded-form pilot do bank transfers ONLY
+  // through that form — the manual "Direct Deposit / Bank Transfer" option is
+  // hidden for them (kept selectable if it's already their saved method, so
+  // the dropdown never renders blank / silently drops it).
+  const [awxEnabled, setAwxEnabled] = useState(false);
   // Cooling-off acknowledgement — required for any payout-routing change
   // on a vendor that already has payment_info on file.
   const [changeAcknowledged, setChangeAcknowledged] = useState(false);
@@ -217,9 +222,15 @@ export function PaymentInfo() {
         </div>
       )}
 
-      {/* Airwallex embedded bank form — renders only for pilot vendors
-          (the edge function's allowlist decides; everyone else sees nothing). */}
-      {sessionToken && <AirwallexEmbeddedBank sessionToken={sessionToken} />}
+      {/* Airwallex embedded bank form ("Bank Transfer") — renders only for
+          pilot vendors (the edge function's allowlist decides; everyone else
+          sees nothing and keeps the manual bank-transfer option below). */}
+      {sessionToken && (
+        <AirwallexEmbeddedBank
+          sessionToken={sessionToken}
+          onEnabledChange={setAwxEnabled}
+        />
+      )}
 
       <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-6">
         {/* Payment Method */}
@@ -233,7 +244,11 @@ export function PaymentInfo() {
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           >
             <option value="">Select a payment method</option>
-            {PAYMENT_METHODS.map((m) => (
+            {PAYMENT_METHODS.filter(
+              // Airwallex-pilot vendors do bank transfers via the form above;
+              // hide the manual option unless it's already their saved method.
+              (m) => !(awxEnabled && m.value === "bank_transfer" && method !== "bank_transfer"),
+            ).map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
               </option>
