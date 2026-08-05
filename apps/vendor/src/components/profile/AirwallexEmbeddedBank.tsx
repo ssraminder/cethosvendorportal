@@ -12,7 +12,8 @@ import { Loader2, ShieldCheck, CheckCircle, AlertTriangle } from "lucide-react";
 
 interface EnabledResp {
   enabled: boolean;
-  summary?: Record<string, unknown> | null;
+  // Masked one-liner from the server, e.g. "Name · IN · INR · …3503".
+  summary?: string | null;
   updated_at?: string | null;
 }
 
@@ -39,7 +40,7 @@ async function mvp(body: Record<string, unknown>): Promise<Record<string, unknow
 
 export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }) {
   const [enabled, setEnabled] = useState(false);
-  const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [loadingForm, setLoadingForm] = useState(false);
@@ -112,7 +113,7 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
         // corridors (e.g. IN) — forward what the widget selected.
         payment_methods: result.values.payment_methods,
       });
-      setSummary((saved.summary as Record<string, unknown>) ?? null);
+      setSummary(typeof saved.summary === "string" ? saved.summary : null);
       setUpdatedAt(new Date().toISOString());
       setSuccess("Bank details saved securely via Airwallex.");
       setOpen(false);
@@ -126,9 +127,10 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
 
   if (!enabled) return null;
 
-  const summaryLines = summary
-    ? Object.entries(summary).filter(([, v]) => typeof v === "string" && v)
-    : [];
+  // The server's masked summary is a single line ("Name · IN · INR · …3503"),
+  // not an object — render it as-is. (Iterating a string with Object.entries
+  // printed one row per character; that's the bug this replaces.)
+  const summaryText = typeof summary === "string" && summary ? summary : null;
 
   return (
     <div className="mb-6 rounded-xl border border-teal-200 bg-white p-6">
@@ -159,17 +161,12 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
 
       {!open && (
         <div>
-          {summaryLines.length > 0 && (
+          {summaryText && (
             <div className="mb-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm">
               <div className="font-medium text-gray-900 mb-1">
                 On file{updatedAt ? ` · updated ${new Date(updatedAt).toLocaleDateString("en-CA")}` : ""}
               </div>
-              {summaryLines.map(([k, v]) => (
-                <div key={k} className="flex justify-between py-0.5">
-                  <span className="text-gray-500 capitalize">{k.replace(/_/g, " ")}</span>
-                  <span className="text-gray-800 font-mono text-xs">{String(v)}</span>
-                </div>
-              ))}
+              <div className="text-gray-800 font-mono text-xs">{summaryText}</div>
             </div>
           )}
           <button
@@ -177,7 +174,7 @@ export function AirwallexEmbeddedBank({ sessionToken }: { sessionToken: string }
             className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors shadow-sm"
           >
             <ShieldCheck className="h-4 w-4" />
-            {summaryLines.length > 0 ? "Update bank details with Airwallex" : "Add bank details with Airwallex"}
+            {summaryText ? "Update bank details with Airwallex" : "Add bank details with Airwallex"}
           </button>
         </div>
       )}
