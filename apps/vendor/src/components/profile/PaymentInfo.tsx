@@ -22,6 +22,14 @@ const PAYMENT_METHODS = [
   { value: "paypal", label: "PayPal" },
 ] as const;
 
+// Both bank routes are superseded by the Airwallex form once it is available.
+// Wire Transfer matters as much as Direct Deposit here: details typed into
+// these free-text fields are not a payout account Cethos can actually pay from,
+// so a vendor who picks either one looks set up while being unpayable. Wires
+// also carry a fixed fee where the local rail (ACH, SEPA, EFT) is free, and the
+// Airwallex form always routes locally.
+const AIRWALLEX_SUPERSEDED_METHODS = new Set<string>(["bank_transfer", "wire_transfer"]);
+
 /** Canonical signature of payout-detail fields so we can detect real edits
  *  regardless of key order. Empty/blank values are dropped. */
 function detailsSig(details: Record<string, unknown>): string {
@@ -44,11 +52,14 @@ export function PaymentInfo() {
   const [method, setMethod] = useState("");
   const [currency, setCurrency] = useState("CAD");
   const [invoiceNotes, setInvoiceNotes] = useState("");
-  // Vendors on the Airwallex embedded-form pilot do bank transfers ONLY
-  // through that form — the manual "Direct Deposit / Bank Transfer" option is
-  // hidden for them (kept selectable if it's already their saved method, so
-  // the dropdown never renders blank / silently drops it).
+  // Vendors do bank transfers ONLY through the Airwallex form — both manual
+  // bank options are hidden for them (kept selectable if one is already their
+  // saved method, so the dropdown never renders blank / silently drops it, and
+  // a notice points them at the form instead).
   const [awxEnabled, setAwxEnabled] = useState(false);
+  // Whether an Airwallex payout account is already saved. Drives the wording of
+  // that notice: "add your details" vs "these fields are no longer used".
+  const [awxOnFile, setAwxOnFile] = useState(false);
   // Cooling-off acknowledgement — required for any payout-routing change
   // on a vendor that already has payment_info on file.
   const [changeAcknowledged, setChangeAcknowledged] = useState(false);
@@ -222,13 +233,15 @@ export function PaymentInfo() {
         </div>
       )}
 
-      {/* Airwallex embedded bank form ("Bank Transfer") — renders only for
-          pilot vendors (the edge function's allowlist decides; everyone else
-          sees nothing and keeps the manual bank-transfer option below). */}
+      {/* Airwallex embedded bank form ("Bank Transfer") — the server decides
+          whether it is available (see manage-vendor-payments
+          awx_embedded_enabled). When it is, it replaces both manual bank
+          options below. */}
       {sessionToken && (
         <AirwallexEmbeddedBank
           sessionToken={sessionToken}
           onEnabledChange={setAwxEnabled}
+          onDetailsOnFileChange={setAwxOnFile}
         />
       )}
 
@@ -245,15 +258,33 @@ export function PaymentInfo() {
           >
             <option value="">Select a payment method</option>
             {PAYMENT_METHODS.filter(
-              // Airwallex-pilot vendors do bank transfers via the form above;
-              // hide the manual option unless it's already their saved method.
-              (m) => !(awxEnabled && m.value === "bank_transfer" && method !== "bank_transfer"),
+              // Bank transfers go through the Airwallex form above; hide both
+              // manual bank options unless one is already the saved method.
+              (m) => !(awxEnabled && AIRWALLEX_SUPERSEDED_METHODS.has(m.value) && method !== m.value),
             ).map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
               </option>
             ))}
           </select>
+          {awxEnabled && AIRWALLEX_SUPERSEDED_METHODS.has(method) && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {awxOnFile ? (
+                <>
+                  Your bank details are now held securely with Airwallex (see
+                  <strong> Bank Transfer</strong> above). The fields below are kept only for
+                  reference and are no longer used to pay you.
+                </>
+              ) : (
+                <>
+                  Please re-enter your bank details in the secure
+                  <strong> Bank Transfer</strong> form above. Details typed into the fields below
+                  can&rsquo;t be used to pay you, and the secure form checks them with the bank as
+                  you type — it also sends by the free local route rather than by wire.
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Method-specific fields */}

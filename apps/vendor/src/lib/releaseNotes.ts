@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.8.4",
+    date: "2026-08-11",
+    summary:
+      "Bank Transfer is now available to every vendor, and it replaces the manual bank and wire fields.",
+    changes: [
+      "Changed: the secure \"Bank Transfer\" form is no longer limited to a small group — every vendor now sees it on this page. Your details are checked with your bank as you type, and are held securely by our payments provider rather than as text on a form.",
+      "Changed: \"Direct Deposit / Bank Transfer\" and \"Wire Transfer\" are no longer offered as manual options once the secure form is available. If one of them is still saved against your account, it stays selected and a note asks you to re-enter your details in the secure form above.",
+      "Why it matters: details typed into the old fields could not actually be used to pay you — they had to be re-keyed by our team first. The secure form also sends by the free local route in your country (for example ACH in the US, SEPA in Europe) instead of by wire, which carries a fee.",
+    ],
+  },
+  {
     version: "2026.8.3",
     date: "2026-08-05",
     summary:
