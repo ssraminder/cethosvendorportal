@@ -3,12 +3,13 @@ import { init, createElement } from "@airwallex/components-sdk";
 import { FUNCTIONS_BASE, safePost } from "../../api/functionsBase";
 import { Loader2, ShieldCheck, CheckCircle, AlertTriangle } from "lucide-react";
 
-// Airwallex Embedded Beneficiary form — PILOT (allowlisted vendors only, the
-// edge function decides). The vendor types bank details straight into
-// Airwallex's hosted form (iframe); Cethos stores only the resulting
-// beneficiary object + shows a masked summary. See manage-vendor-payments
-// actions awx_embedded_enabled / awx_embedded_auth_code /
-// awx_embedded_save_beneficiary.
+// Airwallex Embedded Beneficiary form. Availability is decided by the server
+// (manage-vendor-payments awx_embedded_enabled) — as of the 2026-08-11 rollout
+// that is every vendor with a live session, not just the original pilot. The
+// vendor types bank details straight into Airwallex's hosted form (iframe);
+// Cethos stores only the resulting beneficiary object + shows a masked summary.
+// See manage-vendor-payments actions awx_embedded_enabled /
+// awx_embedded_auth_code / awx_embedded_save_beneficiary.
 
 interface EnabledResp {
   enabled: boolean;
@@ -41,11 +42,15 @@ async function mvp(body: Record<string, unknown>): Promise<Record<string, unknow
 export function AirwallexEmbeddedBank({
   sessionToken,
   onEnabledChange,
+  onDetailsOnFileChange,
 }: {
   sessionToken: string;
-  // Lets PaymentInfo hide the manual "Direct Deposit / Bank Transfer" option
-  // when this vendor does bank transfers through Airwallex instead.
+  // Lets PaymentInfo hide the manual bank options when this vendor does bank
+  // transfers through Airwallex instead.
   onEnabledChange?: (enabled: boolean) => void;
+  // Whether a payout account is already saved, so PaymentInfo can say either
+  // "please re-enter above" or "these fields are no longer used".
+  onDetailsOnFileChange?: (onFile: boolean) => void;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -66,6 +71,7 @@ export function AirwallexEmbeddedBank({
         setEnabled(!!resp.enabled);
         onEnabledChange?.(!!resp.enabled);
         setSummary(resp.summary ?? null);
+        onDetailsOnFileChange?.(Boolean(resp.summary));
         setUpdatedAt(resp.updated_at ?? null);
       })
       .catch(() => {
@@ -127,6 +133,7 @@ export function AirwallexEmbeddedBank({
         payment_methods: result.values.payment_methods,
       });
       setSummary(typeof saved.summary === "string" ? saved.summary : null);
+      onDetailsOnFileChange?.(typeof saved.summary === "string" && !!saved.summary);
       setUpdatedAt(new Date().toISOString());
       setSuccess("Bank details saved securely via Airwallex.");
       setOpen(false);
