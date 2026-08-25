@@ -20,6 +20,7 @@ import {
   transcriberSchema,
   clinicianReviewerSchema,
   cdConsultantSchema,
+  lvQaCoordinatorSchema,
 } from '../lib/schemas'
 import type {
   TranslatorFormData,
@@ -28,6 +29,7 @@ import type {
   TranscriberFormData,
   ClinicianReviewerFormData,
   CdConsultantFormData,
+  LvQaCoordinatorFormData,
 } from '../lib/schemas'
 import {
   COUNTRIES,
@@ -61,6 +63,7 @@ import {
   CLINICIAN_PROFESSIONS,
   CLINICIAN_THERAPY_AREAS,
   CONSULTANT_SERVICES,
+  LV_PROCESS_AREAS,
 } from '../lib/roles'
 import type { RoleType } from '../types/application'
 
@@ -74,7 +77,19 @@ const CV_TOO_LARGE_ERROR = 'CV is too large — maximum 10MB.'
 // Only roles offered on the form (must match ROLE_OPTIONS). Interpreter /
 // transcriber / clinician_reviewer forms remain in code but are not offered, so
 // a ?role= deep link can't select an unsupported (400-on-submit) role.
-const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'clinician_reviewer', 'cd_clinician_consultant']
+const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'clinician_reviewer', 'cd_clinician_consultant', 'lv_qa_coordinator']
+
+// Tools an LV QA & Project Coordinator typically works with (CAT + QA + trackers).
+const QA_TOOL_OPTIONS = [
+  { value: 'Trados', label: 'Trados' },
+  { value: 'MemoQ', label: 'MemoQ' },
+  { value: 'Phrase', label: 'Phrase / Memsource' },
+  { value: 'Xbench', label: 'Xbench' },
+  { value: 'Verifika', label: 'Verifika' },
+  { value: 'Excel_Sheets', label: 'Excel / Google Sheets trackers' },
+  { value: 'Smartsheet_Asana', label: 'Smartsheet / Asana / project trackers' },
+  { value: 'Other', label: 'Other' },
+]
 
 const CLINICIAN_PROFESSION_VALUES = CLINICIAN_PROFESSIONS.map((p) => p.value) as string[]
 
@@ -272,6 +287,20 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
     },
   })
 
+  // LV QA & Project Coordinator form (freelance ops role; no skills test)
+  const qaForm = useForm<LvQaCoordinatorFormData>({
+    resolver: zodResolver(lvQaCoordinatorSchema) as Resolver<LvQaCoordinatorFormData>,
+    defaultValues: {
+      roleType: 'lv_qa_coordinator',
+      qaLvProcessFamiliarity: [],
+      qaWorkingLanguages: [],
+      qaTools: [],
+      rateCurrency: 'CAD',
+      privacyPolicy: false as unknown as true,
+      declarationTrue: false as unknown as true,
+    },
+  })
+
   const handleRoleChange = (newRole: RoleType) => {
     setRoleType(newRole)
     setSubmitError(null)
@@ -441,6 +470,7 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
   const onInterpreterSubmit = (data: InterpreterFormData) => submitSimpleRole(data)
   const onTranscriberSubmit = (data: TranscriberFormData) => submitSimpleRole(data)
   const onConsultantSubmit = (data: CdConsultantFormData) => submitSimpleRole(data)
+  const onQaCoordinatorSubmit = (data: LvQaCoordinatorFormData) => submitSimpleRole(data)
 
   // Clinician submit uploads the CV + any supporting documents, then posts the
   // form with cvStoragePath + documentPaths[].
@@ -2296,6 +2326,135 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
             </FormSection>
 
             <ConsentSection form={consultantForm} testConsent={false} />
+
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>
+            )}
+            <button type="submit" disabled={submitting || Boolean(emailExists)} className="w-full sm:w-auto px-8 py-3 bg-cethos-teal text-white font-semibold rounded-lg hover:bg-cethos-teal-light disabled:opacity-50 flex items-center justify-center gap-2">
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? 'Submitting...' : 'Submit Application'}
+            </button>
+          </form>
+        )}
+
+        {/* LV QA & Project Coordinator — freelance ops role (QC + coordination).
+            No skills test; staff review the CV/experience. Engagement is hourly,
+            with hours allocated from wordcount per language. */}
+        {roleType === 'lv_qa_coordinator' && (
+          <form onSubmit={qaForm.handleSubmit(onQaCoordinatorSubmit, handleInvalid)} className="space-y-6">
+            <FormSection title="Personal Information">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Full name" required error={qaForm.formState.errors.fullName?.message}>
+                  <input {...qaForm.register('fullName')} className={inputClasses} />
+                </FormField>
+                <FormField label="Email" required error={qaForm.formState.errors.email?.message}>
+                  <input {...qaForm.register('email')} type="email" onBlur={(e) => checkEmail(e.target.value)} className={inputClasses} />
+                </FormField>
+                <FormField label="Phone" error={qaForm.formState.errors.phone?.message}>
+                  <input {...qaForm.register('phone')} type="tel" className={inputClasses} />
+                </FormField>
+                <FormField label="City" error={qaForm.formState.errors.city?.message}>
+                  <input {...qaForm.register('city')} className={inputClasses} />
+                </FormField>
+                <FormField label="Country" required error={qaForm.formState.errors.country?.message}>
+                  <select {...qaForm.register('country')} className={selectClasses}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="LinkedIn URL" error={qaForm.formState.errors.linkedinUrl?.message}>
+                  <input {...qaForm.register('linkedinUrl')} type="text" className={inputClasses} placeholder="linkedin.com/in/... (optional)" />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Professional Background">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Years of QA / project-coordination experience" required error={qaForm.formState.errors.qaYearsExperience?.message}>
+                  <select {...qaForm.register('qaYearsExperience')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EXPERIENCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+                <FormField label="Education level" required error={qaForm.formState.errors.educationLevel?.message}>
+                  <select {...qaForm.register('educationLevel')} className={selectClasses}>
+                    <option value="">Select...</option>
+                    {EDUCATION_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Linguistic Validation Experience" description="Which parts of the linguistic validation process have you worked in — as a QC reviewer, coordinator, or project manager?">
+              <FormField label="LV process areas" required error={qaForm.formState.errors.qaLvProcessFamiliarity?.message as string | undefined}>
+                <MultiSelect
+                  options={LV_PROCESS_AREAS.map((a) => ({ value: a.value, label: a.label }))}
+                  value={(qaForm.watch('qaLvProcessFamiliarity') ?? []) as string[]}
+                  onChange={(next) => qaForm.setValue('qaLvProcessFamiliarity', next as LvQaCoordinatorFormData['qaLvProcessFamiliarity'], { shouldValidate: true })}
+                  placeholder="Select process areas…"
+                />
+              </FormField>
+              <FormField label="Working languages" required error={qaForm.formState.errors.qaWorkingLanguages?.message as string | undefined}>
+                <MultiSelect
+                  options={languages.map((l) => ({ value: l.id, label: l.name }))}
+                  value={(qaForm.watch('qaWorkingLanguages') ?? []) as string[]}
+                  onChange={(next) => qaForm.setValue('qaWorkingLanguages', next, { shouldValidate: true })}
+                  placeholder="Select languages…"
+                />
+              </FormField>
+              <FormField label="Tools you work with (optional)">
+                <MultiSelect
+                  options={QA_TOOL_OPTIONS}
+                  value={(qaForm.watch('qaTools') ?? []) as string[]}
+                  onChange={(next) => qaForm.setValue('qaTools', next, { shouldValidate: true })}
+                  placeholder="Select tools…"
+                />
+              </FormField>
+              <FormField label="Familiar with ISPOR good-practice guidelines?" required error={qaForm.formState.errors.qaIsporFamiliarity?.message}>
+                <select {...qaForm.register('qaIsporFamiliarity')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {FAMILIARITY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+            </FormSection>
+
+            <FormSection title="Availability & Rate" description="This role is engaged on an hourly basis. Hours are allocated per assignment based on volume — approximately 750 words reviewed per hour, per language.">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField label="Availability (hours per week)" required error={qaForm.formState.errors.qaAvailabilityHours?.message}>
+                  <input {...qaForm.register('qaAvailabilityHours')} type="text" className={inputClasses} placeholder="e.g. 20" />
+                </FormField>
+                <FormField label="Expected hourly rate" required error={qaForm.formState.errors.qaHourlyRateExpectation?.message}>
+                  <input {...qaForm.register('qaHourlyRateExpectation')} type="text" className={inputClasses} placeholder="e.g. 18" />
+                </FormField>
+                <FormField label="Currency" required error={qaForm.formState.errors.rateCurrency?.message}>
+                  <select {...qaForm.register('rateCurrency')} className={selectClasses}>
+                    {RATE_CURRENCIES.map((c) => (<option key={c.code} value={c.code}>{c.label}</option>))}
+                  </select>
+                </FormField>
+              </div>
+              <FormField label="Time zone (optional)">
+                <select {...qaForm.register('qaTimezone')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {TIMEZONE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+            </FormSection>
+
+            <CvSection cvFile={cvFile} setCvFile={setCvFile} handleCvUpload={handleCvUpload} showMissingError={submitError === CV_MISSING_ERROR} />
+
+            <FormSection title="Additional Information">
+              <FormField label="How did you hear about us?">
+                <select {...qaForm.register('referralSource')} className={selectClasses}>
+                  <option value="">Select...</option>
+                  {REFERRAL_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              </FormField>
+              <FormField label="Additional notes">
+                <textarea {...qaForm.register('notes')} rows={3} className={inputClasses} />
+              </FormField>
+            </FormSection>
+
+            <ConsentSection form={qaForm} testConsent={false} />
 
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4"><p className="text-sm text-red-700">{submitError}</p></div>

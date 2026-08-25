@@ -5,6 +5,7 @@ export type RoleType =
   | 'clinician_reviewer'
   | 'cognitive_debriefing'
   | 'cd_clinician_consultant'
+  | 'lv_qa_coordinator'
 
 export type Domain = 'legal' | 'medical' | 'immigration' | 'financial' | 'technical' | 'general'
 

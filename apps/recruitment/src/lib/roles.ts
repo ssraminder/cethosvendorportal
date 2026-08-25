@@ -10,6 +10,7 @@ export const ROLE_OPTIONS = [
   { value: 'cognitive_debriefing', label: 'Cognitive Debriefing Interviewer', hint: 'Conducting COA/PRO cognitive debriefing interviews with patients' },
   { value: 'clinician_reviewer', label: 'Clinician Reviewer (Physician / Nurse / Pharmacist)', hint: 'Independent clinical review of COA/PRO instruments — register with your degrees & licence' },
   { value: 'cd_clinician_consultant', label: 'Cognitive Debriefing & Clinician Review Consultant', hint: 'Participant & clinician recruitment, CD/ClinRO study consulting & coordination' },
+  { value: 'lv_qa_coordinator', label: 'LV QA & Project Coordinator', hint: 'QC passes & project coordination on linguistic validation projects (freelance, remote)' },
 ] as const
 
 export type RoleValue = typeof ROLE_OPTIONS[number]['value']
@@ -99,6 +100,19 @@ export const CONSULTANT_SERVICES = [
   { value: 'lv_project_management', label: 'Linguistic validation project management' },
   { value: 'site_coordination', label: 'In-country site / logistics coordination' },
   { value: 'other', label: 'Other' },
+] as const
+
+// LV process areas an LV QA & Project Coordinator can be familiar with.
+// Values match the admin portal's LV_PROCESS_LABELS (RecruitmentDetail).
+export const LV_PROCESS_AREAS = [
+  { value: 'forward_translation', label: 'Forward translation' },
+  { value: 'back_translation', label: 'Back translation' },
+  { value: 'reconciliation', label: 'Reconciliation' },
+  { value: 'cognitive_debriefing', label: 'Cognitive debriefing' },
+  { value: 'coa_review', label: 'COA review' },
+  { value: 'harmonization', label: 'Harmonization' },
+  { value: 'proofreading_qc', label: 'Proofreading / QC' },
+  { value: 'project_coordination', label: 'Project coordination' },
 ] as const
 
 export const CLINICIAN_THERAPY_AREAS = [

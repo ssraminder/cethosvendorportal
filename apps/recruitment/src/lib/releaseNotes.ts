@@ -14,6 +14,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.8.1',
+    date: '2026-08-25',
+    summary:
+      'New application type: LV QA & Project Coordinator — freelance QC and project coordination on linguistic validation projects.',
+    changes: [
+      "Added 'LV QA & Project Coordinator' to the apply form (also reachable via ?role=lv_qa_coordinator). The form captures LV process experience (forward/back translation, reconciliation, cognitive debriefing, COA review), working languages, tools, ISPOR familiarity, weekly availability and an expected hourly rate.",
+      'No skills test for this route — applications are reviewed by our team on CV and experience, and approved coordinators receive a vendor portal account. The role is engaged hourly, with hours allocated per assignment from wordcount (approximately 750 words reviewed per hour, per language).',
+    ],
+  },
+  {
     version: '2026.7.4',
     date: '2026-07-30',
     summary:
