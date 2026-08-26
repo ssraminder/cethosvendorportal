@@ -1,8 +1,10 @@
 // vendor-mark-training-complete
 // Records that the logged-in vendor completed a training (method=online). Only
-// allowed for trainings targeted to them. While quiz_enabled is off, reading the
-// lessons + marking complete is sufficient; once quizzes activate this will also
-// require a passing quiz_score. Service-role; session-token auth.
+// allowed for trainings targeted to them, and ONLY for trainings without a
+// knowledge check: quiz-enabled trainings must complete through
+// vendor-grade-training (server-side grading, pass-gated) — this function
+// refuses them so an ungraded completion can't be recorded by calling the
+// endpoint directly. Service-role; session-token auth.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -40,6 +42,14 @@ serve(async (req: Request) => {
     const { data: visible } = await supabase.rpc("cvp_linguist_trainings_for_vendor", { p_vendor_id: session.vendor_id });
     const match = (visible ?? []).find((t: { training_id: string }) => t.training_id === body.training_id);
     if (!match) return json({ success: false, error: "not_available" }, 403);
+
+    // Quiz-enabled trainings complete ONLY through vendor-grade-training — a
+    // passing score is the completion evidence. Enforced here server-side so the
+    // hidden UI button isn't the only guard.
+    const { data: training } = await supabase
+      .from("cvp_trainings").select("quiz_enabled")
+      .eq("id", body.training_id).maybeSingle();
+    if (training?.quiz_enabled) return json({ success: false, error: "quiz_required" }, 400);
 
     // Capture the client IP + user-agent server-side for the ISO 17100 audit trail.
     const { data: id, error } = await supabase.rpc("cvp_record_training_completion", {
