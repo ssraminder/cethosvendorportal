@@ -8,12 +8,14 @@ import { AlertTriangle, ChevronRight, Eye, Info } from "lucide-react";
 //   { type: "example", title?, intro?, items: [{ label, text, note?, tone? }] }
 //   { type: "callout", variant: "rule"|"warning"|"info"|"tip", title?, body }
 //   { type: "comparison", title?, columns: [{ label, tone: "good"|"bad", items[] }] }
+//   { type: "image", src, alt?, caption? }  — src is a full URL (e.g. the public training-assets bucket)
 export type Block =
   | { type: "prose"; md: string }
   | { type: "steps"; title?: string; steps: { title: string; body: string }[] }
   | { type: "example"; title?: string; intro?: string; items: { label: string; text: string; note?: string; tone?: string }[] }
   | { type: "callout"; variant?: string; title?: string; body: string }
   | { type: "comparison"; title?: string; columns: { label: string; tone?: string; items: string[] }[] }
+  | { type: "image"; src: string; alt?: string; caption?: string }
   | { type: string; [k: string]: unknown };
 
 // ---- Lightweight markdown for prose (dependency-free, trusted content) ----
@@ -152,6 +154,33 @@ function Comparison({ title, columns }: { title?: string; columns: { label: stri
   );
 }
 
+function ImageBlock({ src, alt, caption }: { src: string; alt?: string; caption?: string }) {
+  const [zoomed, setZoomed] = useState(false);
+  return (
+    <figure className="my-3">
+      <button
+        type="button"
+        onClick={() => setZoomed(true)}
+        className="block w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50 hover:border-teal-400 transition"
+        aria-label={alt ? `Enlarge screenshot: ${alt}` : "Enlarge screenshot"}
+      >
+        <img src={src} alt={alt || caption || "Screenshot"} loading="lazy" className="w-full" />
+      </button>
+      {caption && <figcaption className="mt-1.5 text-center text-[13px] text-gray-500">{caption}</figcaption>}
+      {zoomed && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 cursor-zoom-out"
+          onClick={() => setZoomed(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <img src={src} alt={alt || caption || "Screenshot"} className="max-h-full max-w-full rounded-lg shadow-2xl" />
+        </div>
+      )}
+    </figure>
+  );
+}
+
 export function LessonBlocks({ blocks }: { blocks: Block[] }) {
   return (
     <div className="space-y-1">
@@ -162,6 +191,7 @@ export function LessonBlocks({ blocks }: { blocks: Block[] }) {
           case "example": return <Example key={i} title={(b as any).title} intro={(b as any).intro} items={(b as any).items || []} />;
           case "callout": return <Callout key={i} variant={(b as any).variant} title={(b as any).title} body={(b as any).body} />;
           case "comparison": return <Comparison key={i} title={(b as any).title} columns={(b as any).columns || []} />;
+          case "image": return <ImageBlock key={i} src={(b as any).src} alt={(b as any).alt} caption={(b as any).caption} />;
           default: return null;
         }
       })}
