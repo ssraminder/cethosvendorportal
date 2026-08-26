@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.8.5",
+    date: "2026-08-26",
+    summary:
+      "Trainings can now include real portal screenshots inside each lesson step.",
+    changes: [
+      "Added: lessons in the Trainings section can show annotated screenshots of the portal inline, with a tap-to-enlarge view — used first by the new \"Submitting Invoices Through the Vendor Portal\" training.",
+    ],
+  },
+  {
     version: "2026.8.4",
     date: "2026-08-11",
     summary:
