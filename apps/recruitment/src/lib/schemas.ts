@@ -11,6 +11,7 @@ import {
   CLINICIAN_PROFESSIONS,
   CLINICIAN_THERAPY_AREAS,
   CONSULTANT_SERVICES,
+  LV_PROCESS_AREAS,
 } from './roles'
 
 const modeValues = INTERPRETER_MODES.map((m) => m.value) as [string, ...string[]]
@@ -23,6 +24,7 @@ const credentialValues = CLINICIAN_CREDENTIALS.map((c) => c.value) as [string, .
 const professionValues = CLINICIAN_PROFESSIONS.map((p) => p.value) as [string, ...string[]]
 const clinicianAreaValues = CLINICIAN_THERAPY_AREAS.map((a) => a.value) as [string, ...string[]]
 const consultantServiceValues = CONSULTANT_SERVICES.map((s) => s.value) as [string, ...string[]]
+const lvProcessValues = LV_PROCESS_AREAS.map((a) => a.value) as [string, ...string[]]
 
 // -- Shared fields --
 
@@ -408,12 +410,40 @@ export const cdConsultantSchema = z.object({
   declarationTrue: z.literal(true, { error: 'You must declare that the information provided is true and accurate' }),
 })
 
+// -- LV QA & Project Coordinator --
+// Freelance ops role (QC passes + project coordination on LV work): NO skills
+// test/quiz. Staff review the CV/experience in the admin pipeline; approval
+// creates an active vendor account with portal access. Engagement is hourly —
+// hours are allocated from wordcount (~750 words reviewed per hour per language).
+export const lvQaCoordinatorSchema = z.object({
+  roleType: z.literal('lv_qa_coordinator'),
+  ...personalInfoSchema.shape,
+  educationLevel: z.string().min(1, 'Education level is required'),
+  qaYearsExperience: z.string().min(1, 'Years of experience is required'),
+  qaLvProcessFamiliarity: z.array(z.enum(lvProcessValues))
+    .min(1, 'Select at least one process area you have worked in'),
+  qaWorkingLanguages: z.array(z.string().min(1))
+    .min(1, 'Select at least one working language'),
+  qaTools: z.array(z.string()).default([]),
+  qaIsporFamiliarity: z.enum(['yes', 'no', 'partially'], { error: 'This field is required' }),
+  qaAvailabilityHours: z.string().min(1, 'Weekly availability is required'),
+  qaHourlyRateExpectation: z.string().min(1, 'Expected hourly rate is required'),
+  rateCurrency: z.string().min(3, 'Select a currency'),
+  qaTimezone: z.string().optional(),
+  referralSource: z.string().optional(),
+  notes: z.string().optional(),
+  // No skills test — privacy consent + truthful-declaration only.
+  privacyPolicy: z.literal(true, { error: 'You must agree to the Privacy Policy' }),
+  declarationTrue: z.literal(true, { error: 'You must declare that the information provided is true and accurate' }),
+})
+
 export type TranslatorFormData = z.infer<typeof translatorSchema>
 export type CognitiveDebriefingFormData = z.infer<typeof cognitiveDebriefingSchema>
 export type InterpreterFormData = z.infer<typeof interpreterSchema>
 export type TranscriberFormData = z.infer<typeof transcriberSchema>
 export type ClinicianReviewerFormData = z.infer<typeof clinicianReviewerSchema>
 export type CdConsultantFormData = z.infer<typeof cdConsultantSchema>
+export type LvQaCoordinatorFormData = z.infer<typeof lvQaCoordinatorSchema>
 export type AgencyApplicationFormData = z.infer<typeof agencyApplicationSchema>
 export type ApplicationFormData =
   | TranslatorFormData
@@ -422,5 +452,6 @@ export type ApplicationFormData =
   | TranscriberFormData
   | ClinicianReviewerFormData
   | CdConsultantFormData
+  | LvQaCoordinatorFormData
   | AgencyApplicationFormData
 export type PairServiceRate = z.infer<typeof pairServiceRateSchema>
