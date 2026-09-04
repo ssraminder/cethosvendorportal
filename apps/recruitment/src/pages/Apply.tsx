@@ -77,7 +77,7 @@ const CV_TOO_LARGE_ERROR = 'CV is too large — maximum 10MB.'
 // Only roles offered on the form (must match ROLE_OPTIONS). Interpreter /
 // transcriber / clinician_reviewer forms remain in code but are not offered, so
 // a ?role= deep link can't select an unsupported (400-on-submit) role.
-const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'clinician_reviewer', 'cd_clinician_consultant', 'lv_qa_coordinator']
+const VALID_ROLES: RoleType[] = ['translator', 'cognitive_debriefing', 'clinician_reviewer', 'cd_clinician_consultant', 'lv_qa_coordinator', 'qa_reviewer']
 
 // Tools an LV QA & Project Coordinator typically works with (CAT + QA + trackers).
 const QA_TOOL_OPTIONS = [
@@ -287,11 +287,13 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
     },
   })
 
-  // LV QA & Project Coordinator form (freelance ops role; no skills test)
+  // LV QA & Project Coordinator / QA Reviewer form (shared shape — freelance
+  // ops roles; no translation skills test). roleType is what separates the two
+  // applicant streams server-side, so it tracks the selected role.
   const qaForm = useForm<LvQaCoordinatorFormData>({
     resolver: zodResolver(lvQaCoordinatorSchema) as Resolver<LvQaCoordinatorFormData>,
     defaultValues: {
-      roleType: 'lv_qa_coordinator',
+      roleType: initialRole === 'qa_reviewer' ? 'qa_reviewer' : 'lv_qa_coordinator',
       qaLvProcessFamiliarity: [],
       qaWorkingLanguages: [],
       qaTools: [],
@@ -303,6 +305,11 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
 
   const handleRoleChange = (newRole: RoleType) => {
     setRoleType(newRole)
+    // The QA form serves both ops roles — keep its roleType in sync so the
+    // submitted application lands under the role the applicant picked.
+    if (newRole === 'lv_qa_coordinator' || newRole === 'qa_reviewer') {
+      qaForm.setValue('roleType', newRole)
+    }
     setSubmitError(null)
   }
 
@@ -2337,10 +2344,12 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
           </form>
         )}
 
-        {/* LV QA & Project Coordinator — freelance ops role (QC + coordination).
-            No skills test; staff review the CV/experience. Engagement is hourly,
-            with hours allocated from wordcount per language. */}
-        {roleType === 'lv_qa_coordinator' && (
+        {/* LV QA & Project Coordinator / QA Reviewer (CD & ClinRO reports) —
+            freelance ops roles sharing one form. No translation skills test;
+            staff review the CV/experience (QA Reviewers additionally receive a
+            knowledge assessment by email). Engagement is hourly, with hours
+            allocated from wordcount per language. */}
+        {(roleType === 'lv_qa_coordinator' || roleType === 'qa_reviewer') && (
           <form onSubmit={qaForm.handleSubmit(onQaCoordinatorSubmit, handleInvalid)} className="space-y-6">
             <FormSection title="Personal Information">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2370,7 +2379,7 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
 
             <FormSection title="Professional Background">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label="Years of QA / project-coordination experience" required error={qaForm.formState.errors.qaYearsExperience?.message}>
+                <FormField label={roleType === 'qa_reviewer' ? 'Years of QA / review experience' : 'Years of QA / project-coordination experience'} required error={qaForm.formState.errors.qaYearsExperience?.message}>
                   <select {...qaForm.register('qaYearsExperience')} className={selectClasses}>
                     <option value="">Select...</option>
                     {EXPERIENCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}

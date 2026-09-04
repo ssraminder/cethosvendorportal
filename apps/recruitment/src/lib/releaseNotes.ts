@@ -14,6 +14,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.9.0',
+    date: '2026-09-04',
+    summary:
+      'New application type: QA Reviewer — Cognitive Debriefing & Clinician Review Reports (review-only, freelance).',
+    changes: [
+      "Added 'QA Reviewer — Cognitive Debriefing & Clinician Review Reports' to the apply form (also reachable via ?role=qa_reviewer). Review-only QA of CD and clinician review reports — no coordination duties. The form shares the LV ops shape: process-area experience, working languages, tools, ISPOR familiarity, availability and expected hourly rate.",
+      'Applicants for this role receive a short multiple-choice report-QA knowledge assessment by email (sent after our team reviews the CV); the assessment page shows its own heading and requires accepting the confidentiality agreement before any content is shown.',
+      'The QA Reviewer and LV Project Coordinator applicant streams are now separate roles end-to-end, so each careers posting routes to its own queue.',
+    ],
+  },
+  {
     version: '2026.8.1',
     date: '2026-08-25',
     summary:

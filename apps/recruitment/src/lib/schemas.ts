@@ -410,13 +410,15 @@ export const cdConsultantSchema = z.object({
   declarationTrue: z.literal(true, { error: 'You must declare that the information provided is true and accurate' }),
 })
 
-// -- LV QA & Project Coordinator --
-// Freelance ops role (QC passes + project coordination on LV work): NO skills
-// test/quiz. Staff review the CV/experience in the admin pipeline; approval
-// creates an active vendor account with portal access. Engagement is hourly —
-// hours are allocated from wordcount (~750 words reviewed per hour per language).
+// -- LV QA & Project Coordinator / QA Reviewer (CD & ClinRO reports) --
+// Freelance ops roles sharing one form shape (QC + coordination, or review-only
+// report QA): NO translation skills test. Staff review the CV/experience in the
+// admin pipeline (qa_reviewer additionally takes a knowledge assessment sent by
+// staff); approval creates an active vendor account with portal access.
+// Engagement is hourly — hours allocated from wordcount (~750 words reviewed
+// per hour per language).
 export const lvQaCoordinatorSchema = z.object({
-  roleType: z.literal('lv_qa_coordinator'),
+  roleType: z.enum(['lv_qa_coordinator', 'qa_reviewer']),
   ...personalInfoSchema.shape,
   educationLevel: z.string().min(1, 'Education level is required'),
   qaYearsExperience: z.string().min(1, 'Years of experience is required'),
