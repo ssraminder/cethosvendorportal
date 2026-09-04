@@ -234,6 +234,17 @@ serve(async (req: Request) => {
       }
     }
 
+    // Fire-and-forget automated QA checks on the new delivery (SOP-043 §6).
+    // Results appear as evidence chips beside the reviewer's checklist.
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/qa-autocheck`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ step_id: stepId }),
+    }).catch((e) => console.warn("qa-autocheck trigger failed (non-blocking):", e?.message ?? e));
+
     // Fire-and-forget admin notification.
     try {
       const [{ data: vendor }, { data: stepRow }] = await Promise.all([
