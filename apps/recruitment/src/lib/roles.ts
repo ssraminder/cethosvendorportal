@@ -11,6 +11,7 @@ export const ROLE_OPTIONS = [
   { value: 'clinician_reviewer', label: 'Clinician Reviewer (Physician / Nurse / Pharmacist)', hint: 'Independent clinical review of COA/PRO instruments — register with your degrees & licence' },
   { value: 'cd_clinician_consultant', label: 'Cognitive Debriefing & Clinician Review Consultant', hint: 'Participant & clinician recruitment, CD/ClinRO study consulting & coordination' },
   { value: 'lv_qa_coordinator', label: 'LV QA & Project Coordinator', hint: 'QC passes & project coordination on linguistic validation projects (freelance, remote)' },
+  { value: 'qa_reviewer', label: 'QA Reviewer — Cognitive Debriefing & Clinician Review Reports', hint: 'Review-only QA of CD & clinician review reports for completeness, methodology & audit-readiness (freelance, remote)' },
 ] as const
 
 export type RoleValue = typeof ROLE_OPTIONS[number]['value']

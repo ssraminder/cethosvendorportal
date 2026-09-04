@@ -45,6 +45,7 @@ interface QuizData {
   status: string
   isCoa?: boolean
   isCogDebrief?: boolean
+  isQaReviewer?: boolean
   questions: QuizQuestion[]
   translationItems?: TranslationItem[]
 }
@@ -325,9 +326,11 @@ export function QuizSubmission() {
               <h1 className="text-xl font-bold text-cethos-navy">
                 {data.isCoa
                   ? 'COA Linguistic Validation Assessment'
-                  : data.isCogDebrief
-                    ? 'Cognitive Debriefing Assessment'
-                    : 'Translation Competence Assessment'}
+                  : data.isQaReviewer
+                    ? 'QA Reviewer Assessment (CD & Clinician Review Reports)'
+                    : data.isCogDebrief
+                      ? 'Cognitive Debriefing Assessment'
+                      : 'Translation Competence Assessment'}
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 {data.applicationNumber} &middot; Target: {data.targetLanguageName} &middot; {totalCount} questions
