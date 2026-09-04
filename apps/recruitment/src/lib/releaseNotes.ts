@@ -14,6 +14,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.9.1',
+    date: '2026-09-04',
+    summary:
+      'Rate offers are now answered on a secure action page — accept, propose a different rate, or decline in one click.',
+    changes: [
+      'Added a /rate-offer page (linked from our rate-offer emails, personal token, valid 14 days). The offer is shown in your own currency; accepting records your rate immediately and — for QA Reviewer applicants — sends the knowledge assessment right away. You can also propose a different rate with an optional note, or decline.',
+      'Already-answered or expired links show their status instead of failing; questions still reach us by replying to the email (vm@cethos.com).',
+    ],
+  },
+  {
     version: '2026.9.0',
     date: '2026-09-04',
     summary:
