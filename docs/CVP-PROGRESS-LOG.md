@@ -1467,4 +1467,27 @@ Vendors who moderate CETHOS research-panel interviews (linked via
 
 ---
 
+## 2026-09-04 — Pre-delivery quality self-check in Deliver Files (v2026.9.0)
+
+When a job's client + service have an applicable QA checklist in the CETHOS QMS
+(first rollout: Welocalize × Cognitive Debriefing, QA-CL-001 sections A–H), the
+vendor must complete a self-check before delivering. SOP-043 v2 §6; the admin
+repo (PR #1756) shows the declarations to the internal reviewer, whose own
+checklist remains the only release gate.
+
+- `DeliverModal` renders the checklist (Pass/Fail/N-A per item, justification
+  required for N/A); Submit disabled until complete; a Fail flags the item for
+  the reviewer without blocking delivery.
+- New Netlify function `get-selfcheck` (`/sb/get-selfcheck`, direct Postgres,
+  session auth) + Supabase function `vendor-get-selfcheck` (deployed).
+- `vendor-deliver-step` (deployed v113) validates + stores answers server-side
+  via `qms_save_step_selfcheck` BEFORE uploading files; incomplete → 422 with
+  the missing item refs.
+- QMS objects (`qms.step_qa_selfchecks`, RPCs, `internal_only` item flag) live
+  in the admin repo's migrations — this repo only calls the RPCs through the
+  service-role edge function.
+- Vendor portal version bumped to 2026.9.0.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
