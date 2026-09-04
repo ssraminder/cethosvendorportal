@@ -6,7 +6,10 @@ import {
   acceptDirectAssign,
   declineStep,
   deliverStep,
+  getSelfCheck,
   type VendorStep,
+  type SelfCheckItem,
+  type SelfCheckAnswer,
 } from "../../api/vendorJobs";
 import { listRoster, type RosterLinguist } from "../../api/vendorRoster";
 import {
@@ -280,6 +283,42 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
   const [rosterLoading, setRosterLoading] = useState(isAgency);
   const [selectedLinguistId, setSelectedLinguistId] = useState("");
 
+  // Pre-delivery QA self-check (SOP-043 §6 / QA-CL-001). Loaded per step; a
+  // null template means no checklist applies. When one applies, every item
+  // must be answered (N/A with a short justification) before delivering.
+  const [scTemplate, setScTemplate] = useState<{ code: string; title: string } | null>(null);
+  const [scItems, setScItems] = useState<SelfCheckItem[]>([]);
+  const [scAnswers, setScAnswers] = useState<Record<string, { result?: "pass" | "fail" | "na"; na_justification?: string }>>({});
+  useEffect(() => {
+    if (!sessionToken) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await getSelfCheck(sessionToken, step.id);
+        if (!active || !res.success || !res.template) return;
+        setScTemplate({ code: res.template.code, title: res.template.title });
+        setScItems(res.items ?? []);
+        const prefill: Record<string, { result?: "pass" | "fail" | "na"; na_justification?: string }> = {};
+        (res.results ?? []).forEach((r) => {
+          prefill[r.template_item_id] = { result: r.result, na_justification: r.na_justification ?? "" };
+        });
+        setScAnswers(prefill);
+      } catch {
+        /* non-fatal — deliver flow proceeds without a checklist; the server
+           still refuses delivery if one applies and answers are missing */
+      }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionToken, step.id]);
+
+  const scUnanswered = scItems.filter((i) => !scAnswers[i.id]?.result);
+  const scNaMissing = scItems.filter(
+    (i) => scAnswers[i.id]?.result === "na" && !(scAnswers[i.id]?.na_justification || "").trim(),
+  );
+  const scComplete = !scTemplate || (scUnanswered.length === 0 && scNaMissing.length === 0);
+  const scFails = scItems.filter((i) => scAnswers[i.id]?.result === "fail");
+
   // Eligible roster, with pairs matching this step's language pair first.
   const stepSrc = (step.source_language ?? "").toUpperCase();
   const stepTgt = (step.target_language ?? "").toUpperCase();
@@ -356,9 +395,23 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
       setError("Please add your reference (translator name or internal job code) before delivering.");
       return;
     }
+    if (scTemplate && !scComplete) {
+      const refs = [...scUnanswered, ...scNaMissing].map((i) => i.ref).slice(0, 10).join(", ");
+      setError(`Complete the quality self-check before delivering (${refs}${scUnanswered.length + scNaMissing.length > 10 ? "…" : ""}). N/A answers need a short justification.`);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
+      const selfcheckPayload: SelfCheckAnswer[] | undefined = scTemplate
+        ? scItems
+            .filter((i) => scAnswers[i.id]?.result)
+            .map((i) => ({
+              template_item_id: i.id,
+              result: scAnswers[i.id]!.result as "pass" | "fail" | "na",
+              na_justification: scAnswers[i.id]!.na_justification || null,
+            }))
+        : undefined;
       const result = await deliverStep(
         sessionToken,
         step.id,
@@ -366,6 +419,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
         notes || undefined,
         isAgency ? undefined : (trimmedIdentifier || undefined),
         isAgency ? selectedLinguistId : undefined,
+        selfcheckPayload,
       );
       if (result.success) {
         onSuccess(isRevision ? (step.revision_count ?? 0) + 1 : undefined);
@@ -537,6 +591,89 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
             </div>
           )}
 
+          {/* Pre-delivery quality self-check (SOP-043 §6). Rendered only when a
+              checklist applies to this job; every item must be answered before
+              the delivery can be submitted. */}
+          {scTemplate && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-teal-900">
+                  Quality self-check ({scTemplate.code}) — required before delivery
+                </span>
+                <span className={`text-xs shrink-0 ${scComplete ? "text-green-700" : "text-amber-700"}`}>
+                  {scItems.length - scUnanswered.length}/{scItems.length} answered
+                </span>
+              </div>
+              <p className="text-xs text-gray-600">
+                Confirm each point against your delivery. Answer honestly — a "Fail" flags the
+                point for our reviewer, it does not block your delivery. "N/A" needs a short reason.
+              </p>
+              <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
+                {scItems.map((item, idx) => {
+                  const prev = scItems[idx - 1];
+                  const ans = scAnswers[item.id] || {};
+                  return (
+                    <div key={item.id}>
+                      {(!prev || prev.section !== item.section) && (
+                        <div className="text-xs font-semibold text-gray-600 mt-1.5">{item.section}</div>
+                      )}
+                      <div className="flex items-start gap-2 text-xs text-gray-700">
+                        <span className="font-mono font-semibold shrink-0 w-6 text-teal-800">{item.ref}</span>
+                        <span className="flex-1">{item.item_text}</span>
+                        <span className="flex gap-1 shrink-0">
+                          {(["pass", "fail", "na"] as const).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              disabled={loading}
+                              onClick={() =>
+                                setScAnswers((a) => ({
+                                  ...a,
+                                  [item.id]: { ...a[item.id], result: a[item.id]?.result === r ? undefined : r },
+                                }))
+                              }
+                              className={`px-1.5 py-0.5 rounded border text-[10px] uppercase ${
+                                ans.result === r
+                                  ? r === "pass" ? "bg-green-600 border-green-600 text-white"
+                                    : r === "fail" ? "bg-red-600 border-red-600 text-white"
+                                    : "bg-amber-500 border-amber-500 text-white"
+                                  : "border-gray-300 text-gray-500 hover:border-gray-400"
+                              }`}
+                            >
+                              {r === "na" ? "N/A" : r}
+                            </button>
+                          ))}
+                        </span>
+                      </div>
+                      {ans.result === "na" && (
+                        <input
+                          type="text"
+                          className="mt-0.5 ml-8 w-[85%] border border-amber-300 rounded px-2 py-1 text-xs"
+                          placeholder="Why does this not apply? (required)"
+                          value={ans.na_justification || ""}
+                          onChange={(e) =>
+                            setScAnswers((a) => ({
+                              ...a,
+                              [item.id]: { ...a[item.id], na_justification: e.target.value },
+                            }))
+                          }
+                          disabled={loading}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {scFails.length > 0 && (
+                <div className="text-xs text-amber-800">
+                  You marked {scFails.length} item{scFails.length === 1 ? "" : "s"} as Fail (
+                  {scFails.map((i) => i.ref).join(", ")}). Please explain in the notes below so our
+                  reviewer understands the issue.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Notes */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -569,7 +706,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || files.length === 0}
+            disabled={loading || files.length === 0 || (!!scTemplate && !scComplete)}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
             {loading ? (
