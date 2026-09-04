@@ -11,13 +11,14 @@ import { ReferenceFeedback } from './pages/ReferenceFeedback'
 import { TestFeedback } from './pages/TestFeedback'
 import { AboutSoftware } from './components/AboutSoftware'
 import { ClinicianNdaSign } from './pages/ClinicianNdaSign'
+import { RateOffer } from './pages/RateOffer'
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/apply" element={<Apply />} />
-        {/* Dedicated clinician registration links (honour ?profession=…). */}
+        {/* Dedicated clinician registration links (honour ?profession=â€¦). */}
         <Route path="/clinicians" element={<Apply defaultRole="clinician_reviewer" />} />
         <Route path="/apply/clinician" element={<Apply defaultRole="clinician_reviewer" />} />
         <Route path="/apply/agency" element={<ApplyAgency />} />
@@ -31,6 +32,7 @@ function App() {
         <Route path="/reference-feedback/:token" element={<ReferenceFeedback />} />
         {/* Emailed clinician NDA signing link (off-portal clinicians). */}
         <Route path="/sign-nda/:token" element={<ClinicianNdaSign />} />
+        <Route path="/rate-offer/:token" element={<RateOffer />} />
         <Route path="/about" element={<AboutSoftware />} />
         <Route path="/" element={<Navigate to="/apply" replace />} />
         <Route path="*" element={<Navigate to="/apply" replace />} />
