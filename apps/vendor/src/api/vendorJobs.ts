@@ -244,19 +244,54 @@ export async function declineStep(
   });
 }
 
+// --- Pre-delivery QA self-check (SOP-043 §6 / QA-CL-001) ---
+
+export interface SelfCheckItem {
+  id: string;
+  ref: string;
+  section: string;
+  item_text: string;
+  blocking: boolean;
+}
+
+export interface SelfCheckAnswer {
+  template_item_id: string;
+  result: "pass" | "fail" | "na";
+  na_justification?: string | null;
+}
+
+export interface SelfCheckResponse {
+  success: boolean;
+  template: { id: string; code: string; version: number; title: string } | null;
+  items?: SelfCheckItem[];
+  results?: SelfCheckAnswer[];
+  error?: string;
+}
+
+/**
+ * Loads the vendor-facing pre-delivery QA checklist for a step.
+ * template === null means no checklist applies and the deliver flow
+ * renders nothing extra.
+ */
+export async function getSelfCheck(token: string, stepId: string): Promise<SelfCheckResponse> {
+  return postSb<SelfCheckResponse>("get-selfcheck", { session_token: token, step_id: stepId });
+}
+
 export async function deliverStep(
   token: string,
   stepId: string,
   files: File[],
   notes?: string,
   vendorIdentifier?: string,
-  rosterLinguistId?: string
+  rosterLinguistId?: string,
+  selfcheck?: SelfCheckAnswer[]
 ): Promise<StepActionResponse> {
   const formData = new FormData();
   formData.append("step_id", stepId);
   if (notes) formData.append("notes", notes);
   if (vendorIdentifier) formData.append("vendor_identifier", vendorIdentifier);
   if (rosterLinguistId) formData.append("roster_linguist_id", rosterLinguistId);
+  if (selfcheck && selfcheck.length > 0) formData.append("selfcheck", JSON.stringify(selfcheck));
   for (const file of files) {
     formData.append("files", file);
   }

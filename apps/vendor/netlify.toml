@@ -115,6 +115,12 @@
   force = true
 
 [[redirects]]
+  from = "/sb/get-selfcheck"
+  to = "/.netlify/functions/get-selfcheck"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/sb/accept-step"
   to = "/.netlify/functions/accept-step"
   status = 200

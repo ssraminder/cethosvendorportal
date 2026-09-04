@@ -120,6 +120,38 @@ serve(async (req: Request) => {
       }
     }
 
+    // Pre-delivery QA self-check (SOP-043 v2 §6 / QA-CL-001). When a checklist
+    // template applies to this step's order (service + client scoped), the
+    // vendor must answer every vendor-facing item before delivering. Answers
+    // are a declaration stored for the internal reviewer — they do NOT satisfy
+    // the internal release gate. Validated before any file is uploaded so an
+    // incomplete self-check fails fast.
+    const selfcheckRaw = form.get("selfcheck");
+    let selfcheckAnswers: unknown[] = [];
+    if (typeof selfcheckRaw === "string" && selfcheckRaw.trim()) {
+      try { selfcheckAnswers = JSON.parse(selfcheckRaw); } catch {
+        return json({ success: false, error: "Invalid selfcheck payload" }, 400);
+      }
+      if (!Array.isArray(selfcheckAnswers)) {
+        return json({ success: false, error: "Invalid selfcheck payload" }, 400);
+      }
+    }
+    {
+      const { data: cl } = await sb.rpc("qms_get_step_selfcheck", { p_step_id: stepId });
+      const template = (cl as { template?: unknown } | null)?.template ?? null;
+      if (template) {
+        const { error: scErr } = await sb.rpc("qms_save_step_selfcheck", {
+          p_step_id: stepId,
+          p_vendor_id: vendorId,
+          p_answers: selfcheckAnswers,
+        });
+        if (scErr) {
+          // The RPC raises with the specific unanswered item refs.
+          return json({ success: false, error: scErr.message, selfcheck_required: true }, 422);
+        }
+      }
+    }
+
     // Determine the next delivery version.
     const { data: prior } = await sb
       .from("step_deliveries")

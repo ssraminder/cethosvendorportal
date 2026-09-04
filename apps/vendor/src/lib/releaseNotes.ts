@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.9.0",
+    date: "2026-09-04",
+    summary:
+      "Quality self-check at delivery: jobs with an applicable QA checklist now require a pre-delivery self-check before files can be submitted.",
+    changes: [
+      "Added: when a job's client and service have a quality checklist (starting with cognitive debriefing reports), the Deliver Files window shows a self-check — each point is answered Pass / Fail / N-A against your delivery, with a short reason required for N/A.",
+      "Added: the delivery button stays disabled until every self-check point is answered. A Fail does not block your delivery — it flags the point for the Cethos reviewer, and you can explain it in the delivery notes.",
+      "Added: your self-check answers are stored with the job and shown to the Cethos reviewer beside their own independent checklist at the review step.",
+      "Note: the self-check is a declaration; final release still requires Cethos's independent quality review.",
+    ],
+  },
+  {
     version: "2026.8.5",
     date: "2026-08-26",
     summary:
