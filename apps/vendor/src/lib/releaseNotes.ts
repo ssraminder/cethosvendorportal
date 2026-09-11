@@ -23,6 +23,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.9.1",
+    date: "2026-09-11",
+    summary:
+      "Delivered files now reach Cethos's internal file archive immediately on submission (backend fix — no change to how you deliver).",
+    changes: [
+      "Fixed: files submitted through Deliver Files only reached Cethos's internal archive on an hourly schedule because the immediate sync pointed at a retired function. Deliveries now sync to the job's archive folder right away.",
+    ],
+  },
+  {
     version: "2026.9.0",
     date: "2026-09-04",
     summary:
