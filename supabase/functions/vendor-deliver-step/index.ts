@@ -25,7 +25,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { notifyAdminVendorDelivered } from "../_shared/notify-step-lifecycle.ts";
-import { triggerDropboxSync } from "../_shared/dropbox-trigger.ts";
+import { triggerStepDropboxPush } from "../_shared/dropbox-trigger.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -218,20 +218,13 @@ serve(async (req: Request) => {
       })
       .eq("id", stepId);
 
-    // Fire-and-forget Dropbox sync for each uploaded file.
-    if (step.order_id) {
-      for (const path of uploadedPaths) {
-        triggerDropboxSync({
-          order_id: step.order_id,
-          source_bucket: "vendor-deliveries",
-          source_path: path,
-          sync_trigger: "vendor_delivery",
-          filename: path.split("/").pop() ?? undefined,
-          step_id: stepId,
-          step_delivery_id: delivery.id,
-          delivery_version: nextVersion,
-        });
-      }
+    // Fire-and-forget Dropbox push of the step's files into its team Dropbox
+    // folder. One call covers the whole delivery; dedup inside sync_step_files
+    // means only the files just uploaded actually transfer. (Replaces per-file
+    // triggerDropboxSync calls that posted to the undeployed legacy
+    // `dropbox-sync` function and silently did nothing.)
+    if (step.order_id && uploadedPaths.length > 0) {
+      triggerStepDropboxPush({ order_id: step.order_id, step_id: stepId });
     }
 
     // Fire-and-forget automated QA checks on the new delivery (SOP-043 §6).
