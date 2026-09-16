@@ -129,7 +129,14 @@ export function InvoiceList() {
         <div className="text-center py-12 text-gray-500">
           <DollarSign className="h-12 w-12 mx-auto mb-3 text-gray-300" />
           <p className="text-lg font-medium">No invoices</p>
-          <p className="text-sm">Invoices will appear here after completed jobs.</p>
+          <p className="text-sm">
+            To bill for a completed assignment, open{" "}
+            <Link to="/purchase-orders" className="text-teal-600 font-medium hover:underline">
+              Purchase Orders
+            </Link>{" "}
+            and use <span className="font-medium">Raise invoice</span> on the purchase order.
+            Your submitted invoices will appear here.
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">

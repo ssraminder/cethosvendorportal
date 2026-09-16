@@ -244,6 +244,34 @@
   status = 200
   force = true
 
+# Purchase Orders + invoicing — the raise-invoice flow previously hit
+# api.cethos.com directly (the only invoicing surface not on /sb), which
+# fails for vendors on geo-blocked/filtered networks and left them unable
+# to submit invoices at all.
+[[redirects]]
+  from = "/sb/get-purchase-orders"
+  to = "/.netlify/functions/get-purchase-orders"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/raise-invoice"
+  to = "/.netlify/functions/raise-invoice"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/get-invoice-pdf"
+  to = "/.netlify/functions/get-invoice-pdf"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sb/submit-invoice"
+  to = "/.netlify/functions/submit-invoice"
+  status = 200
+  force = true
+
 # Job-assigned email (test endpoint + future production trigger).
 [[redirects]]
   from = "/sb/accept-direct-assign"
