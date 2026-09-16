@@ -2,6 +2,17 @@ import { FUNCTIONS_BASE } from "./functionsBase";
 
 const BASE = FUNCTIONS_BASE;
 
+// Prod routes through the same-origin /sb/* Netlify proxy — direct calls to
+// api.cethos.com are geo-blocked or preflight-filtered on some vendors'
+// networks (the reason every other portal endpoint already rides /sb).
+// Local dev hits the Supabase edge function directly.
+const SB_BASE =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "/sb"
+    : null;
+
+const FETCH_TIMEOUT_MS = 20_000;
+
 export interface VendorPOInvoiceRef {
   id: string;
   status: string;
@@ -64,12 +75,29 @@ export interface RaiseInvoiceResponse {
 }
 
 export async function getPurchaseOrders(token: string): Promise<GetPurchaseOrdersResponse> {
-  const res = await fetch(`${BASE}/vendor-get-purchase-orders`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: "{}",
-  });
-  return res.json();
+  const url = SB_BASE ? `${SB_BASE}/get-purchase-orders` : `${BASE}/vendor-get-purchase-orders`;
+  // Hard timeout so the PO page can never hang on a dropped connection.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: "{}",
+      signal: controller.signal,
+    });
+    return (await res.json()) as GetPurchaseOrdersResponse;
+  } catch (e) {
+    return {
+      success: false,
+      error:
+        e instanceof DOMException && e.name === "AbortError"
+          ? "The request timed out. Please check your connection and try again."
+          : "Couldn't reach the server. This is usually a network or VPN issue — please try again.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function raiseInvoice(
@@ -81,6 +109,24 @@ export async function raiseInvoice(
   form.append("vendor_invoice_number", args.vendorInvoiceNumber);
   form.append("apply_gst", args.applyGst ? "true" : "false");
   form.append("file", args.file);
+
+  // Same-origin /sb proxy first (survives geo-blocked networks). The Netlify
+  // Lambda payload cap (~4.5 MB effective for multipart) is below the edge
+  // function's 20 MB limit, so on 413 fall back to the direct edge call —
+  // better a large file occasionally needing the direct path than the whole
+  // flow being dead on filtered networks.
+  if (SB_BASE) {
+    try {
+      const res = await fetch(`${SB_BASE}/raise-invoice`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (res.status !== 413) return (await res.json()) as RaiseInvoiceResponse;
+    } catch {
+      // fall through to the direct edge call
+    }
+  }
 
   const res = await fetch(`${BASE}/vendor-raise-invoice`, {
     method: "POST",

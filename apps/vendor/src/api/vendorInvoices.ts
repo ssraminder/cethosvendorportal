@@ -122,7 +122,10 @@ export async function getInvoicePdf(
   token: string,
   invoiceId: string
 ): Promise<InvoicePdfResponse> {
-  const res = await fetch(`${BASE}/vendor-get-invoice-pdf`, {
+  // Prod: same-origin /sb proxy (direct api.cethos.com calls fail on
+  // geo-blocked/filtered vendor networks); local dev hits the edge directly.
+  const url = SB_BASE ? `${SB_BASE}/get-invoice-pdf` : `${BASE}/vendor-get-invoice-pdf`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -143,6 +146,21 @@ export async function submitInvoice(
   form.append("invoice_id", invoiceId);
   form.append("vendor_invoice_number", vendorInvoiceNumber);
   if (file) form.append("file", file);
+
+  // Same-origin /sb proxy first; on 413 (Lambda payload cap below the edge
+  // function's 20 MB limit) fall back to the direct edge call.
+  if (SB_BASE) {
+    try {
+      const res = await fetch(`${SB_BASE}/submit-invoice`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (res.status !== 413) return (await res.json()) as SubmitInvoiceResponse;
+    } catch {
+      // fall through to the direct edge call
+    }
+  }
 
   const res = await fetch(`${BASE}/vendor-submit-invoice`, {
     method: "POST",

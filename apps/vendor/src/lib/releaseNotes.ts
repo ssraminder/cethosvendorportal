@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.9.2",
+    date: "2026-09-15",
+    summary:
+      "Invoice submission is more reliable on all networks, and the Invoices page now explains where to raise an invoice.",
+    changes: [
+      "Fixed: the Purchase Orders page and the Raise/Submit invoice actions used a connection path that does not work from every vendor's network or region, so some vendors could not load their purchase orders or submit invoices. These requests now use the same reliable same-origin path as the rest of the portal.",
+      "The Invoices page's empty state now explains how to bill: open Purchase Orders and use Raise invoice on the purchase order (it previously said invoices would 'appear after completed jobs', which suggested waiting).",
+      "Viewing an invoice PDF uses the same reliable path now.",
+    ],
+  },
+  {
     version: "2026.9.1",
     date: "2026-09-11",
     summary:
