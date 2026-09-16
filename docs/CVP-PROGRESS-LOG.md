@@ -1528,7 +1528,7 @@ Root Directory `apps/vendor`; env vars (DB_HOST/PORT/USER/PASSWORD/NAME or
 DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_SECRET, VENDOR_JWT_PRIVATE_KEY,
 VENDOR_JWT_PUBLIC_JWK, TRUSTED_DEVICE_DAYS, BREVO_API_KEY/SENDER_EMAIL/
 SENDER_NAME, MAILGUN_API_KEY/API_BASE/DOMAIN/FROM_EMAIL/SENDER_EMAIL/
-SENDER_NAME, ADMIN_PORTAL_URL, VITE_VENDOR_URL; build-time: VITE_AUTH_BASE,
+SENDER_NAME, ADMIN_PORTAL_URL, VITE_VENDOR_URL; build-time (mirror Netlify 1:1; VITE_AUTH_BASE NOT needed — /sb is hardcoded relative on non-localhost):
 VITE_SENTRY_DSN, VITE_SUPABASE_URL — copy values from the Netlify site
 cethos-vendor); attach vendor.cethos.com; DNS flip. Frontend-only change
 plus function import specifiers — no DB, no cvp_ tables, no edge functions.
