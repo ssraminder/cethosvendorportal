@@ -24,6 +24,13 @@ export default defineConfig(({ mode }) => ({
   define: {
     __APP_BUILD_SHA__: JSON.stringify(BUILD_SHA),
     __APP_BUILD_DATE__: JSON.stringify(BUILD_DATE),
+    // Vite only embeds VITE_-prefixed vars into the client bundle. Vercel's
+    // project env carries the DSN as SENTRY_DSN, so bridge it explicitly.
+    // A real VITE_SENTRY_DSN still wins. The DSN is a public value — never
+    // bridge SENTRY_AUTH_TOKEN or other build secrets this way.
+    'import.meta.env.VITE_SENTRY_DSN': JSON.stringify(
+      process.env.VITE_SENTRY_DSN ?? process.env.SENTRY_DSN ?? '',
+    ),
   },
   build: {
     sourcemap: true,
