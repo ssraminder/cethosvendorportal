@@ -11,8 +11,8 @@
  */
 
 import { randomBytes, createHash } from "node:crypto";
-import { query } from "./db";
-import { TRUSTED_DEVICE_DAYS } from "./cookies";
+import { query } from "./db.js";
+import { TRUSTED_DEVICE_DAYS } from "./cookies.js";
 
 export function hashDeviceToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");

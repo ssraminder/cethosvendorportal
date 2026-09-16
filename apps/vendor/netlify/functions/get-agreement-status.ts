@@ -19,9 +19,9 @@
  * Returns: { agreements: AgreementStatus[], waived_until }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 
 const GRACE_DAYS = 14;
 const AGREEMENT_TYPES = ["nda", "gvsa"] as const;

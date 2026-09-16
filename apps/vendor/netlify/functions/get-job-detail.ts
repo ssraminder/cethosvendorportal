@@ -7,10 +7,10 @@
  * Body: { session_token: string, step_id: string, offer_id?: string }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { signStorageUrl, signSourceFile } from "./_lib/storage";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { signStorageUrl, signSourceFile } from "./_lib/storage.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

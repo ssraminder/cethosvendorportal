@@ -8,22 +8,22 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { query } from "./_lib/db";
+import { query } from "./_lib/db.js";
 import {
   err,
   json,
   jsonWithCookies,
   parseBody,
   type NetlifyResponse,
-} from "./_lib/response";
-import { buildSessionCookie, buildTrustCookie, hostFromHeaders } from "./_lib/cookies";
-import { issueTrustedDevice } from "./_lib/trusted-device";
+} from "./_lib/response.js";
+import { buildSessionCookie, buildTrustCookie, hostFromHeaders } from "./_lib/cookies.js";
+import { issueTrustedDevice } from "./_lib/trusted-device.js";
 import {
   hashOtp,
   OTP_LOCKOUT_MINUTES,
   OTP_MAX_ATTEMPTS,
   timingSafeEqual,
-} from "./_lib/otp-crypto";
+} from "./_lib/otp-crypto.js";
 
 interface OtpRow {
   id: string;

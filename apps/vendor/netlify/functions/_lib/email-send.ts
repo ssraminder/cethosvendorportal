@@ -26,9 +26,9 @@
  * blocking ISPs can be added without a redeploy.
  */
 
-import { sendBrevo } from "./brevo";
-import { sendMailgun } from "./mailgun";
-import { query } from "./db";
+import { sendBrevo } from "./brevo.js";
+import { sendMailgun } from "./mailgun.js";
+import { query } from "./db.js";
 
 export interface VendorEmailArgs {
   to: { email: string; name?: string };

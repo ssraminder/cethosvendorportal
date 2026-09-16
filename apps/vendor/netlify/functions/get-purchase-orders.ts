@@ -12,6 +12,6 @@
  * Body: {} (JSON)
  */
 
-import { makeEdgeProxy } from "./_lib/edge-proxy";
+import { makeEdgeProxy } from "./_lib/edge-proxy.js";
 
 export const handler = makeEdgeProxy("vendor-get-purchase-orders");

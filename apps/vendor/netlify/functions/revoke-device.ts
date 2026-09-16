@@ -9,10 +9,10 @@
  * Returns: { success: true }
  */
 
-import { requireSession } from "./_lib/session";
-import { json, jsonWithCookies, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { buildSessionCookie } from "./_lib/cookies";
-import { revokeTrustedDevice, revokeAllTrustedDevices } from "./_lib/trusted-device";
+import { requireSession } from "./_lib/session.js";
+import { json, jsonWithCookies, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { buildSessionCookie } from "./_lib/cookies.js";
+import { revokeTrustedDevice, revokeAllTrustedDevices } from "./_lib/trusted-device.js";
 
 interface Body {
   session_token?: string;

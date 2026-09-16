@@ -14,9 +14,9 @@
  * Returns: { success, signature_id, signed_at, already_signed? }
  */
 
-import { query } from "./_lib/db";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { renderOnboardingPackage, type OnboardingFields } from "./_lib/onboarding-template";
+import { query } from "./_lib/db.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { renderOnboardingPackage, type OnboardingFields } from "./_lib/onboarding-template.js";
 
 // Far-future waiver that suppresses the separate global NDA/GVSA gate — the
 // onboarding package incorporates and supersedes both.

@@ -12,7 +12,7 @@
  * to be picked up by all verifiers without explicit cache-bust.
  */
 
-import { json, type NetlifyResponse } from "./_lib/response";
+import { json, type NetlifyResponse } from "./_lib/response.js";
 
 export const handler = async (): Promise<NetlifyResponse> => {
   const jwkRaw = process.env.VENDOR_JWT_PUBLIC_JWK;

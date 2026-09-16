@@ -9,8 +9,8 @@
  * Returns: { exists, has_phone, has_password, is_first_login }
  */
 
-import { query } from "./_lib/db";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 
 interface VendorRow {
   id: string;

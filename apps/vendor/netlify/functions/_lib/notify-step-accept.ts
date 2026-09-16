@@ -11,7 +11,7 @@
  * failure here is logged and swallowed.
  */
 
-import { query } from "./db";
+import { query } from "./db.js";
 
 type AcceptKind = "offer" | "direct";
 

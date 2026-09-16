@@ -9,9 +9,9 @@
  * Returns: { success, request: { id, status, ... } }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 
 interface Body {
   session_token?: string;

@@ -7,14 +7,14 @@
  * Body: { session_token, to_email?, step_id?, ...field overrides }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { sendMailgun } from "./_lib/mailgun";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { sendMailgun } from "./_lib/mailgun.js";
 import {
   renderJobAssignedEmail,
   type JobAssignedEmailParams,
-} from "./_lib/email-job-assigned";
+} from "./_lib/email-job-assigned.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

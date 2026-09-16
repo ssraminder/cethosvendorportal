@@ -22,13 +22,13 @@ import {
   jsonWithCookies,
   parseBody,
   type NetlifyResponse,
-} from "./_lib/response";
+} from "./_lib/response.js";
 import {
   buildClearSessionCookie,
   parseCookies,
   SESSION_COOKIE_NAME,
-} from "./_lib/cookies";
-import { revokeSession } from "./_lib/session";
+} from "./_lib/cookies.js";
+import { revokeSession } from "./_lib/session.js";
 
 export const handler = async (event: {
   headers: Record<string, string | undefined>;

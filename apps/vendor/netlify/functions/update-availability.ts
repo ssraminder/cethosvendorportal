@@ -6,9 +6,9 @@
  * Body: { session_token: string, availability_status: string }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 
 const VALID = new Set(["available", "busy", "vacation", "unavailable", "on_leave"]);
 

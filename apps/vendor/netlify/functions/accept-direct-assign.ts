@@ -7,10 +7,10 @@
  * Body: { session_token: string, step_id: string }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { notifyStaffOfStepAccept } from "./_lib/notify-step-accept";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { notifyStaffOfStepAccept } from "./_lib/notify-step-accept.js";
 
 export const handler = async (event: {
   body: string | null;

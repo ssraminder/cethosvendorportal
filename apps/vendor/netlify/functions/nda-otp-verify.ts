@@ -9,15 +9,15 @@
  * Returns: { success, channel }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 import {
   hashOtp,
   OTP_LOCKOUT_MINUTES,
   OTP_MAX_ATTEMPTS,
   timingSafeEqual,
-} from "./_lib/otp-crypto";
+} from "./_lib/otp-crypto.js";
 
 export const handler = async (event: {
   body: string | null;

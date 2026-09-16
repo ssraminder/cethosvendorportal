@@ -11,12 +11,12 @@
  * Returns: { success, channel, masked_contact }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { sendVendorEmail } from "./_lib/email-send";
-import { sendTwilioSms, maskPhone } from "./_lib/twilio";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { sendVendorEmail } from "./_lib/email-send.js";
+import { sendTwilioSms, maskPhone } from "./_lib/twilio.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto.js";
 
 interface VendorRow {
   id: string;

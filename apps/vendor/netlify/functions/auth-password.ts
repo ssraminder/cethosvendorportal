@@ -18,23 +18,23 @@
  * 401, with a dummy bcrypt compare on the miss path for uniform timing.
  */
 
-import { query } from "./_lib/db";
+import { query } from "./_lib/db.js";
 import {
   json,
   jsonWithCookies,
   parseBody,
   err,
   type NetlifyResponse,
-} from "./_lib/response";
-import { verifyPassword } from "./_lib/password";
+} from "./_lib/response.js";
+import { verifyPassword } from "./_lib/password.js";
 import {
   readTrustTokenFromRequest,
   buildTrustCookie,
   buildSessionCookie,
   hostFromHeaders,
-} from "./_lib/cookies";
-import { checkAndRotateTrustedDevice } from "./_lib/trusted-device";
-import { createSession } from "./_lib/session";
+} from "./_lib/cookies.js";
+import { checkAndRotateTrustedDevice } from "./_lib/trusted-device.js";
+import { createSession } from "./_lib/session.js";
 
 interface Body {
   email?: string;
