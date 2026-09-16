@@ -17,10 +17,10 @@
  * Returns: { success, signature_id, signed_at, package_id }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { renderOnboardingPackage, type OnboardingFields } from "./_lib/onboarding-template";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { renderOnboardingPackage, type OnboardingFields } from "./_lib/onboarding-template.js";
 
 const OTP_VALID_WINDOW_MINUTES = 30;
 // Far-future waiver that suppresses the SEPARATE global NDA/GVSA gate — the

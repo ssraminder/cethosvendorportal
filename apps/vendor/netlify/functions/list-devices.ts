@@ -8,10 +8,10 @@
  * Returns: { devices: [{ id, label, user_agent, created_at, last_seen_at, expires_at, current }] }
  */
 
-import { requireSession } from "./_lib/session";
-import { json, jsonWithCookies, parseBody, type NetlifyResponse } from "./_lib/response";
-import { buildSessionCookie, readTrustTokenFromRequest } from "./_lib/cookies";
-import { listTrustedDevices } from "./_lib/trusted-device";
+import { requireSession } from "./_lib/session.js";
+import { json, jsonWithCookies, parseBody, type NetlifyResponse } from "./_lib/response.js";
+import { buildSessionCookie, readTrustTokenFromRequest } from "./_lib/cookies.js";
+import { listTrustedDevices } from "./_lib/trusted-device.js";
 
 export const handler = async (event: {
   body: string | null;

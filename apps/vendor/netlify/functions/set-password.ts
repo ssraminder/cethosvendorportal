@@ -20,12 +20,12 @@
  * See docs/CVP-VENDOR-AUTH-PASSWORD-PLAN.md.
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, jsonWithCookies, type NetlifyResponse } from "./_lib/response";
-import { buildSessionCookie } from "./_lib/cookies";
-import { hashPassword, verifyPassword, checkPasswordPolicy } from "./_lib/password";
-import { revokeAllTrustedDevices } from "./_lib/trusted-device";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, jsonWithCookies, type NetlifyResponse } from "./_lib/response.js";
+import { buildSessionCookie } from "./_lib/cookies.js";
+import { hashPassword, verifyPassword, checkPasswordPolicy } from "./_lib/password.js";
+import { revokeAllTrustedDevices } from "./_lib/trusted-device.js";
 
 // How recent a verified OTP must be to authorize a password reset without the
 // current password (the forgot-password path).

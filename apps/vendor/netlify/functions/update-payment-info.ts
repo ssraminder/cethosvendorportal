@@ -17,9 +17,9 @@
  * }
  */
 
-import { query } from "./_lib/db";
-import { requireSession } from "./_lib/session";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { requireSession } from "./_lib/session.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 
 // Product-approved methods only (2026-05-16). 'wise' is grandfathered
 // at the DB layer for 8 legacy rows but is NOT accepted for new writes

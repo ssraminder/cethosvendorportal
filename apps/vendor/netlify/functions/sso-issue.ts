@@ -21,17 +21,17 @@
  * cookie on `.cethos.com`.
  */
 
-import { query } from "./_lib/db";
+import { query } from "./_lib/db.js";
 import {
   err,
   json,
   jsonWithCookies,
   parseBody,
   type NetlifyResponse,
-} from "./_lib/response";
-import { requireSession } from "./_lib/session";
-import { buildSessionCookie } from "./_lib/cookies";
-import { signSsoToken } from "./_lib/jwt";
+} from "./_lib/response.js";
+import { requireSession } from "./_lib/session.js";
+import { buildSessionCookie } from "./_lib/cookies.js";
+import { signSsoToken } from "./_lib/jwt.js";
 
 interface VendorRow {
   id: string;

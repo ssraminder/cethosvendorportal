@@ -1490,4 +1490,50 @@ checklist remains the only release gate.
 
 ---
 
+## 2026-09-16 — Vendor portal Netlify → Vercel migration (repo side) — Egypt unblock
+
+**Why:** Vendors in Egypt cannot reach vendor.cethos.com — Egyptian ISPs block
+Netlify's shared edge IPs (the same class of national-network blocking that
+originally forced the /sb direct-Postgres proxy when Supabase's HTTPS edge was
+unreachable). The admin portal already moved to Vercel; this ports the vendor
+app's hosting the same way. Netlify stays live and untouched until DNS flips.
+
+- `apps/vendor/api/sb.ts` — ONE Vercel serverless function hosting all 43
+  Netlify Functions unchanged: static imports of every handler + a route map
+  mirroring netlify.toml's /sb redirects (incl. /.well-known/jwks.json →
+  jwks). Adapts (req,res) ⇄ Netlify event/{statusCode,headers,
+  multiValueHeaders,body}; multi-Set-Cookie preserved via header arrays.
+  Never logs request bodies (payout_details rule).
+- All relative imports under `apps/vendor/netlify/functions/` now carry
+  explicit `.js` extensions (144 imports, 44 files). Vercel runs TS functions
+  as UNBUNDLED native ESM (no extensionless/directory resolution — the admin
+  repo's ERR_UNSUPPORTED_DIR_IMPORT lesson, 2026-07-27); Netlify's esbuild
+  resolves `.js` → `.ts` natively, so the Netlify build is unaffected.
+  Verified: vite build green; esbuild bundle-check of api/sb.ts + all 43
+  functions resolves; runtime smoke test (mock req/res → real handler → pg
+  connect attempt) passes.
+- `apps/vendor/vercel.json` — framework vite, rewrites (/sb/:name +
+  jwks → /api/sb, SPA catch-all), security headers ported verbatim from
+  netlify.toml (Airwallex CSP included), api/sb.ts maxDuration 60s / 1024MB,
+  region iad1.
+- Root `vercel.json` — `git.deploymentEnabled: false`: silences the broken
+  repo-root Vercel project `cethosvendorportal` (it built from the repo root,
+  where there is no package.json — every deploy errored since PR #332). The
+  per-app projects read their own apps/*/vercel.json, so they are unaffected.
+  When the recruitment app migrates, create its Vercel project with Root
+  Directory `apps/recruitment`.
+
+**Not in this PR (dashboard/DNS, after merge):** Vercel project creation with
+Root Directory `apps/vendor`; env vars (DB_HOST/PORT/USER/PASSWORD/NAME or
+DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_SECRET, VENDOR_JWT_PRIVATE_KEY,
+VENDOR_JWT_PUBLIC_JWK, TRUSTED_DEVICE_DAYS, BREVO_API_KEY/SENDER_EMAIL/
+SENDER_NAME, MAILGUN_API_KEY/API_BASE/DOMAIN/FROM_EMAIL/SENDER_EMAIL/
+SENDER_NAME, ADMIN_PORTAL_URL, VITE_VENDOR_URL; build-time: VITE_AUTH_BASE,
+VITE_SENTRY_DSN, VITE_SUPABASE_URL — copy values from the Netlify site
+cethos-vendor); attach vendor.cethos.com; DNS flip. Frontend-only change
+plus function import specifiers — no DB, no cvp_ tables, no edge functions.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
+

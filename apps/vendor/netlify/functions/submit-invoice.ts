@@ -10,6 +10,6 @@
  * Body: multipart/form-data { invoice_id, vendor_invoice_number, file? }
  */
 
-import { makeEdgeProxy } from "./_lib/edge-proxy";
+import { makeEdgeProxy } from "./_lib/edge-proxy.js";
 
 export const handler = makeEdgeProxy("vendor-submit-invoice");

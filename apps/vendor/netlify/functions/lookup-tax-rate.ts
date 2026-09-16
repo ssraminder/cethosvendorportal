@@ -8,8 +8,8 @@
  *   - Without: returns { success, provinces: [...] }
  */
 
-import { query } from "./_lib/db";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
+import { query } from "./_lib/db.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
 
 export const handler = async (event: {
   body: string | null;

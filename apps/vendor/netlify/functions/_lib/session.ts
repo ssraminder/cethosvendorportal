@@ -16,13 +16,13 @@
  * cookies, the body fallback can be removed and rotation is universal.
  */
 
-import { query } from "./db";
-import { err, type NetlifyResponse } from "./response";
+import { query } from "./db.js";
+import { err, type NetlifyResponse } from "./response.js";
 import {
   SESSION_COOKIE_NAME,
   buildSessionCookie,
   parseCookies,
-} from "./cookies";
+} from "./cookies.js";
 
 interface SessionRow {
   id: string;

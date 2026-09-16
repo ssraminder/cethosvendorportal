@@ -12,11 +12,11 @@
  * auth-otp-verify keys on email, so an SMS code verifies through the same path.
  */
 
-import { query } from "./_lib/db";
-import { sendVendorEmail } from "./_lib/email-send";
-import { json, parseBody, err, type NetlifyResponse } from "./_lib/response";
-import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto";
-import { sendTwilioSms, maskPhone } from "./_lib/twilio";
+import { query } from "./_lib/db.js";
+import { sendVendorEmail } from "./_lib/email-send.js";
+import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
+import { generateOtp, generateSalt, hashOtp } from "./_lib/otp-crypto.js";
+import { sendTwilioSms, maskPhone } from "./_lib/twilio.js";
 
 interface Vendor {
   id: string;

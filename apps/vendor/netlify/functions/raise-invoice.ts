@@ -14,6 +14,6 @@
  * Body: multipart/form-data { po_id, vendor_invoice_number, apply_gst, file }
  */
 
-import { makeEdgeProxy } from "./_lib/edge-proxy";
+import { makeEdgeProxy } from "./_lib/edge-proxy.js";
 
 export const handler = makeEdgeProxy("vendor-raise-invoice");

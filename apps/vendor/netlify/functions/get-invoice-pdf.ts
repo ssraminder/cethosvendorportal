@@ -10,6 +10,6 @@
  * Body: { invoice_id } (JSON)
  */
 
-import { makeEdgeProxy } from "./_lib/edge-proxy";
+import { makeEdgeProxy } from "./_lib/edge-proxy.js";
 
 export const handler = makeEdgeProxy("vendor-get-invoice-pdf");
