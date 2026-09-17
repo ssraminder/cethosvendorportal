@@ -1535,5 +1535,19 @@ plus function import specifiers — no DB, no cvp_ tables, no edge functions.
 
 ---
 
+## 2026-09-17 — Vercel cutover complete: vendor.cethos.com live, Egypt unblocked
+
+DNS + domain attached; all 43 /sb functions verified e2e on the live domain
+(43/43 healthy, incl. live Postgres reads and upstream api.cethos.com relays).
+`apps/vendor/netlify.toml` now carries `ignore = "exit 0"` so the vestigial
+cethos-vendor Netlify site skips every build; the root netlify.toml
+(cethosvendorportal site, join.cethos.com) is untouched and keeps building.
+Key env facts recorded in memory/decisions.md: SUPABASE_URL = api.cethos.com
+(custom domain, browser-facing storage URLs derive from it), Vercel env
+changes need an explicit Redeploy, domain attach is separate from DNS.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
+
 

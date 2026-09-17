@@ -2,6 +2,17 @@
   command = "npm run build"
   publish = "dist"
   functions = "netlify/functions"
+  # DECOMMISSIONED: vendor.cethos.com is served by Vercel (project
+  # cethos-vendor, Root Directory apps/vendor) since 2026-09-17 — DNS cut
+  # over and all 43 /sb functions verified live (Egyptian ISPs block
+  # Netlify's edge IPs, which made the whole portal unreachable there).
+  # An ignore command exiting 0 tells Netlify "no changes, skip the
+  # build" for previews and production alike, so the still-linked
+  # cethos-vendor Netlify site goes quiet. Finish the decommission in the
+  # Netlify UI (unlink/delete the cethos-vendor site only — the
+  # cethosvendorportal site still serves join.cethos.com from the repo
+  # root and must keep building).
+  ignore = "exit 0"
 
 # Explicit bundler + Node version. Netlify's auto-detect can miss TS
 # functions in monorepo subdirs; this nails it down.
