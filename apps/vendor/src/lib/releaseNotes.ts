@@ -23,6 +23,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.9.3",
+    date: "2026-09-17",
+    summary:
+      "One invoice can now cover several purchase orders, and you no longer have to create or upload an invoice document — we write it for you.",
+    changes: [
+      "You can bill several purchase orders on a single invoice instead of raising one per PO. Choose the purchase orders, add your own invoice number, and we produce the invoice.",
+      "No more uploading. Cethos generates your invoice PDF from the purchase orders themselves, so the amounts, references and billing details are always right. You can download it from your Invoices page at any time.",
+      "Nothing waits for approval any more. The work on a purchase order is already signed off before you can bill it, so your invoice goes straight to our accounts team with a payment due date.",
+      "Your Purchase Orders page now shows which Cethos company each PO belongs to, and whether it is ready to invoice. One invoice covers one company and one currency; work for the other company goes on its own invoice.",
+      "The first time you raise an invoice this way you are asked to accept a short self-billing agreement, which lets Cethos issue invoices in your name. We ask once.",
+    ],
+  },
+  {
     version: "2026.9.2",
     date: "2026-09-15",
     summary:
