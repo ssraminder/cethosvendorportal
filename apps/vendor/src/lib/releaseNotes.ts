@@ -23,6 +23,32 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.9.4",
+    date: "2026-09-28",
+    summary:
+      "Fixed: raising an invoice from Purchase Orders had been failing since 17 September. The page now uses the generated-invoice flow — tick the purchase orders, enter your invoice number, and Cethos writes the invoice.",
+    changes: [
+      "Fixed: from 17 September the Purchase Orders page still asked for an invoice document and sent it in the old format, while the invoicing service had already moved to the generated-invoice flow — so every submission failed. The page now matches the service: tick the purchase orders you are billing, add your own invoice number and date, confirm whether you charge tax, and submit. Nothing to upload.",
+      "Several purchase orders for the same Cethos company and currency can go on one invoice. The page tells you when a purchase order has to go on its own invoice.",
+      "Each purchase order now shows the Cethos company it belongs to, the project or order reference, the delivery date, and whether it is ready to invoice — or why not yet.",
+      "The first time you raise a generated invoice you are shown the short self-billing agreement and asked to accept it. We ask once.",
+      "Fixed: downloading a generated invoice PDF from the Invoices page could fail with 'Failed to generate download URL' because it was looked up in the wrong storage location.",
+    ],
+  },
+  {
+    version: "2026.9.3",
+    date: "2026-09-17",
+    summary:
+      "One invoice can now cover several purchase orders, and you no longer have to create or upload an invoice document — we write it for you.",
+    changes: [
+      "You can bill several purchase orders on a single invoice instead of raising one per PO. Choose the purchase orders, add your own invoice number, and we produce the invoice.",
+      "No more uploading. Cethos generates your invoice PDF from the purchase orders themselves, so the amounts, references and billing details are always right. You can download it from your Invoices page at any time.",
+      "Nothing waits for approval any more. The work on a purchase order is already signed off before you can bill it, so your invoice goes straight to our accounts team with a payment due date.",
+      "Your Purchase Orders page now shows which Cethos company each PO belongs to, and whether it is ready to invoice. One invoice covers one company and one currency; work for the other company goes on its own invoice.",
+      "The first time you raise an invoice this way you are asked to accept a short self-billing agreement, which lets Cethos issue invoices in your name. We ask once.",
+    ],
+  },
+  {
     version: "2026.9.2",
     date: "2026-09-15",
     summary:

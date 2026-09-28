@@ -73,12 +73,24 @@ serve(async (req: Request) => {
       );
     }
 
-    // Generate signed URL (1 hour expiry)
-    const { data } = await supabase.storage
-      .from("vendor-deliveries")
-      .createSignedUrl(invoice.invoice_pdf_path, 3600);
+    // Generated (self-billed) invoices are written by generate-vendor-invoice
+    // to the `vendor-invoices` bucket as generated/<vendor>/<payment>.pdf;
+    // older staff-produced PDFs live in `vendor-deliveries`. Pick the bucket
+    // the path implies, then try the other so no historical path 404s.
+    const pdfPath = invoice.invoice_pdf_path as string;
+    const buckets = pdfPath.startsWith("generated/")
+      ? ["vendor-invoices", "vendor-deliveries"]
+      : ["vendor-deliveries", "vendor-invoices"];
+    let signedUrl: string | null = null;
+    for (const bucket of buckets) {
+      const { data } = await supabase.storage.from(bucket).createSignedUrl(pdfPath, 3600);
+      if (data?.signedUrl) {
+        signedUrl = data.signedUrl;
+        break;
+      }
+    }
 
-    if (!data?.signedUrl) {
+    if (!signedUrl) {
       return new Response(
         JSON.stringify({ error: "Failed to generate download URL" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -86,7 +98,7 @@ serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, signed_url: data.signedUrl }),
+      JSON.stringify({ success: true, signed_url: signedUrl }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
