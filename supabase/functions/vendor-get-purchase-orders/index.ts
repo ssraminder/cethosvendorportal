@@ -2,6 +2,8 @@
 // logged-in vendor, each annotated with whether the vendor has already raised an
 // invoice against it. Also returns the vendor's tax (GST/HST) profile so the
 // "Raise invoice" form can default the tax line.
+// Also returns the self-billing agreement text and whether this vendor has
+// accepted it, so the page can ask once before the first generated invoice.
 //
 // POST (no body needed). Auth: vendor_sessions bearer token.
 
@@ -13,6 +15,9 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
+
+// Must match vendor-raise-invoice.
+const SELF_BILLING_VERSION = "self-billing-v1.0";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -47,6 +52,35 @@ serve(async (req: Request) => {
       .select("tax_id, tax_name, tax_rate")
       .eq("id", vendorId)
       .maybeSingle();
+
+    // Self-billing agreement: the raise endpoint refuses (428) until the vendor
+    // has accepted it once. Hand the page the text and whether this vendor
+    // already has, so it asks exactly once and never shows stale legal copy.
+    const { data: terms } = await sb
+      .from("service_terms")
+      .select("title, content, version")
+      .eq("version", SELF_BILLING_VERSION)
+      .maybeSingle();
+    const { data: acceptance } = terms
+      ? await sb
+          .from("vendor_terms_acceptances")
+          .select("accepted_at")
+          .eq("vendor_id", vendorId)
+          .eq("terms_version", SELF_BILLING_VERSION)
+          .eq("action", "accept_self_billing")
+          .order("accepted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    const selfBilling = terms
+      ? {
+          version: terms.version as string,
+          title: (terms.title as string) ?? "Self-billing agreement",
+          content: (terms.content as string) ?? "",
+          accepted: !!acceptance,
+          accepted_at: (acceptance?.accepted_at as string) ?? null,
+        }
+      : null;
 
     // POs that have actually been issued to the vendor. 'draft' POs aren't
     // visible — only ones the office has sent (or the vendor has acknowledged).
@@ -217,6 +251,7 @@ serve(async (req: Request) => {
         tax_name: vendor?.tax_name ?? null,
         tax_rate: vendor?.tax_rate != null ? Number(vendor.tax_rate) : null,
       },
+      self_billing: selfBilling,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal server error";

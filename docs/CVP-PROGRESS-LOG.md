@@ -1548,6 +1548,21 @@ changes need an explicit Redeploy, domain attach is separate from DNS.
 
 ---
 
+## 2026-09-28 — Purchase Orders invoicing restored (v2026.9.4)
+
+Vendors could not raise invoices from 17 Sep: the self-billed multi-PO
+edge functions from PR #359 were deployed to prod without the matching
+screens (PR left as draft), so the old multipart form hit a JSON endpoint.
+Shipped the client for the new contract (multi-PO picker, one Cethos
+company + one currency per invoice, self-billing acceptance asked once,
+no upload), `vendor-get-purchase-orders` now returns the agreement text +
+acceptance state, and `vendor-get-invoice-pdf` signs generated PDFs from
+the `vendor-invoices` bucket. Edge functions to redeploy:
+vendor-get-purchase-orders, vendor-get-invoice-pdf (both --no-verify-jwt).
+No DB change. Details + rules in memory/decisions.md.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
 
 

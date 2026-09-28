@@ -2,16 +2,16 @@
  * Netlify Function: raise-invoice
  *
  * Same-origin proxy for the `vendor-raise-invoice` Supabase Edge Function
- * (vendor raises an invoice against a sent PO; multipart with a mandatory
- * invoice document). Direct api.cethos.com uploads fail for vendors on
- * networks that geo-block or filter that host — same rationale as
- * upload-cv.ts. Note Lambda payload limit (~6 MB base64) is below the
- * edge function's 20 MB cap; the client falls back to the direct edge
- * call on 413.
+ * (the vendor raises ONE self-billed invoice covering one or more purchase
+ * orders; Cethos generates the PDF — nothing is uploaded). Direct
+ * api.cethos.com calls fail for vendors on networks that geo-block or filter
+ * that host — same rationale as upload-cv.ts.
  *
  * POST /sb/raise-invoice
  * Headers: Authorization: Bearer <session_token>
- * Body: multipart/form-data { po_id, vendor_invoice_number, apply_gst, file }
+ * Body: application/json { po_ids: string[], vendor_invoice_number,
+ *       invoice_date?, charges_tax?, tax_registration_number?,
+ *       accept_self_billing? }
  */
 
 import { makeEdgeProxy } from "./_lib/edge-proxy.js";
