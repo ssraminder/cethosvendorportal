@@ -1563,6 +1563,15 @@ No DB change. Details + rules in memory/decisions.md.
 
 ---
 
+## 2026-09-30 — /sb relay decoded again (v2026.9.5)
+
+`apps/vendor/api/sb.ts` ignored the Netlify `isBase64Encoded` flag, so the
+five edge-proxy routes (get-purchase-orders, raise-invoice, get-invoice-pdf,
+submit-invoice, upload-cv) returned base64 text to the browser since the
+17 Sep Vercel cutover. One-line decode fix; no DB or edge-function change.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
 
 
