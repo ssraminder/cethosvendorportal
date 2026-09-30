@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.9.5",
+    date: "2026-09-30",
+    summary:
+      "Fixed: Purchase Orders, Raise invoice and invoice PDF downloads failed with 'Couldn't reach the server' for everyone since 17 September — the portal's server-side relay was returning responses in an encoded form the page could not read.",
+    changes: [
+      "Fixed: since the portal moved hosts on 17 September, the same-origin relay that carries Purchase Orders, Raise invoice, invoice PDF downloads and CV uploads passed the reply through without decoding it, so the page could not read it and showed 'Couldn't reach the server. This is usually a network or VPN issue'. The relay now decodes replies exactly as before the move.",
+      "This also means yesterday's generated-invoice flow (2026.9.4) is now actually reachable from the Purchase Orders page.",
+    ],
+  },
+  {
     version: "2026.9.4",
     date: "2026-09-28",
     summary:

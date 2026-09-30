@@ -67,6 +67,8 @@ interface SbResult {
   body: string;
   headers?: Record<string, string>;
   multiValueHeaders?: Record<string, string[]>;
+  /** Netlify convention: body is base64 and must be decoded before sending. */
+  isBase64Encoded?: boolean;
 }
 
 // Each handler declares only the event fields it uses; the full event we
@@ -198,7 +200,17 @@ export default async function handler(
     for (const [k, v] of Object.entries(out.multiValueHeaders ?? {})) {
       res.setHeader(k, v);
     }
-    res.end(out.body ?? "");
+    // The edge-proxy handlers (get-purchase-orders, raise-invoice,
+    // get-invoice-pdf, submit-invoice) and upload-cv return the upstream
+    // body base64-encoded with isBase64Encoded: true — Netlify decoded that
+    // before sending; here nothing did, so browsers received base64 text
+    // under an application/json Content-Type and every JSON parse failed
+    // ("Couldn't reach the server"). Decode exactly as Netlify would.
+    if (out.isBase64Encoded && out.body) {
+      res.end(Buffer.from(out.body, "base64"));
+    } else {
+      res.end(out.body ?? "");
+    }
   } catch (e) {
     // Never log request bodies here (payout_details rule) — name + error only.
     console.error(`[sb] ${name} failed:`, e instanceof Error ? e.message : e);
