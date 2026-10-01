@@ -289,13 +289,24 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
   const [scTemplate, setScTemplate] = useState<{ code: string; title: string } | null>(null);
   const [scItems, setScItems] = useState<SelfCheckItem[]>([]);
   const [scAnswers, setScAnswers] = useState<Record<string, { result?: "pass" | "fail" | "na"; na_justification?: string }>>({});
-  useEffect(() => {
-    if (!sessionToken) return;
-    let active = true;
-    (async () => {
-      try {
-        const res = await getSelfCheck(sessionToken, step.id);
-        if (!active || !res.success || !res.template) return;
+  // "loading" while the checklist is being fetched, "error" when the fetch
+  // failed (network, relay, server). A failed load is never treated as "no
+  // checklist applies": the server refuses the delivery when one applies and
+  // no answers arrive, so the vendor must be able to see and retry the load.
+  const [scStatus, setScStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  // Returns what the server said: "template" (checklist applies and is now
+  // rendered), "none" (no checklist for this job) or "error" (load failed).
+  const loadSelfCheck = useCallback(async (): Promise<"template" | "none" | "error"> => {
+    if (!sessionToken) {
+      setScStatus("error");
+      return "error";
+    }
+    setScStatus("loading");
+    try {
+      const res = await getSelfCheck(sessionToken, step.id);
+      if (!res.success) throw new Error(res.error || "self-check load failed");
+      if (res.template) {
         setScTemplate({ code: res.template.code, title: res.template.title });
         setScItems(res.items ?? []);
         const prefill: Record<string, { result?: "pass" | "fail" | "na"; na_justification?: string }> = {};
@@ -303,14 +314,22 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
           prefill[r.template_item_id] = { result: r.result, na_justification: r.na_justification ?? "" };
         });
         setScAnswers(prefill);
-      } catch {
-        /* non-fatal — deliver flow proceeds without a checklist; the server
-           still refuses delivery if one applies and answers are missing */
+        setScStatus("ready");
+        return "template";
       }
-    })();
-    return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      setScTemplate(null);
+      setScItems([]);
+      setScStatus("ready");
+      return "none";
+    } catch {
+      setScStatus("error");
+      return "error";
+    }
   }, [sessionToken, step.id]);
+
+  useEffect(() => {
+    void loadSelfCheck();
+  }, [loadSelfCheck]);
 
   const scUnanswered = scItems.filter((i) => !scAnswers[i.id]?.result);
   const scNaMissing = scItems.filter(
@@ -395,6 +414,10 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
       setError("Please add your reference (translator name or internal job code) before delivering.");
       return;
     }
+    if (scStatus === "loading") {
+      setError("Please wait — checking whether a quality self-check applies to this job.");
+      return;
+    }
     if (scTemplate && !scComplete) {
       const refs = [...scUnanswered, ...scNaMissing].map((i) => i.ref).slice(0, 10).join(", ");
       setError(`Complete the quality self-check before delivering (${refs}${scUnanswered.length + scNaMissing.length > 10 ? "…" : ""}). N/A answers need a short justification.`);
@@ -423,6 +446,19 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
       );
       if (result.success) {
         onSuccess(isRevision ? (step.revision_count ?? 0) + 1 : undefined);
+      } else if (
+        result.selfcheck_required ||
+        /^(Self-check incomplete|N\/A requires)/.test(result.error ?? "")
+      ) {
+        // The server requires the quality self-check but this dialog had no
+        // checklist to show (the earlier load failed, or the page is running
+        // an older build). Load it now so the vendor can answer and resubmit.
+        const outcome = await loadSelfCheck();
+        setError(
+          outcome === "template"
+            ? "This job requires the quality self-check before delivery. Please answer each point below, then submit again."
+            : "This job requires a quality self-check that could not be loaded. Please reload the page (Ctrl/Cmd + Shift + R) and try again. If it still fails, contact your Cethos project manager.",
+        );
       } else {
         const msg = result.upload_errors?.join(". ") || result.error || "Failed to upload delivery";
         setError(msg);
@@ -593,7 +629,31 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
 
           {/* Pre-delivery quality self-check (SOP-043 §6). Rendered only when a
               checklist applies to this job; every item must be answered before
-              the delivery can be submitted. */}
+              the delivery can be submitted. The load state is always visible so
+              a failed fetch is never mistaken for "no checklist applies". */}
+          {scStatus === "loading" && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              Checking whether a quality self-check applies to this job…
+            </div>
+          )}
+          {scStatus === "error" && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span className="flex-1">
+                We couldn't load the quality self-check for this job. If one applies, the
+                delivery will be refused until it is completed.
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadSelfCheck()}
+                disabled={loading}
+                className="shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {scTemplate && (
             <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -706,7 +766,7 @@ export function DeliverModal({ step, onClose, onSuccess }: DeliverProps) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || files.length === 0 || (!!scTemplate && !scComplete)}
+            disabled={loading || files.length === 0 || scStatus === "loading" || (!!scTemplate && !scComplete)}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
             {loading ? (

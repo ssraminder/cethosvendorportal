@@ -93,6 +93,8 @@ export interface StepActionResponse {
   files_uploaded?: number;
   upload_errors?: string[];
   error?: string;
+  /** Set by vendor-deliver-step (422) when the quality self-check is missing or incomplete. */
+  selfcheck_required?: boolean;
 }
 
 // --- Job Detail Types ---
