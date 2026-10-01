@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.10.0",
+    date: "2026-10-01",
+    summary:
+      "Fixed: Deliver Files could refuse a delivery with 'Self-check incomplete — unanswered item(s): A1 A2 …' while showing no self-check to answer. The dialog now always shows whether the quality self-check is loading, failed to load (with Retry), or does not apply — and loads it on the spot if the server asks for it.",
+    changes: [
+      "Fixed: when the quality self-check could not be loaded (network hiccup, or a Deliver Files page opened before the self-check feature shipped), the dialog silently behaved as if no checklist applied, and the server then refused the delivery with an unanswered-items list the vendor could not act on.",
+      "Added: Deliver Files now shows 'Checking whether a quality self-check applies…' while loading, and a clear warning with a Retry button if the load fails. The Submit button waits for the check to finish.",
+      "Added: if the server still asks for the self-check at submit time, the dialog loads the checklist right there so you can answer each point and submit again, instead of leaving you with an error you cannot resolve. If it cannot be loaded, it tells you to reload the page.",
+      "Tip: if you ever see that error on an older open tab, reload the page (Ctrl/Cmd + Shift + R) — the self-check appears under the linguist field in the Deliver Files dialog.",
+    ],
+  },
+  {
     version: "2026.9.5",
     date: "2026-09-30",
     summary:

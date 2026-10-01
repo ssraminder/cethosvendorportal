@@ -1572,6 +1572,20 @@ submit-invoice, upload-cv) returned base64 text to the browser since the
 
 ---
 
+## 2026-10-01 — Deliver Files self-check: visible load state + self-heal (v2026.10.0)
+
+A vendor (Cognify) was refused a delivery with "Self-check incomplete —
+unanswered item(s): A1 … H5" while the Deliver Files dialog showed no
+checklist to answer: the dialog swallowed a failed `getSelfCheck` load (or
+was an old open tab from before 2026.9.0) and sent no answers, and the server
+gate rejected it. `DeliverModal` now shows the checklist load state (loading /
+error with Retry / none), disables Submit while loading, and when the server
+answers 422 `selfcheck_required` it reloads the checklist in place so the
+vendor can answer and resubmit (or is told to hard-reload the page). No DB or
+edge-function change. Details in memory/decisions.md.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
 
 
