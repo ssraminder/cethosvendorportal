@@ -6,6 +6,11 @@ Architectural, product, and business decisions made in this project — with rat
 Append new entries at the top (newest first). For each:
 
 ```
+### 2026-10-06 — "Awaiting Cethos sign-off" confusion (Hammed Daud, vendor `fe91539b…`)
+- **Context:** Ashish impersonated Hammed and saw both POs stuck at "Awaiting Cethos sign-off" with a rejected-invoice notice saying "Tick this purchase order" — but the box could not be ticked. `can_invoice` requires the PO's `vendor_payables` row to be `approved`. VPO-2026-00211's payable was `pending` at $1 (step rate $1/word × 1; his original invoice was $20); VPO-2026-00225 had **no payable at all** (PO issued 2026-07-30 before payables were wired), so staff had nothing to approve. 5 sent POs across 4 vendors had the same "no payable" gap; 9 more sit on `pending` payables.
+- **Decision:** v2026.10.1 — the rejection notice only says "tick" when `can_invoice`; otherwise it says nothing to do until Ready to invoice; the badge reads "Awaiting Cethos sign-off — nothing for you to do yet". Data: created `pending` payables (mirroring PO rate/total) and linked them for the 5 payable-less POs (00225, 00266, 00209, 00208, 00224). Approval is staff's: admin order → Finance tab → Vendor payables → Approve (`manage-vendor-payables` `update_status`).
+- **Status:** active
+
 ### 2026-10-06 — Duplicate invoice guard (v2026.10.0)
 - **Context:** legacy per-step invoices (May–June 2026, `cvp_payments.step_id` set, no PO, no `cvp_invoice_lines`) were invisible to the lines-only "already invoiced" check in `vendor-get-purchase-orders` / `vendor-raise-invoice`, so the same step could be billed again against its PO (Abhinav Dang ×4, Marcus Olu Valdim, Osama Elalwany on 1 Oct, 16 live pairs in all).
 - **Decision:** both functions now also look at live `cvp_payments` rows on the PO's `workflow_step_id`; the list marks them `already_invoiced`, the raise endpoint refuses with `STEP_ALREADY_INVOICED` (409). 13 legacy duplicates cancelled in prod (`voided_by = dedupe-2026-10-06`). Deployed via MCP, no-verify-jwt.

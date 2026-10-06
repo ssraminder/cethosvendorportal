@@ -48,7 +48,7 @@ const INV_BADGES: Record<string, { bg: string; text: string; label: string }> = 
 
 // Plain-language reasons for a PO the service would refuse today.
 const NOT_READY_COPY: Record<string, string> = {
-  cost_not_approved: "Awaiting Cethos sign-off",
+  cost_not_approved: "Awaiting Cethos sign-off — nothing for you to do yet",
   entity_missing: "Billing company not set — contact ap@cethos.com",
   already_invoiced: "Already invoiced",
 };
@@ -330,7 +330,11 @@ function PurchaseOrderCard({
               <span className="block mt-0.5 text-amber-700">Note: {po.last_rejection.note}</span>
             ) : null}
             <span className="block mt-0.5 text-amber-700">
-              Tick this purchase order to raise a corrected invoice — no document upload is needed any more.
+              {po.can_invoice
+                ? "Tick this purchase order to raise a corrected invoice — no document upload is needed any more."
+                : po.not_ready_reason === "cost_not_approved"
+                  ? "Nothing to do yet: Cethos still has to sign off the amount on this purchase order. Once it shows Ready to invoice, tick it to raise a corrected invoice — no document upload is needed any more."
+                  : "You will be able to raise a corrected invoice once this purchase order shows Ready to invoice — no document upload is needed any more."}
             </span>
           </div>
         </div>
