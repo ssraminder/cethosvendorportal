@@ -160,6 +160,42 @@ serve(async (req: Request) => {
       }
     }
 
+    // Legacy step-level invoices. Before purchase orders existed (May–June
+    // 2026) one draft invoice was created per workflow step and the vendor
+    // submitted it with their own reference. Those rows carry step_id but no
+    // PO and no cvp_invoice_lines, so the lines check above cannot see them —
+    // which is exactly how the same step came to be billed twice (legacy
+    // invoice + PO invoice). A live invoice on the PO's step therefore counts
+    // as "already invoiced", so the picker never offers that PO again.
+    const stepIds = [...new Set(poRows.map((p) => p.workflow_step_id).filter(Boolean))] as string[];
+    if (stepIds.length) {
+      const { data: stepHeads } = await sb
+        .from("cvp_payments")
+        .select("id, step_id, status, invoice_number, vendor_invoice_number, submitted_at")
+        .eq("vendor_id", vendorId)
+        .in("step_id", stepIds)
+        .not("status", "in", '("cancelled","rejected")')
+        .order("created_at", { ascending: true });
+      type StepHead = { id: string; step_id: string; status: string; invoice_number: string | null; vendor_invoice_number: string | null; submitted_at: string | null };
+      const headByStep = new Map<string, StepHead>();
+      for (const h of (stepHeads || []) as StepHead[]) {
+        if (!headByStep.has(h.step_id)) headByStep.set(h.step_id, h);
+      }
+      for (const po of poRows) {
+        if (invByPo.has(po.id) || !po.workflow_step_id) continue;
+        const head = headByStep.get(po.workflow_step_id as string);
+        if (!head) continue;
+        invByPo.set(po.id, {
+          id: head.id,
+          status: head.status,
+          invoice_number: head.invoice_number ?? null,
+          vendor_invoice_number: head.vendor_invoice_number ?? null,
+          submitted_at: head.submitted_at ?? null,
+          po_count: 1,
+        });
+      }
+    }
+
     // A PO is invoiceable only when its cost is already approved. This is the
     // check that makes a staff approval step on the invoice redundant, so it
     // has to be honest here: the picker must not offer a PO the raise endpoint

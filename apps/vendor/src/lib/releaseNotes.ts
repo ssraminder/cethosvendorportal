@@ -23,6 +23,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.10.0",
+    date: "2026-10-06",
+    summary:
+      "Fixed: a purchase order whose work was already invoiced under the older per-task invoice could be invoiced a second time. Purchase Orders now shows those as Already invoiced, and Raise invoice refuses them.",
+    changes: [
+      "Fixed: invoices raised before purchase orders existed (May–June 2026) were not counted when the Purchase Orders page decided whether a PO was still open, so the same task could be billed twice — once on the old invoice and again against the PO. The page and the raise step now check the task itself, not only the purchase order.",
+      "A purchase order already covered by one of those earlier invoices shows Already invoiced with that invoice's number. Trying to raise it anyway is refused with the invoice number and who to contact.",
+      "The 13 duplicate invoices this had already produced were cancelled on 6 October; the purchase-order invoice is the one that stands in each case.",
+    ],
+  },
+  {
     version: "2026.9.5",
     date: "2026-09-30",
     summary:

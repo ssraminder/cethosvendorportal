@@ -168,6 +168,30 @@ serve(async (req: Request) => {
       }, 409);
     }
 
+    // Legacy step-level invoices (pre-PO, May–June 2026) have no lines, so the
+    // check above cannot see them. A live one on any of these POs' workflow
+    // steps means the work is already billed — refuse, naming that invoice.
+    const stepIds = found.map((p: any) => p.workflow_step_id).filter(Boolean);
+    if (stepIds.length) {
+      const { data: stepHeads } = await sb
+        .from("cvp_payments")
+        .select("id, step_id, status, invoice_number, vendor_invoice_number")
+        .eq("vendor_id", vendorId)
+        .in("step_id", stepIds)
+        .not("status", "in", '("cancelled","rejected")')
+        .limit(1);
+      if (stepHeads?.length) {
+        const head = stepHeads[0];
+        const clash = found.find((p: any) => p.workflow_step_id === head.step_id);
+        return json({
+          success: false, code: "STEP_ALREADY_INVOICED",
+          error: `${clash?.po_number ?? "A purchase order"} was already invoiced on ${head.vendor_invoice_number || head.invoice_number} (${head.status}). If that invoice is wrong, contact ap@cethos.com instead of raising a second one.`,
+          po_number: clash?.po_number ?? null,
+          invoice_number: head.invoice_number,
+        }, 409);
+      }
+    }
+
     // ── One currency, one Cethos entity ─────────────────────────────────────
     const currencies = [...new Set(found.map((p: any) => String(p.currency || "USD").toUpperCase()))];
     if (currencies.length > 1) {
