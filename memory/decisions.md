@@ -6,6 +6,11 @@ Architectural, product, and business decisions made in this project — with rat
 Append new entries at the top (newest first). For each:
 
 ```
+### 2026-10-06 — Duplicate invoice guard (v2026.10.0)
+- **Context:** legacy per-step invoices (May–June 2026, `cvp_payments.step_id` set, no PO, no `cvp_invoice_lines`) were invisible to the lines-only "already invoiced" check in `vendor-get-purchase-orders` / `vendor-raise-invoice`, so the same step could be billed again against its PO (Abhinav Dang ×4, Marcus Olu Valdim, Osama Elalwany on 1 Oct, 16 live pairs in all).
+- **Decision:** both functions now also look at live `cvp_payments` rows on the PO's `workflow_step_id`; the list marks them `already_invoiced`, the raise endpoint refuses with `STEP_ALREADY_INVOICED` (409). 13 legacy duplicates cancelled in prod (`voided_by = dedupe-2026-10-06`). Deployed via MCP, no-verify-jwt.
+- **Status:** active
+
 ### YYYY-MM-DD — Short decision title
 - **Decision:** what was chosen
 - **Rationale:** why

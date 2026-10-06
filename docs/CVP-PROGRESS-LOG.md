@@ -14,6 +14,17 @@ Format: newest sessions at the top.
 
 ---
 
+## Session — October 6, 2026 (Duplicate invoice guard, v2026.10.0)
+
+Ashish Garg reported the same four of Abhinav Dang's invoices showing twice; Marcus Olu Valdim had the same. Root cause: legacy per-step invoices (May–June 2026, `cvp_payments.step_id` set, no PO, no `cvp_invoice_lines`) are invisible to the lines-only "already invoiced" check, so a PO for the same step could be billed again. Still reproducible on 1 Oct (Osama Elalwany).
+
+- `vendor-get-purchase-orders`: a live `cvp_payments` row on the PO's `workflow_step_id` now maps the PO to that invoice (`already_invoiced`).
+- `vendor-raise-invoice`: refuses with `STEP_ALREADY_INVOICED` (409) when any selected PO's step already carries a live invoice.
+- Data: 13 legacy duplicates cancelled (`voided_by = dedupe-2026-10-06`, note names the surviving PO invoice). Three paid/paid pairs (Jermaine Delos Santos ×1, Monika Rybak Wolos ×2) left untouched for accounting to confirm.
+- Both functions deployed `--no-verify-jwt`. Release note → **2026.10.0**; admin `portalRegistry.ts` updated.
+
+---
+
 ## Session — July 16, 2026 (Password auth — Phase 3: frontend, v2026.7.18)
 
 Wired the password + trusted-device UX. Frontend only; backend already landed (Phases 1–2).
