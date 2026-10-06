@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.10.1",
+    date: "2026-10-06",
+    summary:
+      "Purchase Orders: a rejected-invoice notice no longer tells you to tick a purchase order that Cethos has not signed off yet.",
+    changes: [
+      "Fixed: when an earlier invoice had been rejected and the purchase order was still Awaiting Cethos sign-off, the notice said to tick the purchase order to raise a corrected invoice, but the box could not be ticked. The notice now says there is nothing to do until the purchase order shows Ready to invoice.",
+      "The Awaiting Cethos sign-off label now says there is nothing for you to do yet. Cethos signs off the amount internally; you cannot invoice until it does.",
+    ],
+  },
+  {
     version: "2026.10.0",
     date: "2026-10-06",
     summary:
