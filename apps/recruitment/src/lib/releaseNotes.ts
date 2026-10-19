@@ -14,6 +14,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '2026.10.0',
+    date: '2026-10-19',
+    summary:
+      'Clinician reviewer applications now ask for your native language and regional locale.',
+    changes: [
+      'The clinician reviewer form has two new fields under Review Profile: Native language (required) and Regional variant / locale (optional, e.g. German (Austria), French (Canada)). The locale list follows the native language you pick.',
+      'On approval the native language is recorded on your vendor profile, so Cethos can match clinician reviews on it from day one.',
+    ],
+  },
+  {
     version: '2026.9.1',
     date: '2026-09-04',
     summary:

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import type { Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -12,6 +12,7 @@ import { MultiSelect } from '../components/MultiSelect'
 import { RankedMultiSelect } from '../components/RankedMultiSelect'
 import { CvSection, ConsentSection } from '../components/FormHelpers'
 import { useLanguages } from '../hooks/useLanguages'
+import { SearchableSelect } from '../components/SearchableSelect'
 import { supabase } from '../lib/supabase'
 import {
   translatorSchema,
@@ -225,6 +226,8 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
       clinicianTherapyAreas: [],
       clinicianWorkingLanguages: [],
       clinicianOtherLanguages: [],
+      clinicianNativeLanguage: '',
+      clinicianNativeLocale: '',
       clinicianGcpTrained: false,
       clinicianCoaExperience: false,
       rateCurrency: 'CAD',
@@ -234,6 +237,24 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
       declarationTrue: false as unknown as true,
     },
   })
+
+  // Native language + locale pickers (2026-10-19). Base languages are the rows
+  // whose code has no region suffix; the locale list is the variants of the
+  // chosen base (de → de-AT, de-BE, de-CH). Values are languages.id, like the
+  // other language fields on this form.
+  const baseLanguageOptions = useMemo(
+    () => languages.filter((l) => !l.code.includes('-')).map((l) => ({ value: l.id, label: l.name })),
+    [languages],
+  )
+  const clinicianNativeLanguageId = clinicianForm.watch('clinicianNativeLanguage')
+  const clinicianLocaleOptions = useMemo(() => {
+    const base = languages.find((l) => l.id === clinicianNativeLanguageId)?.code
+    if (!base) return []
+    const prefix = base.toLowerCase() + '-'
+    return languages
+      .filter((l) => l.code.toLowerCase().startsWith(prefix))
+      .map((l) => ({ value: l.id, label: l.name }))
+  }, [languages, clinicianNativeLanguageId])
 
   const { fields: degreeFields, append: addDegree, remove: removeDegree } = useFieldArray({
     control: clinicianForm.control,
@@ -2024,6 +2045,37 @@ export function Apply({ defaultRole }: { defaultRole?: RoleType } = {}) {
             </FormSection>
 
             <FormSection title="Review Profile">
+              <FormField label="Native language" required error={clinicianForm.formState.errors.clinicianNativeLanguage?.message as string | undefined}>
+                <SearchableSelect
+                  options={baseLanguageOptions}
+                  value={(clinicianForm.watch('clinicianNativeLanguage') ?? '') as string}
+                  onChange={(next) => {
+                    clinicianForm.setValue('clinicianNativeLanguage', next, { shouldValidate: true })
+                    clinicianForm.setValue('clinicianNativeLocale', '', { shouldValidate: true })
+                  }}
+                  placeholder="Select your native language…"
+                />
+              </FormField>
+
+              <FormField label="Regional variant / locale (optional)">
+                <SearchableSelect
+                  options={clinicianLocaleOptions}
+                  value={(clinicianForm.watch('clinicianNativeLocale') ?? '') as string}
+                  onChange={(next) => clinicianForm.setValue('clinicianNativeLocale', next, { shouldValidate: true })}
+                  placeholder={
+                    !clinicianNativeLanguageId
+                      ? 'Pick your native language first'
+                      : clinicianLocaleOptions.length === 0
+                        ? 'No regional variants for this language'
+                        : 'Generic — no specific region'
+                  }
+                  clearable
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  e.g. German (Austria), French (Canada) — pick one if your language is region-specific.
+                </p>
+              </FormField>
+
               <FormField label="Languages you can review in" required error={clinicianForm.formState.errors.clinicianWorkingLanguages?.message as string | undefined}>
                 <MultiSelect
                   options={languages.map((l) => ({ value: l.id, label: l.name }))}
