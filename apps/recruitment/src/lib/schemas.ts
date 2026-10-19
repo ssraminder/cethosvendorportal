@@ -355,6 +355,12 @@ export const clinicianReviewerSchema = z.object({
   clinicianTherapyAreas: z.array(z.enum(clinicianAreaValues)).min(1, 'Select at least one therapy area'),
   clinicianWorkingLanguages: z.array(z.string().min(1)).min(1, 'Select at least one review language'),
   clinicianOtherLanguages: z.array(z.string()).default([]),
+  // Native language (languages.id, required) + optional regional locale
+  // (languages.id of a variant such as de-AT). At approval the admin side
+  // writes ONE uppercase code (locale if set, else base) to the vendor
+  // record, which is what Find Vendors matches clinicians on.
+  clinicianNativeLanguage: z.string().min(1, 'Select your native language'),
+  clinicianNativeLocale: z.string().optional(),
   clinicianYearsIndependentPractice: z.string().min(1, 'Years of independent practice is required'),
   clinicianYearsCoa: z.string().optional(),
   clinicianGcpTrained: z.boolean().default(false),

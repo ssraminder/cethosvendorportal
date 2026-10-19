@@ -6,6 +6,12 @@ Architectural, product, and business decisions made in this project — with rat
 Append new entries at the top (newest first). For each:
 
 ```
+### 2026-10-19 — Clinician reviewer form asks for native language + locale (v2026.10.0)
+- **Context:** Raminder (admin repo session): clinician profiles had no native language anywhere — the admin Find Vendors card showed none for clinicians and could not match on it. Decision: capture it explicitly at creation.
+- **Decision:** `clinicianNativeLanguage` (languages.id, required) + `clinicianNativeLocale` (optional, variant id such as de-AT) on the clinician reviewer form. Values travel in `clinician_profile` jsonb as `nativeLanguage`/`nativeLocale`; the admin repo's `cvp-approve-application` writes ONE uppercase code (locale if set, else base) to `vendors.native_languages`. No new columns anywhere — the existing vendor field is what every matcher reads.
+- **Status:** active
+- **Affects:** `apps/recruitment/src/lib/schemas.ts`, `apps/recruitment/src/pages/Apply.tsx`, `apps/recruitment/src/lib/releaseNotes.ts`; admin repo edge fns `cvp-submit-application` / `cvp-approve-application`, admin `portalRegistry.ts` (recruitment 2026.10.0).
+
 ### 2026-10-06 — "Awaiting Cethos sign-off" confusion (Hammed Daud, vendor `fe91539b…`)
 - **Context:** Ashish impersonated Hammed and saw both POs stuck at "Awaiting Cethos sign-off" with a rejected-invoice notice saying "Tick this purchase order" — but the box could not be ticked. `can_invoice` requires the PO's `vendor_payables` row to be `approved`. VPO-2026-00211's payable was `pending` at $1 (step rate $1/word × 1; his original invoice was $20); VPO-2026-00225 had **no payable at all** (PO issued 2026-07-30 before payables were wired), so staff had nothing to approve. 5 sent POs across 4 vendors had the same "no payable" gap; 9 more sit on `pending` payables.
 - **Decision:** v2026.10.1 — the rejection notice only says "tick" when `can_invoice`; otherwise it says nothing to do until Ready to invoice; the badge reads "Awaiting Cethos sign-off — nothing for you to do yet". Data: created `pending` payables (mirroring PO rate/total) and linked them for the 5 payable-less POs (00225, 00266, 00209, 00208, 00224). Approval is staff's: admin order → Finance tab → Vendor payables → Approve (`manage-vendor-payables` `update_status`).

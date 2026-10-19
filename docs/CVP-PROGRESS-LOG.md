@@ -1583,6 +1583,21 @@ submit-invoice, upload-cv) returned base64 text to the browser since the
 
 ---
 
+## 2026-10-19 — Clinician reviewer form: native language + locale (v2026.10.0)
+
+Clinician onboarding never captured a native language, so approved clinicians
+had none on their vendor record (36 of 38 in prod) and the admin Find Vendors
+dialog could neither show nor match on it. `clinicianReviewerSchema` now has
+`clinicianNativeLanguage` (languages.id, required) and `clinicianNativeLocale`
+(optional variant such as de-AT); `Apply.tsx` adds two SearchableSelects under
+Review Profile, the locale list derived from the chosen base language. Admin
+side (same session): `cvp-submit-application` validates + stores them in
+`cvp_applications.clinician_profile.nativeLanguage/nativeLocale`,
+`cvp-approve-application` resolves (locale ?? base) to one uppercase code on
+`vendors.native_languages`. No DB change in this repo.
+
+---
+
 *End of CVP-PROGRESS-LOG.md*
 
 
