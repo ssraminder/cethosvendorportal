@@ -144,6 +144,8 @@ interface VendorFullProfile {
   preferred_rate_currency: string | null;
   native_languages: string[] | null;
   contractor_type: "individual" | "business";
+  /** Fallback photo for vendors without a cvp_translators row. */
+  profile_photo_url?: string | null;
 }
 
 interface ContractorUpgradeRequest {

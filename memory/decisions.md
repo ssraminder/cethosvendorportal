@@ -6,6 +6,11 @@ Architectural, product, and business decisions made in this project — with rat
 Append new entries at the top (newest first). For each:
 
 ```
+### 2026-10-23 — Delivery bucket mapping + vendors.profile_photo_url (v2026.10.2)
+- **Decision:** `step_deliveries.file_paths` entries resolve bucket as: explicit `bucket` field → that; `workflows/…` or `…/certified/…` → `quote-files`; else `vendor-deliveries` (checked against storage.objects on 2026-10-23, 0 mismatches). The old `step-deliveries` bucket in get-job-detail held nothing. Profile photos are now stored on `vendors.profile_photo_url` too (keyed by vendor id), because `cvp_translators` rows are missing for direct-onboarded vendors; get-profile reads COALESCE(cvp_translators, vendors).
+- **Status:** active
+- **Affects:** `apps/vendor/netlify/functions/_lib/storage.ts`, `get-job-detail.ts`, `get-profile.ts`, `supabase/functions/vendor-upload-photo`, `supabase/functions/cvp-request-test`, migration `20261023120000_vendors_profile_photo_url.sql`.
+
 ### 2026-10-19 — Clinician reviewer form asks for native language + locale (v2026.10.0)
 - **Context:** Raminder (admin repo session): clinician profiles had no native language anywhere — the admin Find Vendors card showed none for clinicians and could not match on it. Decision: capture it explicitly at creation.
 - **Decision:** `clinicianNativeLanguage` (languages.id, required) + `clinicianNativeLocale` (optional, variant id such as de-AT) on the clinician reviewer form. Values travel in `clinician_profile` jsonb as `nativeLanguage`/`nativeLocale`; the admin repo's `cvp-approve-application` writes ONE uppercase code (locale if set, else base) to `vendors.native_languages`. No new columns anywhere — the existing vendor field is what every matcher reads.

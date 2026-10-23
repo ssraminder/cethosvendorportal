@@ -3,8 +3,9 @@
 //
 // Vendor uploads a profile photo from their profile page. Stores the image in
 // the PUBLIC `vendor-profile-photos` bucket and writes the resulting public URL
-// to cvp_translators.profile_photo_url (keyed by the vendor's email, matching
-// how get-profile reads it back).
+// to vendors.profile_photo_url (keyed by vendor id) AND
+// cvp_translators.profile_photo_url (keyed by email). get-profile reads
+// COALESCE(cvp_translators, vendors). Fails if neither write hits a row.
 //
 // Re-adds the photo uploader that was previously missing (bug reports
 // 482f3dfa / c9bd65a5: "no option to upload profile picture"). The photo is an
@@ -106,12 +107,36 @@ serve(async (req: Request) => {
     const publicUrl =
       `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${path}?v=${Date.now()}`;
 
-    const { error: updateErr } = await supabase
+    // Write to BOTH places. vendors.profile_photo_url (keyed by vendor id) is
+    // the durable copy — vendors without a cvp_translators row (direct
+    // onboarding) used to match 0 rows here and silently lose the photo.
+    const { data: vendorRows, error: vendorUpdErr } = await supabase
+      .from("vendors")
+      .update({ profile_photo_url: publicUrl })
+      .eq("id", session.vendor_id)
+      .select("id");
+    if (vendorUpdErr) {
+      console.error("failed to set vendors.profile_photo_url:", vendorUpdErr);
+    }
+
+    const { data: translatorRows, error: updateErr } = await supabase
       .from("cvp_translators")
       .update({ profile_photo_url: publicUrl })
-      .eq("email", vendor.email);
+      .eq("email", vendor.email)
+      .select("id");
     if (updateErr) {
-      console.error("failed to set profile_photo_url:", updateErr);
+      console.error("failed to set cvp_translators.profile_photo_url:", updateErr);
+    }
+
+    const rowsWritten = (vendorRows?.length ?? 0) + (translatorRows?.length ?? 0);
+    if (rowsWritten === 0) {
+      // Fail loudly — the image is in storage but nothing points at it, so a
+      // "success" here would show the photo once and lose it on reload.
+      console.error("profile photo saved to storage but no profile row was updated", {
+        vendor_id: session.vendor_id,
+        vendor_error: vendorUpdErr?.message ?? null,
+        translator_error: updateErr?.message ?? null,
+      });
       return json({ error: "Failed to save profile photo" }, 500);
     }
 

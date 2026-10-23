@@ -1,4 +1,5 @@
 import { useRef, useEffect, type KeyboardEvent, type ClipboardEvent } from "react";
+import { digitsOnly, toAsciiDigits } from "../../utils/digits";
 
 interface OtpInputProps {
   value: string[];
@@ -13,7 +14,8 @@ export function OtpInput({ value, onChange, disabled }: OtpInputProps) {
     inputRefs.current[0]?.focus();
   }, []);
 
-  function handleChange(index: number, char: string) {
+  function handleChange(index: number, raw: string) {
+    const char = toAsciiDigits(raw);
     if (!/^\d?$/.test(char)) return;
 
     const next = [...value];
@@ -42,7 +44,7 @@ export function OtpInput({ value, onChange, disabled }: OtpInputProps) {
 
   function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
     e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    const pasted = digitsOnly(e.clipboardData.getData("text")).slice(0, 6);
     if (!pasted) return;
 
     const next = [...value];

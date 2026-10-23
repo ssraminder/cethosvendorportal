@@ -22,6 +22,7 @@ import {
   Mail, Phone, CheckCircle2,
 } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { digitsOnly } from "../../utils/digits";
 
 const SB_BASE = "/sb";
 
@@ -521,7 +522,7 @@ function OtpRow({ icon, label, state, setter, onSend, onVerify }: OtpRowProps) {
                 pattern="[0-9]*"
                 maxLength={6}
                 value={state.code}
-                onChange={(e) => setter((s) => ({ ...s, code: e.target.value.replace(/\D/g, ""), error: "" }))}
+                onChange={(e) => setter((s) => ({ ...s, code: digitsOnly(e.target.value), error: "" }))}
                 placeholder="6-digit code"
                 className="w-32 px-3 py-1.5 text-sm border border-gray-300 rounded font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-teal-500"
               />

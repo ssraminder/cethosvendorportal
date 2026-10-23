@@ -38,6 +38,7 @@ interface VendorRow {
   preferred_rate_currency: string | null;
   native_languages: string[] | null;
   contractor_type: string;
+  profile_photo_url: string | null;
 }
 
 interface UpgradeRequest {
@@ -66,7 +67,7 @@ export const handler = async (event: {
               city, availability_status, certifications, years_experience, rate_per_page,
               rate_currency, specializations, minimum_rate, total_projects, last_project_date,
               rating, tax_id, tax_name, tax_rate, preferred_rate_currency, native_languages,
-              contractor_type
+              contractor_type, profile_photo_url
        FROM vendors WHERE id = $1 LIMIT 1`,
       [vendor_id],
     );
@@ -143,9 +144,12 @@ export const handler = async (event: {
       bio: string | null; approved_combinations: unknown; cat_tools: string[] | null;
       profile_photo_url: string | null;
     }>(
-      `SELECT id, tier, profile_completeness, bio, approved_combinations, cat_tools, profile_photo_url
+      // Photo: cvp_translators first, then vendors.profile_photo_url — vendors
+      // without a cvp_translators row (direct-onboarded) only have the latter.
+      `SELECT id, tier, profile_completeness, bio, approved_combinations, cat_tools,
+              COALESCE(profile_photo_url, $2) AS profile_photo_url
        FROM cvp_translators WHERE email = $1 LIMIT 1`,
-      [vendor.email],
+      [vendor.email, vendor.profile_photo_url],
     );
     const translatorProfile = translators[0] ?? null;
 

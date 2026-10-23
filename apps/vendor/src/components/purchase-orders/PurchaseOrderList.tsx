@@ -380,9 +380,12 @@ function RaiseInvoicePanel({
   const subtotal = round2(pos.reduce((s, p) => s + Number(p.subtotal ?? p.total ?? 0), 0));
   const taxAmount = chargesTax ? round2(subtotal * (taxRate / 100)) : 0;
   const total = round2(subtotal + taxAmount);
-  const canSubmit = !submitting && vendorRef.trim().length > 0 && (!needsAcceptance || accept);
+  // The button stays clickable until submit is in flight: submit() itself
+  // explains what's missing (invoice number / agreement). Disabling it on
+  // those conditions made the button look dead with no hint why.
 
   async function submit() {
+    if (submitting) return;
     setFormError("");
     if (!vendorRef.trim()) return setFormError("Enter your invoice number.");
     if (needsAcceptance && !accept) return setFormError("Please accept the self-billing agreement to continue.");
@@ -527,7 +530,7 @@ function RaiseInvoicePanel({
           </button>
           <button
             onClick={submit}
-            disabled={!canSubmit}
+            disabled={submitting}
             className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}

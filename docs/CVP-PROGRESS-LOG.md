@@ -1596,8 +1596,26 @@ side (same session): `cvp-submit-application` validates + stores them in
 `cvp-approve-application` resolves (locale ?? base) to one uppercase code on
 `vendors.native_languages`. No DB change in this repo.
 
+## 2026-10-23 — Bug-report batch (vendor v2026.10.2)
+
+- get-job-detail: step_deliveries.file_paths entries parsed (JSON or plain) by
+  _lib/storage.parseDeliveryEntry — explicit bucket wins; workflows/* and
+  */certified/* → quote-files; everything else → vendor-deliveries (verified
+  against storage.objects). Delivered files show original_filename.
+- get-job-detail: source_files now also carries the previous step
+  (approval_depends_on_step ?? step_number-1) latest delivery + the step own
+  source_file_paths, as source="previous_step".
+- Profile photo: new vendors.profile_photo_url (migration
+  20261023120000_vendors_profile_photo_url, backfilled 51 vendors from
+  vendor-profile-photos storage). vendor-upload-photo writes both tables and
+  500s if neither row updated; get-profile COALESCEs.
+- OTP inputs normalise Arabic-Indic / Persian digits (src/utils/digits.ts).
+- Raise invoice button only disabled while submitting.
+- CSP: worker-src self blob: (vercel.json + netlify.toml).
+- cvp-request-test: reuse existing cvp_test_combinations row (port of admin
+  aeb2f6d6); G2 ignores pending domain rows whose combination is rejected or
+  whose latest test token expired unsubmitted. Edge functions not yet deployed.
+
 ---
 
 *End of CVP-PROGRESS-LOG.md*
-
-
