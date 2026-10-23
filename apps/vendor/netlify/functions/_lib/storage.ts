@@ -52,3 +52,59 @@ export function signSourceFile(storagePath: string): string | null {
   const bucket = isFlatPath ? "ocr-uploads" : "quote-files";
   return signStorageUrl(bucket, storagePath);
 }
+
+export interface DeliveryFileEntry {
+  storage_path: string;
+  bucket: string;
+  filename: string;
+  file_size: number | null;
+  mime_type: string | null;
+}
+
+/**
+ * Parse one `step_deliveries.file_paths` / `order_workflow_steps.source_file_paths`
+ * entry. Entries come in two shapes:
+ *   - JSON strings: {"storage_path","original_filename","file_size","mime_type","bucket"?}
+ *   - plain storage paths (older rows)
+ * Bucket resolution (verified against storage.objects, 2026-10-23):
+ *   - an explicit `bucket` field wins
+ *   - `workflows/...` (staff uploads) and `<order>/certified/...` (affidavits) → quote-files
+ *   - everything else (vendor uploads: `<step_id>/v<n>/...`) → vendor-deliveries
+ */
+export function parseDeliveryEntry(raw: string | null | undefined): DeliveryFileEntry | null {
+  if (!raw || typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  let path = trimmed;
+  let originalName: string | null = null;
+  let fileSize: number | null = null;
+  let mimeType: string | null = null;
+  let bucket: string | null = null;
+  if (trimmed.startsWith("{")) {
+    try {
+      const obj = JSON.parse(trimmed) as {
+        storage_path?: unknown; original_filename?: unknown;
+        file_size?: unknown; mime_type?: unknown; bucket?: unknown;
+      };
+      if (typeof obj.storage_path !== "string" || !obj.storage_path) return null;
+      path = obj.storage_path;
+      originalName = typeof obj.original_filename === "string" ? obj.original_filename : null;
+      fileSize = typeof obj.file_size === "number" ? obj.file_size : null;
+      mimeType = typeof obj.mime_type === "string" ? obj.mime_type : null;
+      bucket = typeof obj.bucket === "string" && obj.bucket ? obj.bucket : null;
+    } catch {
+      return null;
+    }
+  }
+  if (!bucket) {
+    bucket = path.startsWith("workflows/") || path.includes("/certified/")
+      ? "quote-files"
+      : "vendor-deliveries";
+  }
+  return {
+    storage_path: path,
+    bucket,
+    filename: originalName || path.split("/").pop() || "file",
+    file_size: fileSize,
+    mime_type: mimeType,
+  };
+}

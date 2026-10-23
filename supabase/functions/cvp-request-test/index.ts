@@ -4,7 +4,7 @@
  * Vendor-portal self-service: a logged-in translator requests a new
  * test for a (lang_pair × domain) combination they aren't approved for
  * yet. On success we:
- *   1. Create a cvp_test_combinations row (status=pending)
+ *   1. Create (or reuse + reset) a cvp_test_combinations row (status=pending)
  *   2. Create a cvp_translator_domains row (status=pending, source=self_request)
  *   3. Trigger cvp-send-tests internally → Mailgun sends V3 to the
  *      translator's applicant email with a 48h token.
@@ -17,8 +17,10 @@
  *   G1. The translator must already have `status=approved` in
  *       cvp_translator_domains for the same (src, tgt) pair (any domain).
  *       Proves the pair is active — we're just adding a new domain to it.
- *   G2. No row in cvp_translator_domains with `status IN ('pending',
+ *   G2. No live row in cvp_translator_domains with `status IN ('pending',
  *       'in_review')` for this translator — one pending request at a time.
+ *       Rows whose test combination is rejected, or whose latest test
+ *       token expired unsubmitted, are dead and do not block.
  *   G3. If a row exists for the exact (src, tgt, domain) with
  *       `status='rejected' AND cooldown_until > now()`, reject with the
  *       cooldown end date.
@@ -148,13 +150,55 @@ serve(async (req: Request) => {
     );
   }
 
-  // ---- G2: no other pending/in_review request ----
+  // ---- G2: no other live pending/in_review request ----
+  // A domain row can be left at 'pending' after its test is effectively
+  // over — the combination was rejected, or the test token expired without
+  // a submission. Those dead rows must not block a new request forever, so
+  // only rows whose test is still live count.
   const { data: openRequests } = await supabase
     .from("cvp_translator_domains")
-    .select("id, domain, source_language_id, target_language_id, status")
+    .select("id, domain, source_language_id, target_language_id, status, test_combination_id")
     .eq("translator_id", translator.id)
     .in("status", ["pending", "in_review"]);
-  if (openRequests && openRequests.length > 0) {
+  const openRows = (openRequests ?? []) as { id: string; test_combination_id: string | null }[];
+  const openComboIds = openRows
+    .map((r) => r.test_combination_id)
+    .filter((v): v is string => !!v);
+  const deadComboIds = new Set<string>();
+  if (openComboIds.length > 0) {
+    const { data: openCombos } = await supabase
+      .from("cvp_test_combinations")
+      .select("id, status")
+      .in("id", openComboIds);
+    const awaitingSubmission: string[] = [];
+    for (const c of (openCombos ?? []) as { id: string; status: string }[]) {
+      if (c.status === "rejected") deadComboIds.add(c.id);
+      else if (c.status === "test_sent" || c.status === "test_assigned") awaitingSubmission.push(c.id);
+    }
+    if (awaitingSubmission.length > 0) {
+      const { data: subs } = await supabase
+        .from("cvp_test_submissions")
+        .select("combination_id, status, token_expires_at, created_at")
+        .in("combination_id", awaitingSubmission)
+        .order("created_at", { ascending: false });
+      const latestByCombo = new Map<string, { status: string; token_expires_at: string | null }>();
+      for (const s of (subs ?? []) as {
+        combination_id: string; status: string; token_expires_at: string | null;
+      }[]) {
+        if (!latestByCombo.has(s.combination_id)) latestByCombo.set(s.combination_id, s);
+      }
+      const now = Date.now();
+      for (const [comboId, s] of latestByCombo) {
+        const unsubmitted = s.status === "sent" || s.status === "viewed" || s.status === "draft_saved";
+        const tokenLapsed = !!s.token_expires_at && new Date(s.token_expires_at).getTime() < now;
+        if (s.status === "expired" || (unsubmitted && tokenLapsed)) deadComboIds.add(comboId);
+      }
+    }
+  }
+  const liveOpenRequests = openRows.filter(
+    (r) => !r.test_combination_id || !deadComboIds.has(r.test_combination_id),
+  );
+  if (liveOpenRequests.length > 0) {
     return json(
       {
         success: false,
@@ -282,24 +326,70 @@ serve(async (req: Request) => {
     );
   }
 
-  const { data: newCombo, error: comboErr } = await supabase
+  // A combination row may already exist for this exact
+  // (application_id, src, tgt, domain) — from the translator's original
+  // application, or from an earlier self-request whose domain row was later
+  // revoked/rejected/expired. cvp_test_combinations has
+  // UNIQUE (application_id, source_language_id, target_language_id, domain),
+  // so a blind insert leaked the raw Postgres duplicate-key error to the
+  // vendor. Reuse the existing row and reset it to pending instead — never
+  // overwrite is_baseline_general / service_type on a row we did not create.
+  // (Ported from admin-repo commit aeb2f6d6.)
+  const { data: existingCombo, error: existingComboErr } = await supabase
     .from("cvp_test_combinations")
-    .insert({
-      application_id: translator.application_id,
-      source_language_id: sourceLanguageId,
-      target_language_id: targetLanguageId,
-      domain,
-      service_type: null,
-      status: "pending",
-      is_baseline_general: false,
-    })
     .select("id")
-    .single();
-  if (comboErr || !newCombo) {
+    .eq("application_id", translator.application_id)
+    .eq("source_language_id", sourceLanguageId)
+    .eq("target_language_id", targetLanguageId)
+    .eq("domain", domain)
+    .maybeSingle();
+  if (existingComboErr) {
     return json(
-      { success: false, error: "combination_create_failed", detail: comboErr?.message },
+      {
+        success: false,
+        error: "combination_lookup_failed",
+        detail: existingComboErr.message,
+      },
       500,
     );
+  }
+
+  let newCombo: { id: string } | null = existingCombo ?? null;
+  if (existingCombo) {
+    const { error: resetErr } = await supabase
+      .from("cvp_test_combinations")
+      .update({ status: "pending" })
+      .eq("id", existingCombo.id);
+    if (resetErr) {
+      return json(
+        { success: false, error: "combination_reset_failed", detail: resetErr.message },
+        500,
+      );
+    }
+  } else {
+    const { data: inserted, error: comboErr } = await supabase
+      .from("cvp_test_combinations")
+      .insert({
+        application_id: translator.application_id,
+        source_language_id: sourceLanguageId,
+        target_language_id: targetLanguageId,
+        domain,
+        service_type: null,
+        status: "pending",
+        is_baseline_general: false,
+      })
+      .select("id")
+      .single();
+    if (comboErr || !inserted) {
+      return json(
+        { success: false, error: "combination_create_failed", detail: comboErr?.message },
+        500,
+      );
+    }
+    newCombo = inserted;
+  }
+  if (!newCombo) {
+    return json({ success: false, error: "combination_create_failed" }, 500);
   }
 
   // Upsert in case an older revoked/rejected row exists (we reset it to

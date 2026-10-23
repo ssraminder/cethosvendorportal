@@ -23,6 +23,21 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.10.2",
+    date: "2026-10-23",
+    summary:
+      "Bug fixes: earlier deliveries download again, a job now shows the file handed on from the step before it, profile photos stay saved, OTP boxes accept Arabic and Persian digits, and Raise invoice tells you what is missing.",
+    changes: [
+      "Fixed: downloading a file you delivered earlier on a job showed an error instead of the file. Delivered files now download from the right place and show their original file names.",
+      "Fixed: a job that follows another step (for example a review after translation) showed no source file. The file delivered by the previous step now appears under Files from Previous Step.",
+      "Fixed: for some vendors an uploaded profile photo disappeared after reloading the page. Photos are now saved against your vendor account, and photos uploaded earlier have been restored. If a photo cannot be saved, you now see an error instead of a false success.",
+      "Fixed: digits typed on an Arabic, Persian or Urdu keyboard were silently removed from verification-code boxes (NDA signing, onboarding, profile and sign-in). They are now converted to 0-9.",
+      "Raise invoice is no longer greyed out before you fill it in. Clicking it tells you what is still needed: your invoice number or accepting the self-billing agreement.",
+      "Requesting a test for an additional domain no longer fails with a database error when a test for that domain existed before, and an old test that was rejected or expired no longer counts as a pending request.",
+      "Removed a browser security warning that appeared when the page started a background worker.",
+    ],
+  },
+  {
     version: "2026.10.1",
     date: "2026-10-06",
     summary:

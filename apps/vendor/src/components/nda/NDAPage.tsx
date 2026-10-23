@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, ShieldCheck, AlertTriangle, Calendar, FileText, Download, Mail, Phone, CheckCircle2, ChevronRight } from "lucide-react";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { digitsOnly } from "../../utils/digits";
 
 // Same-origin /sb/* (Netlify Function → Postgres). Mirrors the Phase 2/3
 // bypass — keeps the NDA flow working from regions that block Supabase
@@ -690,7 +691,7 @@ function OtpRow({ icon, label, state, setter, onSend, onVerify }: OtpRowProps) {
                 pattern="[0-9]*"
                 maxLength={6}
                 value={state.code}
-                onChange={(e) => setter((s) => ({ ...s, code: e.target.value.replace(/\D/g, ""), error: "" }))}
+                onChange={(e) => setter((s) => ({ ...s, code: digitsOnly(e.target.value), error: "" }))}
                 placeholder="6-digit code"
                 className="w-32 px-3 py-1.5 text-sm border border-gray-300 rounded font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-teal-500"
               />

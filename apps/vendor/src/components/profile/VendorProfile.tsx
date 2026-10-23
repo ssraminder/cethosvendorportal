@@ -23,6 +23,7 @@ import { SupportingDocsSection } from "./SupportingDocsSection";
 import { SecuritySection } from "./SecuritySection";
 import { COUNTRIES } from "../../data/countries";
 import { LANGUAGES } from "../../data/languages";
+import { digitsOnly } from "../../utils/digits";
 import {
   Mail,
   Phone,
@@ -393,7 +394,7 @@ function EditablePhoneField({ value, sessionToken, onVerified }: EditablePhoneFi
                 pattern="[0-9]*"
                 maxLength={6}
                 value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => setOtpCode(digitsOnly(e.target.value))}
                 placeholder="6-digit code"
                 disabled={loading}
                 autoFocus
@@ -942,7 +943,9 @@ export function VendorProfile() {
             ? (result.vendor.specializations as unknown[]).map((s) => String(s))
             : [],
         );
-        setPhotoUrl(result.translator_profile?.profile_photo_url ?? null);
+        setPhotoUrl(
+          result.translator_profile?.profile_photo_url ?? result.vendor.profile_photo_url ?? null,
+        );
         setCertifications(result.vendor.certifications || []);
         setContractorType(result.vendor.contractor_type === "business" ? "business" : "individual");
         setUpgradeRequest(result.contractor_upgrade_request ?? null);

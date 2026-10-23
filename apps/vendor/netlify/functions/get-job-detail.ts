@@ -10,7 +10,7 @@
 import { query } from "./_lib/db.js";
 import { requireSession } from "./_lib/session.js";
 import { json, parseBody, err, type NetlifyResponse } from "./_lib/response.js";
-import { signStorageUrl, signSourceFile } from "./_lib/storage.js";
+import { signStorageUrl, signSourceFile, parseDeliveryEntry } from "./_lib/storage.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,13 +57,15 @@ export const handler = async (event: {
       approved_at: string | null; instructions: string | null;
       rejection_reason: string | null; revision_count: number | null;
       requires_file_upload: boolean | null; notes_from_vendor: string | null;
+      approval_depends_on_step: number | null; source_file_paths: string[] | null;
     }>(
       `SELECT id, workflow_id, step_number, name, actor_type, status, service_id,
               order_id, vendor_id, source_language, target_language,
               vendor_rate, vendor_rate_unit, vendor_total, vendor_currency, pricing_mode,
               deadline, offered_at, accepted_at, started_at, delivered_at,
               approved_at, instructions, rejection_reason, revision_count,
-              requires_file_upload, notes_from_vendor
+              requires_file_upload, notes_from_vendor,
+              approval_depends_on_step, source_file_paths
        FROM order_workflow_steps WHERE id = $1 LIMIT 1`,
       [stepId],
     );
@@ -337,6 +339,44 @@ export const handler = async (event: {
       }
     }
 
+    // Files handed on from an earlier step. A step that follows another
+    // (approval_depends_on_step, else step_number - 1) starts from that
+    // step's latest delivery; the step's own source_file_paths (staff-set)
+    // are included too. Surfaced as source="previous_step" so the modal
+    // renders them in the "Files from Previous Step" section.
+    const seenPaths = new Set(sourceFiles.map((f) => f.storage_path));
+    const pushHandoff = (raw: string) => {
+      const entry = parseDeliveryEntry(raw);
+      if (!entry || seenPaths.has(entry.storage_path)) return;
+      seenPaths.add(entry.storage_path);
+      sourceFiles.push({
+        storage_path: entry.storage_path,
+        filename: entry.filename,
+        file_size: entry.file_size,
+        mime_type: entry.mime_type,
+        source: "previous_step",
+        download_url: signStorageUrl(entry.bucket, entry.storage_path),
+      });
+    };
+    for (const p of Array.isArray(step.source_file_paths) ? step.source_file_paths : []) {
+      pushHandoff(p);
+    }
+    const prevStepNumber = step.approval_depends_on_step
+      ?? (step.step_number > 1 ? step.step_number - 1 : null);
+    if (prevStepNumber != null && prevStepNumber !== step.step_number) {
+      const prevDeliveries = await query<{ file_paths: string[] | null }>(
+        `SELECT sd.file_paths
+         FROM step_deliveries sd
+         JOIN order_workflow_steps ps ON ps.id = sd.step_id
+         WHERE ps.workflow_id = $1 AND ps.step_number = $2
+         ORDER BY sd.version DESC, sd.created_at DESC
+         LIMIT 1`,
+        [step.workflow_id, prevStepNumber],
+      );
+      const prevPaths = prevDeliveries[0]?.file_paths;
+      for (const p of Array.isArray(prevPaths) ? prevPaths : []) pushHandoff(p);
+    }
+
     const referenceFiles: FileRow[] = [];
     if (glossaryPath) {
       referenceFiles.push({
@@ -360,10 +400,9 @@ export const handler = async (event: {
     }
 
     const deliveredFiles: FileRow[] = [];
-    // step_deliveries stores delivered files in `file_paths` (text[]) —
-    // not a `files` jsonb column the original Supabase function referenced.
-    // Filenames are the last segment of the storage path; we lose file
-    // size + mime type for delivered files, which the UI tolerates.
+    // step_deliveries.file_paths (text[]) entries are JSON strings
+    // ({storage_path, original_filename, ...}) or plain storage paths —
+    // parseDeliveryEntry resolves the right bucket and display name.
     const deliveries = await query<{ id: string; version: number; file_paths: string[] | null }>(
       `SELECT id, version, file_paths FROM step_deliveries
        WHERE step_id = $1 ORDER BY version DESC LIMIT 1`,
@@ -372,14 +411,15 @@ export const handler = async (event: {
     const latest = deliveries[0];
     const paths: string[] = Array.isArray(latest?.file_paths) ? latest!.file_paths : [];
     for (const p of paths) {
-      if (!p) continue;
+      const entry = parseDeliveryEntry(p);
+      if (!entry) continue;
       deliveredFiles.push({
-        storage_path: p,
-        filename: p.split("/").pop() || "delivered_file",
-        file_size: null,
-        mime_type: null,
+        storage_path: entry.storage_path,
+        filename: entry.filename,
+        file_size: entry.file_size,
+        mime_type: entry.mime_type,
         source: "delivered",
-        download_url: signStorageUrl("step-deliveries", p),
+        download_url: signStorageUrl(entry.bucket, entry.storage_path),
       });
     }
 
