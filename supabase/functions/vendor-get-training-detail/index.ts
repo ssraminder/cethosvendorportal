@@ -46,10 +46,24 @@ serve(async (req: Request) => {
       .order("order_index", { ascending: true });
     if (lErr) return json({ success: false, error: "load_failed", detail: lErr.message }, 500);
 
+    // Image blocks may reference the PRIVATE training-assets-private bucket by
+    // storage_path (e.g. third-party client-portal screenshots). Vendors have no
+    // Supabase auth, so sign them here (1h) and hand the UI a plain src.
+    const signed = await Promise.all((lessons ?? []).map(async (l) => {
+      if (!Array.isArray(l.content_blocks)) return l;
+      const blocks = await Promise.all(l.content_blocks.map(async (b: Record<string, unknown>) => {
+        if (b?.type !== "image" || b.src || typeof b.storage_path !== "string") return b;
+        const { data } = await supabase.storage.from("training-assets-private").createSignedUrl(b.storage_path, 3600);
+        const { storage_path: _path, ...rest } = b;
+        return data?.signedUrl ? { ...rest, src: data.signedUrl } : null;
+      }));
+      return { ...l, content_blocks: blocks.filter(Boolean) };
+    }));
+
     return json({
       success: true,
       training,
-      lessons: lessons ?? [],
+      lessons: signed,
       completed: match.completed === true,
       completed_at: match.completed_at ?? null,
     });
