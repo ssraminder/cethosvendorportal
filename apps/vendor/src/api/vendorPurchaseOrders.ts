@@ -50,6 +50,11 @@ export interface VendorPurchaseOrder {
   project_number: string | null;
   delivered_on: string | null;
   billing_entity: VendorBillingEntity | null;
+  /**
+   * The end client the work was for, as a neutral code ("Client 7K3Q") — the
+   * same client always gets the same code. One invoice covers one client.
+   */
+  client_group: { code: string; label: string } | null;
   /** false means the raise endpoint would refuse this PO — see not_ready_reason. */
   can_invoice: boolean;
   not_ready_reason: PONotReadyReason | null;

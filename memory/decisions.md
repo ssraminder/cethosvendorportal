@@ -338,3 +338,10 @@ Found while running the live e2e for v2026.9.4 through the real path (pg_net →
 Fix: `SbResult.isBase64Encoded?: boolean`; `res.end(Buffer.from(body, "base64"))` when set. `get-invoices` has its own handler returning a plain string and was never affected (Invoices page kept working, which hid the pattern).
 
 Rules: (1) after a hosting move, verify a JSON endpoint by **parsing the body**, not by status code; (2) any adapter that wraps Netlify-style handlers must honour `isBase64Encoded` both ways. OPEN: inbound multipart through the Vercel adapter (`upload-cv`) is read as UTF-8 text by `readRawBody` — binary uploads are likely corrupted; not exercised here.
+
+## 2026-11-16 — One client per vendor invoice, neutral client label (v2026.11.0)
+
+- Raminder: "customer name is important on each invoice ... make sure they are able to invoice projects belonging to one customer in one batch". Asked whether vendors see the real name, he chose **neutral label**.
+- `vendor-get-purchase-orders` returns `client_group { code, label }` per PO; `vendor-raise-invoice` refuses a batch spanning clients (`MIXED_CLIENT`, 422). Client = `customers.company_id` when set, else the customer row. Label = "Client " + 4 chars from SHA-256 of that key: stable, not reversible, never the name.
+- The picker groups by Cethos company + client + currency. Staff see the real customer on Vendor Invoices in the admin portal (admin v2026.11.51, `manage-vendor-payments` action `invoice_customers`, derived at read time, nothing stored on the invoice).
+- Not changed: invoices raised before this can still mix clients; the invoice PDF does not print the client label.
