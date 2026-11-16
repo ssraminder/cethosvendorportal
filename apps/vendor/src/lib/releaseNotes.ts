@@ -23,6 +23,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.11.0",
+    date: "2026-11-16",
+    summary:
+      "One invoice now covers one client: purchase orders carry a client label, and only purchase orders for the same client can go on the same invoice.",
+    changes: [
+      "Each purchase order shows a client label such as \"Client 7K3Q\". Purchase orders for the same client always carry the same label.",
+      "One invoice covers one client, one Cethos company and one currency. Once you tick a purchase order, purchase orders for a different client are greyed out with the reason shown.",
+      "If purchase orders for different clients are sent on one invoice, the invoice is refused with a message naming the client labels. Raise one invoice per client.",
+      "Select all ready now selects only the purchase orders for the same client.",
+    ],
+  },
+  {
     version: "2026.10.2",
     date: "2026-10-23",
     summary:

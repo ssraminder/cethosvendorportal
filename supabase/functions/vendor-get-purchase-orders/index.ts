@@ -25,6 +25,22 @@ const json = (body: unknown, status = 200) =>
     headers: { ...CORS, "Content-Type": "application/json" },
   });
 
+// A neutral, stable label for the end client behind a purchase order. Vendors
+// batch invoices per client but are never shown who the client is, so the
+// label is derived from a one-way hash of the client's id ("Client 7K3Q").
+// The same client always gets the same label; nothing here is reversible.
+async function clientCode(key: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`cethos-client:${key}`));
+  const b = new Uint8Array(buf);
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  return [0, 1, 2, 3].map((i) => A[b[i] % A.length]).join("");
+}
+// One client = the company when the contact belongs to one, else the contact.
+function clientKey(c: { id: string; company_id: string | null } | null | undefined): string | null {
+  if (!c) return null;
+  return c.company_id ? `co:${c.company_id}` : `cu:${c.id}`;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -211,7 +227,7 @@ serve(async (req: Request) => {
     const { data: orders } = orderIds.length
       ? await sb
           .from("orders")
-          .select("id, order_number, invoicing_branch_id, actual_delivery_date, estimated_delivery_date, internal_project_id")
+          .select("id, order_number, customer_id, invoicing_branch_id, actual_delivery_date, estimated_delivery_date, internal_project_id")
           .in("id", orderIds)
       : { data: [] };
     const orderById = new Map((orders || []).map((o) => [o.id as string, o]));
@@ -228,6 +244,21 @@ serve(async (req: Request) => {
       : { data: [] };
     const projectById = new Map((projects || []).map((p) => [p.id as string, p]));
 
+    // End client per order, as a neutral code (see clientCode). One invoice
+    // covers one client, so the picker groups by this too.
+    const customerIds = [...new Set((orders || []).map((o) => o.customer_id).filter(Boolean))] as string[];
+    const { data: customers } = customerIds.length
+      ? await sb.from("customers").select("id, company_id").in("id", customerIds)
+      : { data: [] };
+    const customerById = new Map(
+      (customers || []).map((c) => [c.id as string, c as { id: string; company_id: string | null }]),
+    );
+    const codeByKey = new Map<string, string>();
+    for (const c of customerById.values()) {
+      const key = clientKey(c);
+      if (key && !codeByKey.has(key)) codeByKey.set(key, await clientCode(key));
+    }
+
     const out = poRows.map((po) => {
       const inv = invByPo.get(po.id) || null;
       // Only show the rejection banner while the PO is open again (no active invoice).
@@ -243,6 +274,12 @@ serve(async (req: Request) => {
         order_id: po.order_id,
         order_number: order?.order_number ?? null,
         project_number: project?.project_number ?? null,
+        // Neutral client label: same client -> same code. Never the client's name.
+        client_group: (() => {
+          const key = clientKey(order?.customer_id ? customerById.get(order.customer_id as string) : null);
+          const code = key ? codeByKey.get(key) ?? null : null;
+          return code ? { code, label: `Client ${code}` } : null;
+        })(),
         delivered_on: order?.actual_delivery_date ?? order?.estimated_delivery_date ?? null,
         // Which Cethos company this work belongs to. One invoice bills one
         // company, so the picker groups by this and the vendor is told plainly

@@ -53,10 +53,18 @@ const NOT_READY_COPY: Record<string, string> = {
   already_invoiced: "Already invoiced",
 };
 
-// One invoice bills one Cethos company in one currency, so selection is
-// confined to POs sharing both.
+// One invoice bills one Cethos company, for one client, in one currency, so
+// selection is confined to POs sharing all three.
 function groupKey(po: VendorPurchaseOrder): string {
-  return `${po.billing_entity?.id ?? "none"}|${(po.currency || "USD").toUpperCase()}`;
+  return `${po.billing_entity?.id ?? "none"}|${po.client_group?.code ?? "none"}|${(po.currency || "USD").toUpperCase()}`;
+}
+
+// Says which of the three differs, so the vendor knows why a PO is greyed out.
+function mismatchReason(po: VendorPurchaseOrder, ref: VendorPurchaseOrder): string {
+  if ((po.client_group?.code ?? "none") !== (ref.client_group?.code ?? "none")) {
+    return `Different client${po.client_group ? ` (${po.client_group.label})` : ""} — one invoice covers one client. Raise this one on its own invoice.`;
+  }
+  return "Different Cethos company or currency — raise this one on its own invoice.";
 }
 
 interface RaisedSummary {
@@ -128,8 +136,8 @@ export function PurchaseOrderList() {
         <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
         <p className="text-sm text-gray-500 mt-1">
           Tick the purchase orders you are billing and raise one invoice for them. Cethos prepares the
-          invoice document for you — there is nothing to upload. One invoice covers one Cethos company and
-          one currency.
+          invoice document for you — there is nothing to upload. One invoice covers one client, one Cethos
+          company and one currency. Purchase orders for the same client carry the same client label.
         </p>
       </div>
 
@@ -199,7 +207,7 @@ export function PurchaseOrderList() {
                 checked={selected.includes(po.id)}
                 disabledReason={
                   po.can_invoice && activeKey && groupKey(po) !== activeKey && !selected.includes(po.id)
-                    ? "Different Cethos company or currency — raise this one on its own invoice."
+                    ? mismatchReason(po, selectedPos[0])
                     : null
                 }
                 onToggle={() => toggle(po.id)}
@@ -280,6 +288,14 @@ function PurchaseOrderCard({
             <span>Amount {money(subtotal, po.currency)}</span>
             {refs && <span>{refs}</span>}
             {po.delivered_on && <span>Delivered {fmtLocalDate(po.delivered_on)}</span>}
+            {po.client_group && (
+              <span
+                className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700"
+                title="Purchase orders with the same client label can go on one invoice"
+              >
+                {po.client_group.label}
+              </span>
+            )}
             {po.billing_entity && (
               <span className="inline-flex items-center gap-1">
                 <Building2 className="h-3 w-3" />

@@ -52,6 +52,22 @@ async function computeDueDate(sb: any, vendorId: string, fromDate: string): Prom
   return d.toISOString().split("T")[0];
 }
 
+// A neutral, stable label for the end client behind a purchase order. Vendors
+// batch invoices per client but are never shown who the client is, so the
+// label is derived from a one-way hash of the client's id ("Client 7K3Q").
+// The same client always gets the same label; nothing here is reversible.
+async function clientCode(key: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`cethos-client:${key}`));
+  const b = new Uint8Array(buf);
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  return [0, 1, 2, 3].map((i) => A[b[i] % A.length]).join("");
+}
+// One client = the company when the contact belongs to one, else the contact.
+function clientKey(c: { id: string; company_id: string | null } | null | undefined): string | null {
+  if (!c) return null;
+  return c.company_id ? `co:${c.company_id}` : `cu:${c.id}`;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -204,7 +220,7 @@ serve(async (req: Request) => {
 
     const orderIds = [...new Set(found.map((p: any) => p.order_id).filter(Boolean))];
     const { data: orders } = orderIds.length
-      ? await sb.from("orders").select("id, order_number, invoicing_branch_id, internal_project_id, actual_delivery_date, estimated_delivery_date").in("id", orderIds)
+      ? await sb.from("orders").select("id, order_number, customer_id, invoicing_branch_id, internal_project_id, actual_delivery_date, estimated_delivery_date").in("id", orderIds)
       : { data: [] };
     const orderById = new Map((orders ?? []).map((o: any) => [o.id, o]));
 
@@ -224,6 +240,29 @@ serve(async (req: Request) => {
       }, 422);
     }
     const branchId = branchIds[0];
+
+    // ── One end client ──────────────────────────────────────────────────────
+    // Cethos re-bills vendor costs client by client, so an invoice that mixes
+    // clients cannot be matched to one. The vendor only ever sees the neutral
+    // label, never the client's name.
+    const customerIds = [...new Set((orders ?? []).map((o: any) => o.customer_id).filter(Boolean))];
+    const { data: customers } = customerIds.length
+      ? await sb.from("customers").select("id, company_id").in("id", customerIds)
+      : { data: [] };
+    const customerById = new Map((customers ?? []).map((c: any) => [c.id, c]));
+    const clientKeys = new Set<string>();
+    for (const po of found as any[]) {
+      const order = po.order_id ? orderById.get(po.order_id) : null;
+      clientKeys.add(clientKey(order?.customer_id ? customerById.get(order.customer_id) : null) ?? "none");
+    }
+    if (clientKeys.size > 1) {
+      const labels: string[] = [];
+      for (const k of clientKeys) labels.push(k === "none" ? "unknown client" : `Client ${await clientCode(k)}`);
+      return json({
+        success: false, code: "MIXED_CLIENT",
+        error: `These purchase orders are for different clients (${labels.join(", ")}). Raise one invoice per client.`,
+      }, 422);
+    }
 
     // ── Tax ─────────────────────────────────────────────────────────────────
     const { data: vendor } = await sb
