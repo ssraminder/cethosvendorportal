@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
+import { safeReturnTo } from "../../utils/returnTo";
 import {
   checkVendor,
   sendOtp,
@@ -37,6 +38,10 @@ const EMPTY_OTP = ["", "", "", "", "", ""];
 
 export function LoginPage() {
   const { vendor, isFirstLogin, login } = useVendorAuth();
+  // Page the vendor was trying to open before being sent here (same-site
+  // paths only — see utils/returnTo).
+  const [searchParams] = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -104,7 +109,7 @@ export function LoginPage() {
 
   // Redirect if already logged in (after all hooks).
   if (vendor) {
-    return <Navigate to={isFirstLogin ? "/welcome" : "/"} replace />;
+    return <Navigate to={isFirstLogin ? "/welcome" : (returnTo ?? "/")} replace />;
   }
 
   function toNetworkOrGenericError(err: unknown) {

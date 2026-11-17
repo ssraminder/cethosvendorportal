@@ -23,6 +23,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "2026.11.1",
+    date: "2026-11-17",
+    summary:
+      "Links to a portal page now open that page after you sign in, instead of the dashboard.",
+    changes: [
+      "Fixed: if you open a link to a portal page while signed out (for example a link to an agreement in an email), you are taken to that page once you sign in. Before, you landed on the dashboard and had to find the page again.",
+      "Your first sign-in still starts with the welcome page.",
+    ],
+  },
+  {
     version: "2026.11.0",
     date: "2026-11-16",
     summary:

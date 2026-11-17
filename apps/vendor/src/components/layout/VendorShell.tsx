@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { Outlet, Navigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation } from "react-router-dom";
 import { useVendorAuth } from "../../context/VendorAuthContext";
+import { loginUrlFor } from "../../utils/returnTo";
 import { getSteps } from "../../api/vendorJobs";
 import { getMyInterviews } from "../../api/vendorInterviews";
 import { VendorSidebar } from "./VendorSidebar";
@@ -14,6 +15,7 @@ import { Loader2 } from "lucide-react";
 
 export function VendorShell() {
   const { vendor, sessionToken, isLoading } = useVendorAuth();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [jobOfferedCount, setJobOfferedCount] = useState(0);
   // Only moderators (vendors with an rp_interviewers record) get the Interviews
@@ -53,7 +55,9 @@ export function VendorShell() {
   }
 
   if (!vendor) {
-    return <Navigate to="/login" replace />;
+    // Remember the page they asked for so login can bring them back to it
+    // (e.g. an emailed link to /gvsa).
+    return <Navigate to={loginUrlFor(location.pathname, location.search)} replace />;
   }
 
   return (
